@@ -30,9 +30,9 @@ _sharkrc/
 *.sharkrc
 
 # API Keys and Tokens (extra safety)
-*token*
-*secret*
-*credentials*
+# *token* <- REMOVED (Too aggressive, ignores source files like token-storage.ts)
+# *secret* <- REMOVED (Too aggressive)
+# *credentials* <- REMOVED (Too aggressive)
 .stackspot/
 
 # OS generated files

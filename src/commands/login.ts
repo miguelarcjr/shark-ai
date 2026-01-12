@@ -62,8 +62,14 @@ export const loginCommand = new Command('login')
                     (clientKey as string).trim()
                 );
 
-                // Save token
-                await tokenStorage.saveToken(realm as string, tokens.access_token);
+                // Save token and credentials for monitoring/refresh
+                await tokenStorage.saveToken(
+                    realm as string,
+                    tokens.access_token,
+                    clientId as string,
+                    clientKey as string,
+                    tokens.expires_in
+                );
 
                 // Save active realm to config
                 const configManager = ConfigManager.getInstance();
