@@ -72,6 +72,7 @@ describe('StackSpotClient', () => {
     });
 
     it('should retry on network errors up to 3 times', async () => {
+        vi.useFakeTimers();
         // Simulate network failures then success
         mockFetch
             .mockRejectedValueOnce(new TypeError('Network error'))
@@ -82,13 +83,19 @@ describe('StackSpotClient', () => {
                 json: async () => ({ success: true }),
             });
 
-        const result = await client.get('https://api.example.com');
+        const promise = client.get('https://api.example.com');
+        await vi.runAllTimersAsync();
+        await vi.runAllTimersAsync();
+
+        const result = await promise;
 
         expect(mockFetch).toHaveBeenCalledTimes(3);
         expect(result).toEqual({ success: true });
+        vi.useRealTimers();
     });
 
     it('should retry on 5xx server errors', async () => {
+        vi.useFakeTimers();
         const error500 = new Error('Internal Server Error');
         (error500 as any).status = 500;
 
@@ -105,10 +112,14 @@ describe('StackSpotClient', () => {
                 json: async () => ({ success: true }),
             });
 
-        const result = await client.get('https://api.example.com');
+        const promise = client.get('https://api.example.com');
+        await vi.runAllTimersAsync();
+
+        const result = await promise;
 
         expect(mockFetch).toHaveBeenCalledTimes(2);
         expect(result).toEqual({ success: true });
+        vi.useRealTimers();
     });
 
     it('should not retry on AuthError', async () => {
@@ -124,11 +135,20 @@ describe('StackSpotClient', () => {
     });
 
     it('should fail after max retries', async () => {
+        vi.useFakeTimers();
         mockFetch.mockRejectedValue(new TypeError('Network error'));
 
-        await expect(client.get('https://api.example.com')).rejects.toThrow('Network error');
+        // Create the expectation promise first (attaches error handler)
+        const assertion = expect(client.get('https://api.example.com')).rejects.toThrow('Network error');
+
+        // Fast-forward through retries while the assertion waits
+        await vi.runAllTimersAsync();
+
+        // Await the assertion result
+        await assertion;
 
         // Initial attempt + 3 retries = 4 total calls
         expect(mockFetch).toHaveBeenCalledTimes(4);
+        vi.useRealTimers();
     });
 });

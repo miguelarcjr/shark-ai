@@ -5,88 +5,84 @@ import { ZodError } from 'zod';
 describe('AgentResponseParser', () => {
     it('should parse complete response with all fields', () => {
         const rawResponse = {
-            message: 'Here is your solution...',
-            stop_reason: 'end_turn',
-            tokens: {
-                user: 50,
-                enrichment: 100,
-                output: 200,
-            },
+            summary: 'Here is your solution...',
+            actions: [
+                { type: 'create_file', path: 'test.ts', content: 'console.log("hello")' }
+            ],
             conversation_id: 'conv-abc123',
-            knowledge_source_id: ['ks-1', 'ks-2'],
-            upload_ids: { file1: 'upload-123' },
         };
 
         const result = parseAgentResponse(rawResponse);
 
-        expect(result).toEqual(rawResponse);
-        expect(result.message).toBe('Here is your solution...');
-        expect(result.tokens?.user).toBe(50);
+        expect(result.summary).toBe('Here is your solution...');
+        expect(result.actions).toHaveLength(1);
+        expect(result.conversation_id).toBe('conv-abc123');
     });
 
     it('should parse minimal response with only required fields', () => {
         const minimalResponse = {
-            message: 'Simple response',
+            actions: [{ type: 'talk_with_user', content: 'Hello' }]
         };
 
         const result = parseAgentResponse(minimalResponse);
 
-        expect(result.message).toBe('Simple response');
-        expect(result.stop_reason).toBeUndefined();
-        expect(result.tokens).toBeUndefined();
+        expect(result.actions).toHaveLength(1);
         expect(result.conversation_id).toBeUndefined();
     });
 
     it('should throw ZodError on missing required field', () => {
         const invalidResponse = {
-            stop_reason: 'end_turn',
-            // missing 'message'
+            summary: 'Missing actions',
+            // missing 'actions'
         };
 
-        expect(() => parseAgentResponse(invalidResponse)).toThrow(ZodError);
+        // parseAgentResponse adds default actions if missing, 
+        // but AgentResponseSchema.parse directly will fail.
+        expect(() => AgentResponseSchema.parse(invalidResponse)).toThrow(ZodError);
     });
 
-    it('should handle empty message as invalid', () => {
-        const emptyMessage = {
-            message: '',
+    it('should handle empty summary as valid', () => {
+        const emptySummary = {
+            summary: '',
+            actions: []
         };
 
-        // Empty string is still valid for z.string(), just not for min(1)
-        // Since we don't have min(1) in the schema, this should pass
-        const result = parseAgentResponse(emptyMessage);
-        expect(result.message).toBe('');
+        const result = parseAgentResponse(emptySummary);
+        expect(result.summary).toBe('');
     });
 
-    it('should validate schema with optional tokens', () => {
-        const responseWithTokens = {
-            message: 'Test',
-            tokens: {
-                user: 10,
-                output: 20,
-            },
+    it('should validate schema with optional summary', () => {
+        const responseWithActions = {
+            actions: [
+                { type: 'talk_with_user', content: 'Test' }
+            ],
         };
 
-        const result = AgentResponseSchema.parse(responseWithTokens);
-        expect(result.tokens?.user).toBe(10);
-        expect(result.tokens?.enrichment).toBeUndefined();
+        const result = AgentResponseSchema.parse(responseWithActions);
+        expect(result.actions).toHaveLength(1);
     });
 
-    it('should handle knowledge_source_id as array', () => {
+    it('should handle complex response structure', () => {
         const response = {
-            message: 'Response with knowledge sources',
-            knowledge_source_id: ['source1', 'source2', 'source3'],
+            summary: 'Response with summary and actions',
+            actions: [
+                { type: 'talk_with_user', content: 'Step 1' },
+                { type: 'create_file', path: 'file.txt', content: 'data' }
+            ]
         };
 
         const result = parseAgentResponse(response);
-        expect(result.knowledge_source_id).toHaveLength(3);
-        expect(result.knowledge_source_id?.[0]).toBe('source1');
+        expect(result.actions).toHaveLength(2);
+        expect(result.actions[0].type).toBe('talk_with_user');
     });
 
-    it('should throw on invalid types', () => {
-        const invalidTypes = {
-            message: 123, // should be string
+    it('should throw on invalid action type', () => {
+        const invalidAction = {
+            actions: [
+                { type: 'invalid_type', content: 'Oops' }
+            ],
         };
 
-        expect(() => parseAgentResponse(invalidTypes)).toThrow(ZodError);
+        expect(() => parseAgentResponse(invalidAction)).toThrow(ZodError);
     });
 });
