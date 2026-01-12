@@ -35,6 +35,7 @@ jobs:
         run: npm run build
       
       - name: Test installation
+        shell: bash
         run: |
           npm pack
           PKG_VERSION=$(node -p "require('./package.json').version")
