@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+
 import { crashHandler } from '../core/error/crash-handler.js';
 
 // Initialize Global Crash Handler
