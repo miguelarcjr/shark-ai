@@ -37,5 +37,5 @@ jobs:
       - name: Test installation
         run: |
           npm pack
-          npm install -g ./shark-ai-*.tgz
+          npm install -g ./shark-ai-0.0.2.tgz
           shark --version
