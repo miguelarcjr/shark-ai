@@ -5,14 +5,18 @@ import { tokenStorage } from '../core/auth/token-storage.js';
 import { connectivity } from '../core/network/connectivity.js';
 import { ConfigManager } from '../core/config-manager.js';
 import { colors } from '../ui/colors.js';
+import { t } from '../core/i18n/index.js';
+import { FileLogger } from '../core/debug/file-logger.js';
 
 export const loginCommand = new Command('login')
     .description('Authenticate with StackSpot')
     .action(async () => {
         try {
+            FileLogger.init();
             await connectivity.requireOnline();
 
-            tui.intro('Shark CLI Login');
+
+            tui.intro(t('commands.login.intro'));
 
             const realm = await tui.text({
                 message: 'Account Realm (Slug)',
@@ -62,6 +66,8 @@ export const loginCommand = new Command('login')
                     (clientKey as string).trim()
                 );
 
+                FileLogger.log('LOGIN', 'Authentication success', { realm });
+
                 // Save token and credentials for monitoring/refresh
                 await tokenStorage.saveToken(
                     realm as string,
@@ -75,16 +81,18 @@ export const loginCommand = new Command('login')
                 const configManager = ConfigManager.getInstance();
                 await configManager.set('activeRealm', realm as string);
 
-                spinner.stop('✅ Login successful');
-                tui.outro(`You are now authenticated as ${colors.primary(realm as string)}`);
+                spinner.stop(t('commands.login.success'));
+                tui.outro(t('commands.login.success'));
 
             } catch (error: any) {
-                spinner.stop('Authentication failed.', 1);
+                spinner.stop(t('commands.login.error'), 1);
                 tui.log.error(error.message);
+                FileLogger.log('LOGIN', 'Authentication failed', error);
                 process.exit(1);
             }
         } catch (error: any) {
             tui.log.error(error.message);
+            FileLogger.log('LOGIN', 'Unexpected error', error);
             process.exit(1);
         }
     });

@@ -217,6 +217,7 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
         } catch (e: any) {
             spinner.stop('Error');
             tui.log.error(e.message);
+            FileLogger.log('DEV_AGENT', 'Main Loop Error', e);
             keepGoing = false;
         }
     }

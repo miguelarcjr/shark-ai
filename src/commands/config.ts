@@ -2,10 +2,11 @@ import { tui } from '../ui/tui.js';
 import { colors } from '../ui/colors.js';
 import { ConfigManager } from '../core/config-manager.js';
 import { saveGlobalRC } from '../core/config/sharkrc-loader.js';
+import { t } from '../core/i18n/index.js';
 
 export const configCommand = {
     action: async () => {
-        tui.intro('Shark configuration');
+        tui.intro(t('commands.config.title'));
 
         const manager = ConfigManager.getInstance();
         const currentConfig = manager.getConfig();
@@ -17,12 +18,12 @@ export const configCommand = {
         tui.log.message(`• Log Level: ${colors.primary(currentConfig.logLevel)}`);
 
         const action = await tui.select({
-            message: 'What would you like to configure?',
+            message: t('commands.config.selectAction'),
             options: [
                 { value: 'project', label: 'Set Default Project' },
-                { value: 'language', label: 'Set Language' },
-                { value: 'logLevel', label: 'Set Log Level' },
-                { value: 'exit', label: 'Exit' }
+                { value: 'language', label: t('commands.config.actions.language') },
+                { value: 'logLevel', label: t('commands.config.actions.logLevel') },
+                { value: 'exit', label: t('commands.config.actions.back') }
             ]
         });
 
@@ -47,17 +48,18 @@ export const configCommand = {
 
             if (action === 'language') {
                 const lang = await tui.select({
-                    message: 'Select language:',
+                    message: t('commands.config.selectLanguage'),
                     options: [
-                        { value: 'pt-br', label: 'Portuguese (Brazil)' },
-                        { value: 'en-us', label: 'English (US)' }
+                        { value: 'pt-br', label: 'Português (Brasil)' },
+                        { value: 'en-us', label: 'English (US)' },
+                        { value: 'es-es', label: 'Español' }
                     ],
                     initialValue: currentConfig.language
                 });
 
                 if (!tui.isCancel(lang)) {
                     saveGlobalRC({ language: lang as any });
-                    tui.log.success(`Updated language to: ${lang}`);
+                    tui.log.success(t('commands.config.languageUpdated', lang as string));
                 }
             }
 

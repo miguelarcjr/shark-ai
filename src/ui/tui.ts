@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
 import { colors } from './colors.js';
+import { t } from '../core/i18n/index.js';
 
 export interface TuiSpinner {
     start(msg?: string): void;
@@ -65,7 +66,7 @@ export const tui = {
      */
     handleCancel(value: unknown) {
         if (p.isCancel(value)) {
-            p.cancel('Operation cancelled.');
+            p.cancel(t('common.operationCancelled'));
             process.exit(0);
         }
     },
