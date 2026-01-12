@@ -1,4 +1,6 @@
 import { tokenStorage } from '../auth/token-storage.js';
+import { authenticate } from '../auth/stackspot-auth.js';
+import { colors } from '../../ui/colors.js';
 
 export class AuthError extends Error {
     constructor(message: string) {
@@ -27,14 +29,44 @@ export class StackSpotClient {
     }
 
     private async getHeaders(): Promise<Headers> {
-        const token = await tokenStorage.getToken(this.realm);
+        let creds = await tokenStorage.getCredentials(this.realm);
 
-        if (!token) {
+        if (!creds?.accessToken) {
             throw new AuthError(`Authentication required for realm '${this.realm}'.\nPlease run 'shark login' to authenticate.`);
         }
 
+        // Auto-Refresh Logic
+        const now = Math.floor(Date.now() / 1000);
+        const buffer = 300; // 5 minutes buffer
+
+        if (creds.expiresAt && creds.clientId && creds.clientKey) {
+            if (now > creds.expiresAt - buffer) {
+                try {
+                    if (this.debugMode) console.log(colors.dim('🔄 Refreshing expired token...'));
+
+                    const newTokens = await authenticate(this.realm, creds.clientId, creds.clientKey);
+
+                    await tokenStorage.saveToken(
+                        this.realm,
+                        newTokens.access_token,
+                        creds.clientId,
+                        creds.clientKey,
+                        newTokens.expires_in
+                    );
+
+                    // Update local reference with new token
+                    creds.accessToken = newTokens.access_token;
+                    if (this.debugMode) console.log(colors.success('✅ Token refreshed successfully.'));
+
+                } catch (error) {
+                    console.warn(colors.warning(`⚠️ Failed to auto-refresh token: ${(error as Error).message}`));
+                    // Fallback to existing token (might still work for a few seconds or fail at API)
+                }
+            }
+        }
+
         const headers = new Headers();
-        headers.set('Authorization', `Bearer ${token}`);
+        headers.set('Authorization', `Bearer ${creds?.accessToken}`);
         headers.set('Content-Type', 'application/json');
         return headers;
     }
