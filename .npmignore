@@ -1,0 +1,64 @@
+# Source files (only dist/ should be published)
+src/
+*.test.ts
+*.spec.ts
+
+# Configuration files
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+
+# Development files
+_bmad/
+_bmad-output/
+.agent/
+.claude/
+.gemini/
+_sharkrc/
+
+# Documentation (internal)
+docs/
+*.md
+!README.md
+!README.en.md
+!LICENSE
+!CHANGELOG.md
+
+# Development prompts and scripts
+*-agent-prompt.xml
+*-agent-v*-prompt.xml
+workflow-initializer-agent-prompt.xml
+scrape_docs.py
+repro_auth.ts
+todo_example.md
+tech-spec.md
+stackspot_docs/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# CI/CD
+.github/
+
+# IDE
+.vscode/
+.idea/
+
+# Tests
+coverage/
+.nyc_output/
+
+# Logs
+*.log
+shark-debug.log
+
+# Temporary
+*.tmp
+tmp/
+temp/
+
+# OS
+.DS_Store
+Thumbs.db

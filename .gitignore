@@ -1,0 +1,123 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# Logs
+*.log
+logs/
+shark-debug.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Shark CLI specific - Configuration files with potential tokens
+.sharkrc
+_sharkrc/
+*.sharkrc
+
+# API Keys and Tokens (extra safety)
+*token*
+*secret*
+*credentials*
+.stackspot/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trasks
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# IDE and Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# Testing coverage
+coverage/
+.nyc_output/
+*.lcov
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# BMAD artifacts and planning (internal development only)
+_bmad/
+_bmad-output/
+.agent/
+.claude/
+.gemini/
+
+# Development prompts (internal only)
+*-agent-prompt.xml
+*-agent-v*-prompt.xml
+workflow-initializer-agent-prompt.xml
+
+# Development scripts
+scrape_docs.py
+repro_auth.ts
+todo_example.md
+tech-spec.md
+verify-*
+src/**/verify-*
+debug-*
+src/**/debug-*
+reproduce-issue.ts
+
+# Internal Agent Setup Docs
+docs/*_SETUP.md
+stackspot-frontend-cli.xml
+
+# StackSpot documentation (scraped, not for distribution)
+stackspot_docs/
+
+# Workflow files (internal development)
+shark-workflow.json
+bmad-workflow.json
+
+# Package manager
+yarn.lock
+pnpm-lock.yaml
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Output of 'npm pack'
+*.tgz
+
+# dotenv environment variable files
+.env
+.env.development.local
+.env.test.local
+.env.production.local
+.env.local
