@@ -37,5 +37,6 @@ jobs:
       - name: Test installation
         run: |
           npm pack
-          npm install -g ./shark-ai-0.0.2.tgz
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          npm install -g ./shark-ai-${PKG_VERSION}.tgz
           shark --version
