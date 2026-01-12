@@ -12,18 +12,15 @@ import { handleListFiles, handleReadFile, handleSearchFile } from './agent-tools
 import fs from 'node:fs';
 import path from 'node:path';
 
-const AGENT_TYPE = 'scan_agent';
-// We can reuse the Specification Agent ID or a new one. Using env var or default.
-// Ideally, we'd have a specific ID for Scan Agent. For now, assume a placeholder or reuse.
-const AGENT_ID = process.env.STACKSPOT_SCAN_AGENT_ID || '01KEQ9AHWB550J2244YBH3QATN'; // User provided Agent ID
-
-/**
- * Scan Agent implementation.
- * It autonomously explores the project and generates project-context.md
- */
 import { ConfigManager } from '../config-manager.js';
 
-// ... (existing imports)
+const AGENT_TYPE = 'scan_agent';
+
+function getAgentId(): string {
+    const config = ConfigManager.getInstance().getConfig();
+    if (config.agents?.scan) return config.agents.scan;
+    return process.env.STACKSPOT_SCAN_AGENT_ID || '01KEQ9AHWB550J2244YBH3QATN';
+}
 
 /**
  * Scan Agent implementation.
@@ -272,7 +269,7 @@ async function callScanAgentApi(prompt: string, onChunk: (chunk: string) => void
         conversation_id: conversationId
     };
 
-    const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${AGENT_ID}/chat`;
+    const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${getAgentId()}/chat`;
     let fullMsg = '';
     let raw: any = {};
 

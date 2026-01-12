@@ -20,14 +20,28 @@ import {
 } from './agent-tools.js';
 
 const AGENT_TYPE = 'developer_agent';
-// Placeholder ID - User must provide the real one via env
-const AGENT_ID = process.env.STACKSPOT_DEV_AGENT_ID || '01KEQCGJ65YENRA4QBXVN1YFFX'; // Default ID if not set in env
+// Helper to get effective Agent ID
+function getAgentId(overrideId?: string): string {
+    if (overrideId) return overrideId;
+
+    // Check Config
+    const config = ConfigManager.getInstance().getConfig();
+    if (config.agents?.dev) return config.agents.dev;
+
+    // Check Env
+    if (process.env.STACKSPOT_DEV_AGENT_ID) return process.env.STACKSPOT_DEV_AGENT_ID;
+
+    // Default
+    return '01KEQCGJ65YENRA4QBXVN1YFFX';
+}
 
 export async function interactiveDeveloperAgent(options: { task?: string, context?: string } = {}): Promise<void> {
     FileLogger.init();
     tui.intro('🦈 Shark Dev Agent');
 
-    if (AGENT_ID === 'PENDING_CONFIGURATION') {
+    const agentId = getAgentId();
+
+    if (agentId === 'PENDING_CONFIGURATION') {
         tui.log.error('❌ STACKSPOT_DEV_AGENT_ID not configured in .env');
         return;
     }
@@ -240,7 +254,7 @@ async function callDevAgentApi(prompt: string, onChunk: (chunk: string) => void)
         stackspot_knowledge: false // Dev Agent focuses on project context
     };
 
-    const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${AGENT_ID}/chat`;
+    const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${getAgentId()}/chat`;
     let fullMsg = '';
     let raw: any = {};
 

@@ -10,11 +10,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { ConfigManager } from '../config-manager';
 
 const AGENT_TYPE = 'qa_agent';
 
-// Allow override via env var, otherwise use a default (placeholder for now)
-const AGENT_ID = process.env.STACKSPOT_QA_AGENT_ID || '01KEQFJZ3Q3JER11NH22HEZX9X';
+function getAgentId(): string {
+    const config = ConfigManager.getInstance().getConfig();
+    if (config.agents?.qa) return config.agents.qa;
+    return process.env.STACKSPOT_QA_AGENT_ID || '01KEQFJZ3Q3JER11NH22HEZX9X';
+}
 
 interface QAAgentOptions {
     initialUrl?: string;
@@ -73,7 +77,9 @@ class ChromeDevToolsClient {
 const mcpClient = new ChromeDevToolsClient();
 
 export async function runQAAgent(options: QAAgentOptions) {
-    if (!AGENT_ID) {
+    const agentId = getAgentId();
+
+    if (!agentId) {
         tui.log.error('❌ STACKSPOT_QA_AGENT_ID not configured.');
         tui.log.info('Please run: set STACKSPOT_QA_AGENT_ID=<your-id>');
         return;
@@ -131,7 +137,7 @@ export async function runQAAgent(options: QAAgentOptions) {
             const existingConversationId = await conversationManager.getConversationId(AGENT_TYPE);
 
             await sseClient.streamAgentResponse(
-                `https://genai-inference-app.stackspot.com/v1/agent/${AGENT_ID}/chat`,
+                `https://genai-inference-app.stackspot.com/v1/agent/${getAgentId()}/chat`,
                 {
                     user_prompt: userMessage,
                     streaming: true,

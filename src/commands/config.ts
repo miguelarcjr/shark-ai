@@ -23,6 +23,7 @@ export const configCommand = {
                 { value: 'project', label: 'Set Default Project' },
                 { value: 'language', label: t('commands.config.actions.language') },
                 { value: 'logLevel', label: t('commands.config.actions.logLevel') },
+                { value: 'agents', label: t('commands.config.actions.agents') },
                 { value: 'exit', label: t('commands.config.actions.back') }
             ]
         });
@@ -78,6 +79,34 @@ export const configCommand = {
                 if (!tui.isCancel(level)) {
                     saveGlobalRC({ logLevel: level as any });
                     tui.log.success(`Updated log level to: ${level}`);
+                }
+            }
+
+            if (action === 'agents') {
+                const agentType = await tui.select({
+                    message: t('commands.config.agentMenu.selectAgent'),
+                    options: [
+                        { value: 'dev', label: t('commands.config.agentMenu.options.dev') },
+                        { value: 'ba', label: t('commands.config.agentMenu.options.ba') },
+                        { value: 'spec', label: t('commands.config.agentMenu.options.spec') },
+                        { value: 'qa', label: t('commands.config.agentMenu.options.qa') },
+                        { value: 'scan', label: t('commands.config.agentMenu.options.scan') },
+                        { value: 'back', label: t('commands.config.agentMenu.options.back') }
+                    ]
+                });
+
+                if (!tui.isCancel(agentType) && agentType !== 'back') {
+                    const agentId = await tui.text({
+                        message: t('commands.config.agentMenu.enterId'),
+                        initialValue: (currentConfig.agents as any)[agentType as string] || '',
+                        placeholder: '01xxxxxxxxxxxxxxxxxxxxxxxx'
+                    });
+
+                    if (!tui.isCancel(agentId)) {
+                        const newAgents = { ...currentConfig.agents, [agentType as string]: agentId };
+                        saveGlobalRC({ agents: newAgents as any });
+                        tui.log.success(t('commands.config.agentMenu.updated', agentType as string));
+                    }
                 }
             }
 

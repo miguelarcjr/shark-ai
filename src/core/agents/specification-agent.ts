@@ -11,11 +11,16 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { FileLogger } from '../debug/file-logger.js';
 import { handleListFiles, handleReadFile, handleSearchFile, startSmartReplace } from './agent-tools.js';
+import { ConfigManager } from '../config-manager.js';
 
 const AGENT_TYPE = 'specification_agent';
 
-// Placeholder ID - User must provide the real one via env or config
-const AGENT_ID = process.env.STACKSPOT_SPEC_AGENT_ID || '01KEPXTX37FTB4N672TZST4SGP';
+function getAgentId(overrideId?: string): string {
+    if (overrideId) return overrideId;
+    const config = ConfigManager.getInstance().getConfig();
+    if (config.agents?.spec) return config.agents.spec;
+    return process.env.STACKSPOT_SPEC_AGENT_ID || '01KEPXTX37FTB4N672TZST4SGP';
+}
 
 export interface SpecAgentOptions {
     agentId?: string;
@@ -265,14 +270,14 @@ async function callSpecAgentApi(prompt: string, onChunk: (chunk: string) => void
         conversation_id: conversationId
     };
 
-    const finalId = agentId || AGENT_ID;
-    const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${finalId}/chat`;
+    const effectiveAgentId = getAgentId(agentId);
+    const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${effectiveAgentId}/chat`;
 
     let fullMsg = '';
     let raw: any = {};
 
     FileLogger.log('AGENT', 'Calling Agent API', {
-        agentId: finalId,
+        agentId: effectiveAgentId,
         conversationId,
         prompt: prompt.substring(0, 500) // Log summary of prompt
     });

@@ -6,12 +6,16 @@ import { tokenStorage } from '../auth/token-storage.js';
 import { getActiveRealm } from '../auth/get-active-realm.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
+import { ConfigManager } from '../config-manager.js';
 
 const AGENT_TYPE = 'business_analyst';
 
-// TODO: Get this from config or environment variable
-// You get this ID when you create your custom agent in StackSpot Portal
-const AGENT_ID = process.env.STACKSPOT_BA_AGENT_ID || '01KEJ95G304TNNAKGH5XNEEBVD';
+function getAgentId(overrideId?: string): string {
+    if (overrideId) return overrideId;
+    const config = ConfigManager.getInstance().getConfig();
+    if (config.agents?.ba) return config.agents.ba;
+    return process.env.STACKSPOT_BA_AGENT_ID || '01KEJ95G304TNNAKGH5XNEEBVD';
+}
 
 export interface BAAgentOptions {
     agentId?: string; // Allow overriding agent ID
@@ -57,8 +61,8 @@ export async function runBusinessAnalystAgent(
     };
 
     // 4. Construct agent URL - CORRECT FORMAT
-    const finalAgentId = agentId || AGENT_ID;
-    const agentUrl = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${finalAgentId}/chat`;
+    const effectiveAgentId = getAgentId(options.agentId);
+    const agentUrl = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${effectiveAgentId}/chat`;
 
     // 5. Prepare headers
     const headers = {

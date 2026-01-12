@@ -15,9 +15,24 @@ export const ptBr: Locale = {
             actions: {
                 language: 'Alterar Idioma',
                 logLevel: 'Nível de Log',
+                agents: 'Configurar Agentes',
                 back: 'Voltar'
             },
             selectLanguage: 'Selecione o idioma:',
+            agentMenu: {
+                title: 'Configuração de Agentes',
+                selectAgent: 'Qual agente você deseja configurar?',
+                enterId: 'Digite o ID do Agente StackSpot (ou deixe vazio para padrão):',
+                updated: 'ID do Agente {0} atualizado.',
+                options: {
+                    dev: 'Developer Agent',
+                    ba: 'Business Analyst',
+                    spec: 'Specification Agent',
+                    qa: 'QA Agent',
+                    scan: 'Scan Agent',
+                    back: 'Voltar'
+                }
+            },
             languageUpdated: 'Idioma atualizado para: {0}'
         },
         login: {

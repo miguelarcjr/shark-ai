@@ -15,9 +15,24 @@ export const esEs: Locale = {
             actions: {
                 language: 'Cambiar Idioma',
                 logLevel: 'Nivel de Log',
+                agents: 'Configurar Agentes',
                 back: 'Volver'
             },
             selectLanguage: 'Seleccione el idioma:',
+            agentMenu: {
+                title: 'Configuración de Agentes',
+                selectAgent: '¿Qué agente desea configurar?',
+                enterId: 'Ingrese el ID del Agente StackSpot (o dejar vacío para predeterminado):',
+                updated: 'ID del Agente {0} actualizado.',
+                options: {
+                    dev: 'Agente Desarrollador',
+                    ba: 'Analista de Negocios',
+                    spec: 'Agente de Especificación',
+                    qa: 'Agente de QA',
+                    scan: 'Agente de Escaneo',
+                    back: 'Volver'
+                }
+            },
             languageUpdated: 'Idioma actualizado a: {0}'
         },
         login: {

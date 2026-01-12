@@ -15,9 +15,24 @@ export interface Locale {
             actions: {
                 language: string;
                 logLevel: string;
+                agents: string;
                 back: string;
             };
             selectLanguage: string;
+            agentMenu: {
+                title: string;
+                selectAgent: string;
+                enterId: string;
+                updated: string;
+                options: {
+                    dev: string;
+                    ba: string;
+                    spec: string;
+                    qa: string;
+                    scan: string;
+                    back: string;
+                }
+            };
             languageUpdated: string;
         };
         login: {
