@@ -40,6 +40,17 @@ export const esEs: Locale = {
             alreadyLoggedIn: 'Ya has iniciado sesión',
             success: '¡Inicio de sesión exitoso!',
             error: 'Error de inicio de sesión'
+        },
+        scan: {
+            intro: '🕵️‍♂️  Agente de Escaneo',
+            scanningProject: 'Escaneando proyecto en:',
+            outputTarget: 'Archivo de salida:',
+            language: 'Idioma:',
+            templateCreated: '✅ Plantilla creada en:',
+            fileExists: '📄 El archivo ya existe, será actualizado',
+            analyzing: '🕵️‍♂️  Agente de escaneo analizando (Paso {step})...',
+            completed: '✨ Escaneo completado exitosamente!',
+            error: 'Error al ejecutar escaneo'
         }
     }
 };

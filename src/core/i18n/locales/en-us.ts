@@ -40,6 +40,17 @@ export const enUs: Locale = {
             alreadyLoggedIn: 'You are already logged in',
             success: 'Successfully logged in!',
             error: 'Login failed'
+        },
+        scan: {
+            intro: '🕵️‍♂️  Scan Agent',
+            scanningProject: 'Scanning project at:',
+            outputTarget: 'Output file:',
+            language: 'Language:',
+            templateCreated: '✅ Template created at:',
+            fileExists: '📄 File already exists, will be updated',
+            analyzing: '🕵️‍♂️  Scan Agent analyzing (Step {step})...',
+            completed: '✨ Scan completed successfully!',
+            error: 'Error executing scan'
         }
     }
 };

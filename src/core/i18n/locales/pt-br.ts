@@ -40,6 +40,17 @@ export const ptBr: Locale = {
             alreadyLoggedIn: 'Você já está logado',
             success: 'Login realizado com sucesso!',
             error: 'Falha no login'
+        },
+        scan: {
+            intro: '🕵️‍♂️  Scan Agent',
+            scanningProject: 'Escaneando projeto em:',
+            outputTarget: 'Arquivo de saída:',
+            language: 'Idioma:',
+            templateCreated: '✅ Template criado em:',
+            fileExists: '📄 Arquivo já existe, será atualizado',
+            analyzing: '🕵️‍♂️  Scan Agent analisando (Passo {step})...',
+            completed: '✨ Scan concluído com sucesso!',
+            error: 'Erro ao executar scan'
         }
     }
 };

@@ -13,6 +13,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { ConfigManager } from '../config-manager.js';
+import { t } from '../i18n/index.js';
 
 const AGENT_TYPE = 'scan_agent';
 
@@ -28,10 +29,10 @@ function getAgentId(): string {
  */
 export async function interactiveScanAgent(options: { output?: string, depth?: string } = {}): Promise<void> {
     FileLogger.init();
-    tui.intro('🕵️‍♂️  Scan Agent');
-
     const config = ConfigManager.getInstance().getConfig();
     const language = config.language || 'English';
+
+    tui.intro(t('commands.scan.intro'));
 
     const projectRoot = process.cwd();
     // Use options.output if provided, otherwise default to _sharkrc/project-context.md
@@ -63,61 +64,302 @@ export async function interactiveScanAgent(options: { output?: string, depth?: s
         }
     }
 
-    tui.log.info(`Scanning project at: ${colors.bold(projectRoot)}`);
-    tui.log.info(`Output targeted at: ${colors.bold(outputFile)}`);
-    tui.log.info(`Language: ${colors.bold(language)}`);
+    tui.log.info(`${t('commands.scan.scanningProject')} ${colors.bold(projectRoot)}`);
+    tui.log.info(`${t('commands.scan.outputTarget')} ${colors.bold(outputFile)}`);
+    tui.log.info(`${t('commands.scan.language')} ${colors.bold(language)}`);
 
     const configFileRelative = path.relative(projectRoot, outputFile);
+
+    // Create template file automatically before starting scan
+    const initialTemplate = `# Project Context
+
+## Overview
+[TO BE ANALYZED]
+
+## Tech Stack
+[TO BE ANALYZED]
+
+## Architecture
+[TO BE ANALYZED]
+
+## Directory Structure
+[TO BE ANALYZED]
+
+## Key Components
+[TO BE ANALYZED]
+
+## API / Interfaces
+[TO BE ANALYZED]
+
+## Data Layer
+[TO BE ANALYZED]
+
+## Configuration & Environment
+[TO BE ANALYZED]
+
+## Build & Development
+[TO BE ANALYZED]
+
+## Key Patterns & Conventions
+[TO BE ANALYZED]
+`;
+
+    // Create the template file immediately
+    if (!fs.existsSync(outputFile)) {
+        fs.writeFileSync(outputFile, initialTemplate, { encoding: 'utf-8' });
+        tui.log.success(`${t('commands.scan.templateCreated')} ${outputFile}`);
+    } else {
+        tui.log.info(t('commands.scan.fileExists'));
+    }
 
     // Construct the "Super Prompt"
     const superPrompt = `
 You are the **Scan Agent**, an expert software architect and analyst.
-Your mission is to explore this project's codebase and generate a comprehensive context file that will be used by other AI agents (specifically a Developer Agent) to understand how to work on this project.
+Your mission is to explore this project's codebase THOROUGHLY and generate a COMPREHENSIVE context file that will be used by other AI agents (specifically a Developer Agent) to understand how to work on this project.
 
-**Goal**: Create a markdown file at: \`${configFileRelative}\`.
+**IMPORTANT**: The file \`${configFileRelative}\` has already been created with a template structure. Your job is to FILL IN each section by analyzing the project.
 
 **LANGUAGE INSTRUCTION**:
-You MUST write the content of the \`project-context.md\` file in **${language}**.
-Also, strictly interact with tools using the appropriate payload.
+You MUST write the content in **${language}**.
 
-**Instructions**:
-1.  **Analyze Structure**: Use \`list_files\` to understand the root directory and key subdirectories (src, tools, config, etc.).
-2.  **Identify Tech Stack**: Use \`read_file\` or \`search_file\` on key manifests (package.json, pom.xml, go.mod, Dockerfile, etc.) to determine languages, frameworks, and versions.
-3.  **Map Architecture**: Infer the architectural pattern (Monolith? Microservices? Clean Architecture?) based on folder structure and key files.
-4.  **Document Key Paths**: Identify where source code, tests, and configs live.
+**CRITICAL STRATEGY - INCREMENTAL UPDATES**:
+DO NOT try to rewrite the entire file at once! Instead:
 
-**Output Format** (Markdown):
-The final action MUST be \`create_file\` (or \`modify_file\`) for the target file with the following structure:
+1. **Explore** the project using \`list_files\`, \`read_file\`, \`search_file\`
+2. **Update** specific sections incrementally using \`modify_file\`
+3. **Benefit**: Build a MUCH MORE DETAILED document without context size limitations
 
+**WORKFLOW - FILL EACH SECTION:**
+
+**Step 1 - Analyze Tech Stack:**
+- \`list_files\` root directory to see project structure
+- \`read_file\` package.json (or pom.xml, go.mod, requirements.txt, etc.)
+- \`modify_file\` to replace:
+  - \`target_content\`: "## Tech Stack\\n[TO BE ANALYZED]"
+  - \`content\`: Detailed tech stack with versions, dependencies, and their purposes
+
+**Step 2 - Analyze Directory Structure:**
+- \`list_files\` on ALL key directories (src, tests, config, docs, etc.)
+- Map the complete directory tree
+- \`modify_file\` to replace:
+  - \`target_content\`: "## Directory Structure\\n[TO BE ANALYZED]"
+  - \`content\`: Visual directory tree with purpose of each folder
+
+**Step 3 - Analyze Architecture:**
+- \`read_file\` entry points (main.ts, index.js, app.py, etc.)
+- \`read_file\` 5-10 source files to understand code patterns and organization
+- Identify architectural pattern (Clean Arch, MVC, Microservices, etc.)
+- \`modify_file\` to replace:
+  - \`target_content\`: "## Architecture\\n[TO BE ANALYZED]"
+  - \`content\`: Comprehensive architectural description with patterns and module organization
+
+**Step 4 - Document Components:**
+- Identify ALL major modules/components by reading source files
+- For each component: location, purpose, key files
+- \`modify_file\` to replace:
+  - \`target_content\`: "## Key Components\\n[TO BE ANALYZED]"
+  - \`content\`: Detailed list of components with their purposes
+
+**Step 5 - Document APIs (if applicable):**
+- Search for route definitions, controllers, API endpoints
+- Document base URL, main endpoints, request/response patterns
+- \`modify_file\` to replace:
+  - \`target_content\`: "## API / Interfaces\\n[TO BE ANALYZED]"
+  - \`content\`: API documentation (or "Not applicable" if no API)
+
+**Step 6 - Document Data Layer (if applicable):**
+- Search for database configs, ORM setup, model definitions
+- Document database type, ORM tool, key entities/tables
+- \`modify_file\` to replace:
+  - \`target_content\`: "## Data Layer\\n[TO BE ANALYZED]"
+  - \`content\`: Data layer details (or "Not applicable" if no database)
+
+**Step 7 - Configuration & Environment:**
+- Read config files (.env.example, config/, etc.)
+- Identify environment variables and their purposes
+- \`modify_file\` to replace:
+  - \`target_content\`: "## Configuration & Environment\\n[TO BE ANALYZED]"
+  - \`content\`: List of env vars and config files
+
+**Step 8 - Build & Development:**
+- Read package.json scripts, Makefile, build configs
+- Document dev, build, test, lint commands
+- \`modify_file\` to replace:
+  - \`target_content\`: "## Build & Development\\n[TO BE ANALYZED]"
+  - \`content\`: Commands for development workflow
+
+**Step 9 - Patterns & Conventions:**
+- Based on files read, document naming conventions, code organization
+- Note error handling, logging strategies
+- \`modify_file\` to replace:
+  - \`target_content\`: "## Key Patterns & Conventions\\n[TO BE ANALYZED]"
+  - \`content\`: Observed patterns and conventions
+
+**Step 10 - Overview (LAST):**
+- Synthesize all findings into a comprehensive overview
+- \`modify_file\` to replace:
+  - \`target_content\`: "## Overview\\n[TO BE ANALYZED]"
+  - \`content\`: Detailed project description with purpose and main functionality
+
+**HOW TO USE modify_file:**
+\`\`\`json
+{
+  "actions": [{
+    "type": "modify_file",
+    "path": "${configFileRelative}",
+    "target_content": "## Tech Stack\\n[TO BE ANALYZED]",
+    "content": "## Tech Stack\\n- **Language**: TypeScript 5.3\\n- **Runtime**: Node.js 20.x\\n..."
+  }]
+}
+\`\`\`
+
+\`\`\`markdown
 # Project Context
 
 ## Overview
-[Brief description of what this project seems to be]
+[TO BE ANALYZED]
 
 ## Tech Stack
-- **Language**: [e.g. TypeScript]
-- **Framework**: [e.g. React, Express, NestJS]
-- **Build Tool**: [e.g. Vite, Webpack]
-- **Database**: [e.g. PostgreSQL, Prisma] (if detected)
+[TO BE ANALYZED]
 
 ## Architecture
-[Description of the folder structure and architectural patterns detected]
+[TO BE ANALYZED]
 
-## Key Locations
-- **Source**: [path/to/src]
-- **Tests**: [path/to/tests]
-- **Config**: [path/to/config]
+## Directory Structure
+[TO BE ANALYZED]
 
-## Commands
-[List of discovered npm scripts or makefile commands for dev, build, test]
+## Key Components
+[TO BE ANALYZED]
 
----
+## API / Interfaces
+[TO BE ANALYZED]
 
-**Rules**:
-- Do NOT guess. If you are unsure, check the file.
-- Be concise.
-- Focus on FACTS that a Developer Agent needs to know to write code correcty.
-- Start by listing the root directory.
+## Data Layer
+[TO BE ANALYZED]
+
+## Configuration & Environment
+[TO BE ANALYZED]
+
+## Build & Development
+[TO BE ANALYZED]
+
+## Key Patterns & Conventions
+[TO BE ANALYZED]
+\`\`\`
+
+**Step 2 - Explore and Update Incrementally:**
+After creating the template, perform these analyses and UPDATE each section:
+
+**2.1 - Analyze Tech Stack:**
+- \`list_files\` root directory
+- \`read_file\` package.json (or equivalent manifest)
+- \`modify_file\` to replace "## Tech Stack\\n[TO BE ANALYZED]" with detailed findings
+
+**2.2 - Analyze Directory Structure:**
+- \`list_files\` on key directories (src, tests, config, etc.)
+- \`modify_file\` to replace "## Directory Structure\\n[TO BE ANALYZED]" with complete structure
+
+**2.3 - Analyze Architecture:**
+- \`read_file\` entry points (main.ts, index.js, etc.)
+- \`read_file\` 5-10 source files to understand patterns
+- \`modify_file\` to replace "## Architecture\\n[TO BE ANALYZED]" with architectural insights
+
+**2.4 - Document Components:**
+- Identify major modules/components
+- \`modify_file\` to replace "## Key Components\\n[TO BE ANALYZED]" with component details
+
+**2.5 - Document APIs (if applicable):**
+- Search for route definitions, controllers, API endpoints
+- \`modify_file\` to replace "## API / Interfaces\\n[TO BE ANALYZED]"
+
+**2.6 - Document Data Layer (if applicable):**
+- Search for database configs, ORM, models
+- \`modify_file\` to replace "## Data Layer\\n[TO BE ANALYZED]"
+
+**2.7 - Final Touches:**
+- Update remaining sections (Config, Build, Patterns)
+- Ensure Overview is comprehensive
+
+**HOW TO USE modify_file:**
+\`\`\`json
+{
+  "actions": [{
+    "type": "modify_file",
+    "path": "${configFileRelative}",
+    "target_content": "## Tech Stack\\n[TO BE ANALYZED]",
+    "content": "## Tech Stack\\n- **Language**: TypeScript 5.3\\n- **Runtime**: Node.js 20.x\\n- **Framework**: Express 4.18\\n..."
+  }]
+}
+\`\`\`
+
+**SECTION TEMPLATES (For your updates):**
+
+**Tech Stack:**
+\`\`\`markdown
+## Tech Stack
+- **Language**: [name + version]
+- **Runtime**: [name + version]
+- **Framework**: [name + version]
+- **Build Tool**: [name]
+- **Testing**: [framework]
+- **Key Dependencies**:
+  - [dep-name]: [purpose]
+  - [dep-name]: [purpose]
+\`\`\`
+
+**Architecture:**
+\`\`\`markdown
+## Architecture
+[Comprehensive description]
+- **Pattern**: [Clean Arch, MVC, etc.]
+- **Module Organization**: [how modules are structured]
+- **Layer Separation**: [controllers, services, repos]
+- **Configuration**: [how config is managed]
+\`\`\`
+
+**Directory Structure:**
+\`\`\`markdown
+## Directory Structure
+\\\`\\\`\\\`
+/src
+  /core        - [Purpose]
+  /commands    - [Purpose]
+  /ui          - [Purpose]
+/tests         - [Purpose]
+/docs          - [Purpose]
+\\\`\\\`\\\`
+\`\`\`
+
+**Key Components:**
+\`\`\`markdown
+## Key Components
+
+### [Component Name 1]
+- **Location**: \\\`path/to/component\\\`
+- **Purpose**: [What it does]
+- **Key Files**: [Important files]
+
+### [Component Name 2]
+- **Location**: \\\`path/to/component\\\`
+- **Purpose**: [What it does]
+- **Key Files**: [Important files]
+\`\`\`
+
+**DEPTH REQUIREMENT**:
+- Read MULTIPLE files (5-10 minimum) to understand patterns
+- Identify ALL major modules/components
+- Document API routes, database schemas if applicable
+- Note design patterns and architectural decisions
+- List important dependencies with their purposes
+
+**RULES**:
+- Create template FIRST (step 1)
+- Update sections INCREMENTALLY (steps 2-7)
+- Do NOT wait to write everything at the end
+- Use \`modify_file\` to replace "[TO BE ANALYZED]" sections
+- Be DETAILED and COMPREHENSIVE
+- Take your time - you have up to 30 steps
+- Verify facts with \`read_file\` or \`search_file\` before documenting
 `.trim();
 
     await runScanLoop(superPrompt, outputFile);
@@ -129,12 +371,13 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
     let nextPrompt = initialPrompt;
     let keepGoing = true;
     let stepCount = 0;
-    const MAX_STEPS = 15; // Safety limit
+    const MAX_STEPS = 30; // Safety limit - increased for deeper analysis
 
     while (keepGoing && stepCount < MAX_STEPS) {
         stepCount++;
         const spinner = tui.spinner();
-        spinner.start(`🕵️‍♂️  Scan Agent analyzing (Step ${stepCount}/${MAX_STEPS})...`);
+        const msg = t('commands.scan.analyzing').replace('{step}', stepCount.toString());
+        spinner.start(msg);
 
         let responseText = '';
         let lastResponse: AgentResponse | null = null;
@@ -197,14 +440,33 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
                                 tui.log.success(`✅ Generated Context: ${finalPath}`);
                                 fileCreated = true;
                             } else {
-                                // Modify
-                                fs.writeFileSync(finalPath, action.content || ''); // Overwrite for now
-                                tui.log.success(`✅ Updated Context: ${finalPath}`);
-                                fileCreated = true;
+                                // Modify Logic: Read, Replace, Write
+                                if (fs.existsSync(finalPath)) {
+                                    const currentContent = fs.readFileSync(finalPath, 'utf-8');
+                                    // action.target_content is needed for replacement
+                                    if (action.target_content && currentContent.includes(action.target_content)) {
+                                        const newContent = currentContent.replace(action.target_content, action.content || '');
+                                        fs.writeFileSync(finalPath, newContent, { encoding: 'utf-8' });
+                                        tui.log.success(`✅ Updated Context: ${finalPath}`);
+                                        fileCreated = true;
+                                    } else {
+                                        // Fallback: If no target_content or target not found, what to do?
+                                        // For Scan Agent incremental strategy, this is a failure in the prompt following.
+                                        // We log a warning.
+                                        tui.log.warning(t('commands.scan.error') + ': Target content not found for replacement.');
+                                        executionResults += `[Action ${action.type}]: Failed. Target content not found in file.\n`;
+                                        // Continue loop to give agent a chance to fix?
+                                        fileCreated = false;
+                                    }
+                                } else {
+                                    // File doesn't exist, treat as create?
+                                    // But it should exist as template.
+                                    tui.log.warning(t('commands.scan.error') + ': File not found.');
+                                }
                             }
                             executionResults += `[Action ${action.type}]: Success. Task Completed.\n`;
                         } else {
-                            tui.log.warning(`Agent wants to write to unexpected file: ${action.path}`);
+                            tui.log.warning(t('commands.scan.error')); // Using generic error for unexpected file write attempt
                             // Skip for now to avoid side effects during scan, or ask user?
                             // Let's just log it.
                             executionResults += `[Action ${action.type}]: Skipped (Scan Agent only writes context file)\n`;
@@ -221,7 +483,7 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
                 }
 
                 if (fileCreated) {
-                    tui.log.success('✨ Scan completed successfully!');
+                    tui.log.success(t('commands.scan.completed'));
                     keepGoing = false;
                 } else {
                     // Feed results back
@@ -240,7 +502,7 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
             }
 
         } catch (error: any) {
-            spinner.stop('Error');
+            spinner.stop(t('common.error'));
             tui.log.error(error.message);
             keepGoing = false;
         }

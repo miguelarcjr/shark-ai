@@ -40,6 +40,17 @@ export interface Locale {
             alreadyLoggedIn: string;
             success: string;
             error: string;
+        };
+        scan: {
+            intro: string;
+            scanningProject: string;
+            outputTarget: string;
+            language: string;
+            templateCreated: string;
+            fileExists: string;
+            analyzing: string;
+            completed: string;
+            error: string;
         }
     }
 }
