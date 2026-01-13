@@ -106,7 +106,8 @@ export async function interactiveScanAgent(options: { output?: string, depth?: s
 
     // Create the template file immediately
     if (!fs.existsSync(outputFile)) {
-        fs.writeFileSync(outputFile, initialTemplate, { encoding: 'utf-8' });
+        const BOM = '\uFEFF';
+        fs.writeFileSync(outputFile, BOM + initialTemplate, { encoding: 'utf-8' });
         tui.log.success(`${t('commands.scan.templateCreated')} ${outputFile}`);
     } else {
         tui.log.info(t('commands.scan.fileExists'));
@@ -371,7 +372,7 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
     let nextPrompt = initialPrompt;
     let keepGoing = true;
     let stepCount = 0;
-    const MAX_STEPS = 30; // Safety limit - increased for deeper analysis
+    const MAX_STEPS = 60; // Safety limit - increased for deeper analysis
 
     while (keepGoing && stepCount < MAX_STEPS) {
         stepCount++;
@@ -435,8 +436,12 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
                         if (isTarget) {
                             // Enforce writing to the correct targetPath regardless of what agent said
                             const finalPath = targetPath;
+                            const BOM = '\uFEFF';
+
                             if (action.type === 'create_file') {
-                                fs.writeFileSync(finalPath, action.content || '');
+                                const contentToWrite = action.content || '';
+                                const finalContent = contentToWrite.startsWith(BOM) ? contentToWrite : BOM + contentToWrite;
+                                fs.writeFileSync(finalPath, finalContent, { encoding: 'utf-8' });
                                 tui.log.success(t('commands.scan.generated').replace('{0}', finalPath));
                                 fileCreated = true;
                             } else {
@@ -446,7 +451,8 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
                                     // action.target_content is needed for replacement
                                     if (action.target_content && currentContent.includes(action.target_content)) {
                                         const newContent = currentContent.replace(action.target_content, action.content || '');
-                                        fs.writeFileSync(finalPath, newContent, { encoding: 'utf-8' });
+                                        const finalContent = newContent.startsWith(BOM) ? newContent : BOM + newContent;
+                                        fs.writeFileSync(finalPath, finalContent, { encoding: 'utf-8' });
                                         tui.log.success(t('commands.scan.updated').replace('{0}', finalPath));
                                         fileCreated = true;
                                     } else {
