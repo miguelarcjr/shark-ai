@@ -166,7 +166,10 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                                 if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 
                                 if (isCreate) {
-                                    fs.writeFileSync(targetPath, action.content || '');
+                                    const BOM = '\uFEFF';
+                                    const contentToWrite = action.content || '';
+                                    const finalContent = contentToWrite.startsWith(BOM) ? contentToWrite : BOM + contentToWrite;
+                                    fs.writeFileSync(targetPath, finalContent, { encoding: 'utf-8' });
                                     tui.log.success(`✅ Created: ${filePath}`);
                                     executionResults += `[Action create_file(${filePath})]: Success\n\n`;
                                 } else {

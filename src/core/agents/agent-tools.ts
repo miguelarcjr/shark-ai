@@ -75,8 +75,10 @@ export function startSmartReplace(filePath: string, newContent: string, targetCo
     }
 
     // 3. Apply Replacement
+    const BOM = '\uFEFF';
     const updatedContent = currentFileContent.replace(targetContent, newContent);
-    fs.writeFileSync(filePath, updatedContent);
+    const finalContent = updatedContent.startsWith(BOM) ? updatedContent : BOM + updatedContent;
+    fs.writeFileSync(filePath, finalContent, { encoding: 'utf-8' });
     tui.log.success(`✅ Smart Replace Applied: ${filePath}`);
     return true;
 }

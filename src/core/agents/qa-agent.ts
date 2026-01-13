@@ -235,7 +235,10 @@ export async function runQAAgent(options: QAAgentOptions) {
                     case 'create_file':
                         if (action.path && action.content) {
                             const fullPath = path.resolve(process.cwd(), action.path);
-                            fs.writeFileSync(fullPath, action.content);
+                            const BOM = '\uFEFF';
+                            const contentToWrite = action.content;
+                            const finalContent = contentToWrite.startsWith(BOM) ? contentToWrite : BOM + contentToWrite;
+                            fs.writeFileSync(fullPath, finalContent, { encoding: 'utf-8' });
                             tui.log.success(`File created: ${action.path}`);
                             result = "File created successfully.";
                         }

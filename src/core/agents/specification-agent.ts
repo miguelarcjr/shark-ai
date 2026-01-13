@@ -166,7 +166,10 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
                             if (action.path) {
                                 try {
                                     if (action.type === 'create_file') {
-                                        fs.writeFileSync(action.path, action.content || '');
+                                        const BOM = '\uFEFF';
+                                        const contentToWrite = action.content || '';
+                                        const finalContent = contentToWrite.startsWith(BOM) ? contentToWrite : BOM + contentToWrite;
+                                        fs.writeFileSync(action.path, finalContent, { encoding: 'utf-8' });
                                         tui.log.success(`✅ Created: ${action.path}`);
                                         executionResults += `[Action create_file(${action.path})]: Success\n\n`;
                                     } else if (action.type === 'modify_file') {
@@ -174,7 +177,10 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
                                             const success = startSmartReplace(action.path, action.content || '', action.target_content, tui);
                                             executionResults += `[Action modify_file(${action.path})]: ${success ? 'Success' : 'Failed'}\n\n`;
                                         } else {
-                                            fs.writeFileSync(action.path, action.content || '');
+                                            const BOM = '\uFEFF';
+                                            const contentToWrite = action.content || '';
+                                            const finalContent = contentToWrite.startsWith(BOM) ? contentToWrite : BOM + contentToWrite;
+                                            fs.writeFileSync(action.path, finalContent, { encoding: 'utf-8' });
                                             tui.log.success(`✅ Overwritten: ${action.path}`);
                                             executionResults += `[Action modify_file(${action.path})]: Success (Overwrite)\n\n`;
                                         }
