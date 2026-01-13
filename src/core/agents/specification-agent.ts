@@ -101,7 +101,13 @@ ${contextContent}
 
     initialPrompt += `
 \nSeu objetivo final é gerar o arquivo 'tech-spec.md'.
-Comece analisando o que temos e me faça perguntas se precisar esclarecer a stack ou requisitos.
+
+⚠️ ATENÇÃO: WORKFLOW DE ANÁLISE
+1. **Entenda**: Alinhe o objetivo com o usuário.
+2. **Explore**: Use 'list_files' e 'read_file' para encontrar os arquivos RELEVANTES para a tarefa.
+3. **Especifique**: Gere o 'tech-spec.md' citando nomes de arquivos REAIS que você leu.
+
+Não gere a spec baseada em suposições. Se vai editar algo, LEIA antes.
 `;
 
     // 4. Start Conversation Loop

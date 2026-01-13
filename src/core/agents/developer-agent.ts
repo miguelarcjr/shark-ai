@@ -71,7 +71,13 @@ function buildSystemPrompt(state: SpecState, contextContent: string, additionalI
     if (state.status === 'MISSING') {
         basePrompt += `\n\n🚨 CRITICAL: NO 'tech-spec.md' FOUND.\n
 Your FIRST priority is to analyze the user request and CREATE a 'tech-spec.md' file.
-Do NOT start coding until the spec is created and approved (implicitly by creating it).
+
+⚠️ WORKFLOW:
+1. **Understand**: Clarify the goal with the user if needed.
+2. **Explore**: Use 'list_files'/'read_file' to find RELEVANT files for this specific task.
+3. **Specify**: Create 'tech-spec.md' referencing REAL file paths you found.
+
+DO NOT create a spec based on guesses. Verify file existence before writing the plan.
 
 Structure for 'tech-spec.md':
 \`\`\`markdown
