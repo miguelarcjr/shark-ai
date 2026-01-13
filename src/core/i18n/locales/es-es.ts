@@ -50,7 +50,23 @@ export const esEs: Locale = {
             fileExists: '📄 El archivo ya existe, será actualizado',
             analyzing: '🕵️‍♂️  Agente de escaneo analizando (Paso {step})...',
             completed: '✨ Escaneo completado exitosamente!',
-            error: 'Error al ejecutar escaneo'
+            error: 'Error al ejecutar escaneo',
+            stepComplete: 'Paso completado',
+            scanningDir: '📂 Escaneando carpeta: {0}',
+            readingFile: '📖 Leyendo archivo: {0}',
+            searching: '🔍 Buscando: {0}',
+            generated: '✅ Contexto Generado: {0}',
+            updated: '✅ Contexto Actualizado: {0}',
+            notFound: 'Archivo no encontrado.',
+            stopped: 'Agente de Escaneo se detuvo sin acciones.',
+            agentAsks: '🤖 Agente de Escaneo pregunta:',
+            agentInput: 'Agente necesita entrada:',
+            replyPlaceholder: 'Respuesta...',
+            targetRedirect: "Agente apuntó a '{0}' pero forzamos '{1}'. Redirigiendo escritura.",
+            contentNotFound: 'Contenido objetivo no encontrado para reemplazo.',
+            skipped: 'Omitido (Agente de Escaneo solo escribe en archivo de contexto)',
+            pendingSections: 'Las siguientes secciones aún necesitan análisis: {0}.',
+            allPopulated: '¡Todas las secciones parecen estar pobladas!'
         }
     }
 };

@@ -170,7 +170,7 @@ export async function interactiveBusinessAnalyst(): Promise<void> {
 
                         // CASE 1: TALK WITH USER (Conventional Message)
                         if (action.type === 'talk_with_user') {
-                            tui.log.info(colors.green('🤖 BA Agent:'));
+                            tui.log.info(colors.success('🤖 BA Agent:'));
                             console.log(action.content); // Print formatted markdown
 
                             // We don't verify "talk", we just show it.
@@ -207,9 +207,7 @@ export async function interactiveBusinessAnalyst(): Promise<void> {
                         }
                     }
                 }
-                if (response.tokens) {
-                    tui.log.info(`Tokens used: ${response.tokens.output || 0}`);
-                }
+                // Tokens property removed from schema, ignoring log.
             },
         });
 

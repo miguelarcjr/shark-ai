@@ -389,27 +389,27 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
                 // Optional: Update spinner message based on chunk if needed
             });
 
-            spinner.stop('Step complete');
+            spinner.stop(t('commands.scan.stepComplete'));
 
             // Handle Response Actions
-            if (lastResponse && lastResponse.actions) {
+            if (lastResponse && lastResponse.actions && lastResponse.actions.length > 0) {
                 let executionResults = "";
                 let fileCreated = false;
 
                 for (const action of lastResponse.actions) {
                     if (action.type === 'list_files') {
-                        tui.log.info(`📂 Scanning dir: ${colors.bold(action.path || '.')}`);
+                        tui.log.info(t('commands.scan.scanningDir').replace('{0}', colors.bold(action.path || '.')));
                         const result = handleListFiles(action.path || '.');
                         executionResults += `[Action list_files(${action.path}) Result]:\n${result}\n\n`;
                     }
                     else if (action.type === 'read_file') {
-                        tui.log.info(`📖 Reading file: ${colors.bold(action.path || '')}`);
+                        tui.log.info(t('commands.scan.readingFile').replace('{0}', colors.bold(action.path || '')));
                         const result = handleReadFile(action.path || '');
                         // Truncate if too long for context window? Agent Tools already limits size.
                         executionResults += `[Action read_file(${action.path}) Result]:\n${result}\n\n`;
                     }
                     else if (action.type === 'search_file') {
-                        tui.log.info(`🔍 Searching: ${colors.bold(action.path || '')}`);
+                        tui.log.info(t('commands.scan.searching').replace('{0}', colors.bold(action.path || '')));
                         const result = handleSearchFile(action.path || '');
                         executionResults += `[Action search_file(${action.path}) Result]:\n${result}\n\n`;
                     }
@@ -426,7 +426,7 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
 
                         // Fallback: If agent uses wrong directory but correct filename "project-context.md", allow it and force correct path.
                         if (!isTarget && path.basename(action.path || '') === 'project-context.md') {
-                            tui.log.warning(`Agent targeted '${action.path}' but we enforce '${path.relative(process.cwd(), targetPath)}'. Redirecting write.`);
+                            tui.log.warning(t('commands.scan.targetRedirect').replace('{0}', action.path || '').replace('{1}', path.relative(process.cwd(), targetPath)));
                             isTarget = true;
                             // Update action path for logging consistency (optional, but good for clarity)
                             action.path = targetPath;
@@ -437,7 +437,7 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
                             const finalPath = targetPath;
                             if (action.type === 'create_file') {
                                 fs.writeFileSync(finalPath, action.content || '');
-                                tui.log.success(`✅ Generated Context: ${finalPath}`);
+                                tui.log.success(t('commands.scan.generated').replace('{0}', finalPath));
                                 fileCreated = true;
                             } else {
                                 // Modify Logic: Read, Replace, Write
@@ -447,13 +447,13 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
                                     if (action.target_content && currentContent.includes(action.target_content)) {
                                         const newContent = currentContent.replace(action.target_content, action.content || '');
                                         fs.writeFileSync(finalPath, newContent, { encoding: 'utf-8' });
-                                        tui.log.success(`✅ Updated Context: ${finalPath}`);
+                                        tui.log.success(t('commands.scan.updated').replace('{0}', finalPath));
                                         fileCreated = true;
                                     } else {
                                         // Fallback: If no target_content or target not found, what to do?
                                         // For Scan Agent incremental strategy, this is a failure in the prompt following.
                                         // We log a warning.
-                                        tui.log.warning(t('commands.scan.error') + ': Target content not found for replacement.');
+                                        tui.log.warning(t('commands.scan.error') + ': ' + t('commands.scan.contentNotFound'));
                                         executionResults += `[Action ${action.type}]: Failed. Target content not found in file.\n`;
                                         // Continue loop to give agent a chance to fix?
                                         fileCreated = false;
@@ -461,7 +461,7 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
                                 } else {
                                     // File doesn't exist, treat as create?
                                     // But it should exist as template.
-                                    tui.log.warning(t('commands.scan.error') + ': File not found.');
+                                    tui.log.warning(t('commands.scan.error') + ': ' + t('commands.scan.notFound'));
                                 }
                             }
                             executionResults += `[Action ${action.type}]: Success. Task Completed.\n`;
@@ -469,36 +469,54 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
                             tui.log.warning(t('commands.scan.error')); // Using generic error for unexpected file write attempt
                             // Skip for now to avoid side effects during scan, or ask user?
                             // Let's just log it.
-                            executionResults += `[Action ${action.type}]: Skipped (Scan Agent only writes context file)\n`;
+                            executionResults += `[Action ${action.type}]: ${t('commands.scan.skipped')}\n`;
                         }
                     }
                     else if (action.type === 'talk_with_user') {
-                        tui.log.info(colors.primary('🤖 Scan Agent asks:'));
+                        tui.log.info(colors.primary(t('commands.scan.agentAsks')));
                         console.log(action.content);
                         // We don't really want to chat during auto-scan, but if it asks, we should probably answer or stop.
                         // For now, let's stop and ask user.
-                        const reply = await tui.text({ message: 'Agent needs input:', placeholder: 'Reply...' });
+                        const reply = await tui.text({ message: t('commands.scan.agentInput'), placeholder: t('commands.scan.replyPlaceholder') });
                         executionResults += `[User Reply]: ${reply}\n`;
                     }
                 }
 
                 if (fileCreated) {
-                    tui.log.success(t('commands.scan.completed'));
-                    keepGoing = false;
+                    // Check for pending sections to guide the agent
+                    const currentContent = fs.readFileSync(targetPath, 'utf-8');
+                    const pendingSections: string[] = [];
+                    const lines = currentContent.split('\n');
+                    let currentSection = '';
+
+                    for (const line of lines) {
+                        if (line.startsWith('## ')) {
+                            currentSection = line.substring(3).trim();
+                        }
+                        if (line.includes('[TO BE ANALYZED]')) {
+                            if (currentSection && !pendingSections.includes(currentSection)) {
+                                pendingSections.push(currentSection);
+                            }
+                        }
+                    }
+
+                    const pendingMsg = pendingSections.length > 0
+                        ? `\n\n[System Helper]: ${t('commands.scan.pendingSections').replace('{0}', pendingSections.join(', '))}`
+                        : `\n\n[System Helper]: ${t('commands.scan.allPopulated')}`;
+
+                    // Feed success back to agent so it can move to next section
+                    nextPrompt = `${executionResults}\n\n[System]: File updated successfully.${pendingMsg} Please continue with the next step of the analysis and focus on the pending sections.`;
+                    FileLogger.log('SCAN', 'Section updated, continuing loop', { step: stepCount, pending: pendingSections.length });
                 } else {
-                    // Feed results back
+                    // Feed results back (could be failure or just tool output)
                     nextPrompt = executionResults;
                     FileLogger.log('SCAN', 'Auto-replying with results', { length: executionResults.length });
                 }
 
             } else {
-                // No actions?
-                if (stepCount > 1) {
-                    tui.log.warning('Scan Agent stopped without actions.');
-                    keepGoing = false;
-                } else {
-                    // First turn and no actions? problematic.
-                }
+                // No actions? Agent considers job done.
+                tui.log.success(t('commands.scan.completed'));
+                keepGoing = false;
             }
 
         } catch (error: any) {

@@ -50,7 +50,23 @@ export const enUs: Locale = {
             fileExists: '📄 File already exists, will be updated',
             analyzing: '🕵️‍♂️  Scan Agent analyzing (Step {step})...',
             completed: '✨ Scan completed successfully!',
-            error: 'Error executing scan'
+            error: 'Error executing scan',
+            stepComplete: 'Step complete',
+            scanningDir: '📂 Scanning dir: {0}',
+            readingFile: '📖 Reading file: {0}',
+            searching: '🔍 Searching: {0}',
+            generated: '✅ Context Generated: {0}',
+            updated: '✅ Context Updated: {0}',
+            notFound: 'File not found.',
+            stopped: 'Scan Agent stopped without actions.',
+            agentAsks: '🤖 Scan Agent asks:',
+            agentInput: 'Agent needs input:',
+            replyPlaceholder: 'Reply...',
+            targetRedirect: "Agent targeted '{0}' but we enforce '{1}'. Redirecting write.",
+            contentNotFound: 'Target content not found for replacement.',
+            skipped: 'Skipped (Scan Agent only writes context file)',
+            pendingSections: 'The following sections still need analysis: {0}.',
+            allPopulated: 'All sections appear to be populated!'
         }
     }
 };

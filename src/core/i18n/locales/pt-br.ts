@@ -50,7 +50,23 @@ export const ptBr: Locale = {
             fileExists: '📄 Arquivo já existe, será atualizado',
             analyzing: '🕵️‍♂️  Scan Agent analisando (Passo {step})...',
             completed: '✨ Scan concluído com sucesso!',
-            error: 'Erro ao executar scan'
+            error: 'Erro ao executar scan',
+            stepComplete: 'Passo concluído',
+            scanningDir: '📂 Escaneando pasta: {0}',
+            readingFile: '📖 Lendo arquivo: {0}',
+            searching: '🔍 Buscando: {0}',
+            generated: '✅ Contexto Gerado: {0}',
+            updated: '✅ Contexto Atualizado: {0}',
+            notFound: 'Arquivo não encontrado.',
+            stopped: 'Scan Agent parou sem ações.',
+            agentAsks: '🤖 Scan Agent pergunta:',
+            agentInput: 'Agente precisa de input:',
+            replyPlaceholder: 'Resposta...',
+            targetRedirect: "Agente mirou '{0}' mas forçamos '{1}'. Redirecionando escrita.",
+            contentNotFound: 'Conteúdo alvo não encontrado para substituição.',
+            skipped: 'Pulado (Scan Agent só escreve no arquivo de contexto)',
+            pendingSections: 'As seguintes seções ainda precisam de análise: {0}.',
+            allPopulated: 'Todas as seções parecem preenchidas!'
         }
     }
 };

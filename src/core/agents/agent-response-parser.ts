@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { FileLogger } from '../debug/file-logger';
+import { FileLogger } from '../debug/file-logger.js';
 
 // Action Schema
 export const AgentActionSchema = z.object({

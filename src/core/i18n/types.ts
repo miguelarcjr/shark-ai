@@ -51,6 +51,22 @@ export interface Locale {
             analyzing: string;
             completed: string;
             error: string;
+            stepComplete: string;
+            scanningDir: string;
+            readingFile: string;
+            searching: string;
+            generated: string;
+            updated: string;
+            notFound: string;
+            stopped: string;
+            agentAsks: string;
+            agentInput: string;
+            replyPlaceholder: string;
+            targetRedirect: string;
+            contentNotFound: string;
+            skipped: string;
+            pendingSections: string;
+            allPopulated: string;
         }
     }
 }

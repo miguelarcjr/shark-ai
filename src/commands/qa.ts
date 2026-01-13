@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { runQAAgent } from '../core/agents/qa-agent';
+import { runQAAgent } from '../core/agents/qa-agent.js';
 
 export const qaCommand = new Command('qa')
     .description('Start the Shark QA Agent to test web applications')
