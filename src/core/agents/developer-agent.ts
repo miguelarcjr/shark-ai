@@ -18,8 +18,10 @@ import {
     startSmartReplace,
     handleRunCommand
 } from './agent-tools.js';
+import { t } from '../i18n/index.js';
 
 const AGENT_TYPE = 'developer_agent';
+
 // Helper to get effective Agent ID
 function getAgentId(overrideId?: string): string {
     if (overrideId) return overrideId;
@@ -35,9 +37,78 @@ function getAgentId(overrideId?: string): string {
     return '01KEQCGJ65YENRA4QBXVN1YFFX';
 }
 
+interface SpecState {
+    status: 'MISSING' | 'PENDING' | 'COMPLETED';
+    nextTask?: string;
+    specContent?: string;
+}
+
+function analyzeSpecState(projectRoot: string): SpecState {
+    const specPath = path.resolve(projectRoot, 'tech-spec.md');
+    if (!fs.existsSync(specPath)) {
+        return { status: 'MISSING' };
+    }
+
+    const content = fs.readFileSync(specPath, 'utf-8');
+    // Regex for unchecked task: - [ ] Task description
+    // Capture the line content - simple regex, can be improved for nested lists if needed
+    const match = content.match(/- \[ \] (.*)/);
+
+    if (match) {
+        return { status: 'PENDING', nextTask: match[1].trim(), specContent: content };
+    }
+
+    return { status: 'COMPLETED', specContent: content };
+}
+
+function buildSystemPrompt(state: SpecState, contextContent: string, additionalInstructions: string = ''): string {
+    let basePrompt = ``;
+
+    if (contextContent) {
+        basePrompt += `\n\n--- PROJECT CONTEXT ---\n${contextContent}\n-----------------------\n`;
+    }
+
+    if (state.status === 'MISSING') {
+        basePrompt += `\n\n🚨 CRITICAL: NO 'tech-spec.md' FOUND.\n
+Your FIRST priority is to analyze the user request and CREATE a 'tech-spec.md' file.
+Do NOT start coding until the spec is created and approved (implicitly by creating it).
+
+Structure for 'tech-spec.md':
+\`\`\`markdown
+# Technical Spec: [Title]
+
+## Goal
+[Brief description]
+
+## Implementation Plan
+- [ ] Step 1: [Description]
+- [ ] Step 2: [Description]
+...
+\`\`\`
+User Request: "${additionalInstructions}"
+`;
+    } else if (state.status === 'PENDING') {
+        basePrompt += `\n\n🟢 EXECUTION MODE\n
+Use 'tech-spec.md' as your source of truth.
+\n👉 **CURRENT TASK**: "${state.nextTask}"
+\n
+Focus ONLY on this task. Do not jump ahead.
+1. Implement the necessary changes.
+2. Verify (compile/test).
+3. **MANDATORY**: Use 'modify_file' to mark this task as '[x]' in 'tech-spec.md' when done.
+`;
+    } else {
+        basePrompt += `\n\n✨ ALL TASKS COMPLETED according to 'tech-spec.md'.\n
+Ask the user if they want to add more tasks or finish the session.
+`;
+    }
+
+    return basePrompt;
+}
+
 export async function interactiveDeveloperAgent(options: { task?: string, context?: string } = {}): Promise<void> {
     FileLogger.init();
-    tui.intro('🦈 Shark Dev Agent');
+    tui.intro('🦈 Shark Dev Agent (Spec-Driven)');
 
     const agentId = getAgentId();
 
@@ -63,27 +134,43 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
         tui.log.warning(`⚠️ No context file found. Agent will run without pre-loaded context.`);
     }
 
-    // 2. Prepare Initial Prompt
-    let nextPrompt = options.task || "I'm ready to help. What's the task?";
-    if (contextContent) {
-        nextPrompt += `\n\n--- PROJECT CONTEXT ---\n${contextContent}\n-----------------------`;
-    }
+    // 2. Initial Spec Analysis
+    let specState = analyzeSpecState(projectRoot);
+    let nextPrompt = buildSystemPrompt(specState, contextContent, options.task || "Start working.");
 
     // 3. Main Loop
     let keepGoing = true;
     const spinner = tui.spinner();
+    let stepCount = 0;
 
     while (keepGoing) {
+        stepCount++;
         try {
-            spinner.start('Waiting for Agent...');
+            // Re-analyze prompt based on NEW state (if changed by previous turn)
+            // But we append the result of the previous tool execution to the prompt loop
+            // So we need to mix 'System Instructions' with 'Tool Outputs'.
+
+            // Note: In a chat API, we send the history or the 'next message'.
+            // StackSpot Agent API (Stateful) handles history. We just send the "User Input".
+            // However, to enforce the Spec-Driven behavior, we can "System Inject" instructions
+            // by pre-pending them to the user prompt if we are using a fresh turn,
+            // OR we rely on the Agent Persona to respect the Plan.
+            // Our strategy: Inject "Current Task" reminders in EVERY turn if possible or rely on the initial big prompt.
+            // Let's rely on the Agent Persona + Tool Feedback loop.
+
+            // Display Current State in TUI
+            if (specState.status === 'PENDING') {
+                tui.log.info(colors.bold(`🎯 DOING: ${specState.nextTask}`));
+            } else if (specState.status === 'MISSING') {
+                tui.log.info(colors.warning(`📋 PLANNING: Creating tech-spec.md`));
+            }
+
+            spinner.start('Waiting for Shark Dev...');
 
             // Call API
             let lastResponse: AgentResponse | null = null;
             await callDevAgentApi(nextPrompt, (chunk) => {
-                // Optional: Stream text to TUI if needed
-                if (!lastResponse) {
-                    // Maybe show thinking dots?
-                }
+                // Optional: Stream text
             }).then(resp => {
                 lastResponse = resp;
             });
@@ -94,6 +181,7 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                 const response = lastResponse as AgentResponse;
                 let executionResults = "";
                 let waitingForUser = false;
+                let specUpdated = false;
 
                 for (const action of response.actions) {
 
@@ -124,12 +212,9 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                     else if (action.type === 'run_command') {
                         const cmd = action.command || '';
                         tui.log.info(`💻 Executing: ${colors.dim(cmd)}`);
-                        // Execute Command
-                        // Warning: Prompt user for non-safe commands? 
-                        // For now, let's assume Shark Dev is trusted or ask for everything.
-                        // Let's ask for confirmation for consistency.
+                        // Auto-approve common read-only commands? No, safety first.
                         const confirm = await tui.confirm({
-                            message: `Execute command: ${cmd}?`,
+                            message: `Execute: ${cmd}?`,
                             active: 'Yes',
                             inactive: 'No'
                         });
@@ -147,10 +232,13 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                         const filePath = action.path || '';
                         tui.log.warning(`\n🤖 Agent wants to ${isCreate ? 'CREATE' : 'MODIFY'}: ${colors.bold(filePath)}`);
 
-                        // Preview content (maybe diff?)
-                        // For brevity, just log start
+                        // Preview
                         if (action.content) {
-                            console.log(colors.dim('--- Content ---\n') + action.content.substring(0, 200) + '...\n' + colors.dim('---------------'));
+                            // Trim for display
+                            const preview = action.content.length > 500
+                                ? action.content.substring(0, 500) + '... (truncated)'
+                                : action.content;
+                            console.log(colors.dim('--- Content ---\n') + preview + '\n' + colors.dim('---------------'));
                         }
 
                         const confirm = await tui.confirm({
@@ -172,18 +260,20 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                                     fs.writeFileSync(targetPath, finalContent, { encoding: 'utf-8' });
                                     tui.log.success(`✅ Created: ${filePath}`);
                                     executionResults += `[Action create_file(${filePath})]: Success\n\n`;
+                                    if (filePath.endsWith('tech-spec.md')) specUpdated = true;
                                 } else {
                                     // Modify
                                     if (action.target_content) {
                                         const success = startSmartReplace(filePath, action.content || '', action.target_content, tui);
-                                        executionResults += `[Action modify_file(${filePath})]: ${success ? 'Success' : 'Failed'}\n\n`;
+                                        if (success) {
+                                            executionResults += `[Action modify_file(${filePath})]: Success\n\n`;
+                                            if (filePath.endsWith('tech-spec.md')) specUpdated = true;
+                                        } else {
+                                            executionResults += `[Action modify_file(${filePath})]: FAILED. Target content not found or ambiguous. Read the file again to ensure accuracy.\n\n`;
+                                        }
                                     } else {
-                                        // Fallback overwrite if no target_content provided (should be rare given schema)
-                                        // But for Dev Agent, schema requires new_content (mapped to content) and target_content.
-                                        // If target_content missing, we might fail or overwrite.
-                                        // Let's safe fail.
                                         tui.log.error('❌ Missing target_content for modification.');
-                                        executionResults += `[Action modify_file]: Failed. Missing target_content.\n\n`;
+                                        executionResults += `[Action modify_file]: Failed. Missing target_content. PRESERVE context and use 'target_content' to specify what to replace.\n\n`;
                                     }
                                 }
                             }
@@ -194,23 +284,42 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                     }
                 }
 
-                // Prepare next prompt
+                // 4. Update Knowledge & Prepare Next Prompt
+                const previousState = specState;
+                specState = analyzeSpecState(projectRoot); // Refresh state
+
+                let systemInjection = "";
+
                 if (executionResults) {
+                    // Check if state changed (task completed)
+                    if (previousState.status === 'PENDING' && specState.status === 'PENDING' && previousState.nextTask !== specState.nextTask) {
+                        systemInjection = `\n🎉 Task "${previousState.nextTask}" COMPLETED! Next up: "${specState.nextTask}".\n`;
+                    } else if (previousState.status === 'PENDING' && specState.status === 'PENDING' && previousState.nextTask === specState.nextTask) {
+                        // Still on same task
+                        // If spec wasn't updated, remind them
+                        if (!specUpdated && stepCount % 3 === 0) {
+                            systemInjection = `\nReminder: You are still working on "${specState.nextTask}". Don't forget to mark it [x] in 'tech-spec.md' when done.\n`;
+                        }
+                    } else if (previousState.status === 'MISSING' && specState.status === 'PENDING') {
+                        systemInjection = `\n✅ Spec Created! Starting execution of: "${specState.nextTask}".\n`;
+                    }
+
+                    // Prompt construction
                     if (waitingForUser) {
                         const userReply = await tui.text({ message: 'Your answer:' });
                         if (tui.isCancel(userReply)) { keepGoing = false; break; }
-                        nextPrompt = `${executionResults}\n\nUser Reply: ${userReply}`;
+                        nextPrompt = `${executionResults}${systemInjection}\nUser Reply: ${userReply}`;
                     } else {
-                        // Auto-continue
-                        nextPrompt = executionResults;
-                        tui.log.info(colors.dim('Sending tool results to agent...'));
+                        // Auto-pilot
+                        nextPrompt = `${executionResults}${systemInjection}\n[System]: Continue.`;
+                        tui.log.info(colors.dim('Processing results...'));
                     }
+
                 } else if (waitingForUser) {
                     const userReply = await tui.text({ message: 'Your answer:' });
                     if (tui.isCancel(userReply)) { keepGoing = false; break; }
                     nextPrompt = userReply as string;
                 } else {
-                    // Fallback: If no actions but we have a message/summary, assume it's a talk
                     if (response.message) {
                         tui.log.info(colors.primary('🤖 Shark Dev:'));
                         console.log(response.message);
@@ -221,14 +330,15 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                             nextPrompt = userReply as string;
                         }
                     } else {
-                        tui.log.warning('Agent took no actions.');
-                        keepGoing = false;
+                        tui.log.warning('Agent took no actions and sent no message.');
+                        nextPrompt = "Please proceed or ask for clarification.";
                     }
                 }
 
             } else {
-                tui.log.warning('Invalid response from agent.');
-                keepGoing = false;
+                tui.log.warning('Invalid response from agent (no actions).');
+                // Could act as a retry logic here
+                nextPrompt = "Error: No valid actions returned. Please try again with JSON format.";
             }
 
         } catch (e: any) {
@@ -254,7 +364,7 @@ async function callDevAgentApi(prompt: string, onChunk: (chunk: string) => void)
         streaming: true,
         use_conversation: true,
         conversation_id: conversationId,
-        stackspot_knowledge: false // Dev Agent focuses on project context
+        stackspot_knowledge: false
     };
 
     const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${getAgentId()}/chat`;

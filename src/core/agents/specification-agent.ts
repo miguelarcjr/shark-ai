@@ -24,62 +24,88 @@ function getAgentId(overrideId?: string): string {
 
 export interface SpecAgentOptions {
     agentId?: string;
-    briefingPath?: string; // Path to the briefing file to read
+    briefingPath?: string; // Path to the briefing file to read, explicit override
 }
 
 /**
  * Interactive Specification Agent session.
- * Reads briefing, consults user, and generates tech-spec.md.
+ * Reads briefing (optional), Consults Project Context (optional), consults user, and generates tech-spec.md.
  */
 export async function interactiveSpecificationAgent(options: SpecAgentOptions = {}): Promise<void> {
     FileLogger.init();
     tui.intro('🏗️  Specification Agent');
 
-    // 1. Resolve Briefing File
-    let briefingContent = '';
-    let briefingPath = options.briefingPath;
+    const projectRoot = process.cwd();
 
-    if (!briefingPath) {
-        // Try to find a default briefing in current dir
-        const files = fs.readdirSync(process.cwd());
-        const defaultBriefing = files.find(f => f.endsWith('_briefing.md'));
+    // 1. Load Context (Optional, similar to Dev Agent)
+    let contextContent = '';
+    const contextPath = path.resolve(projectRoot, '_sharkrc', 'project-context.md');
 
-        briefingPath = await tui.text({
-            message: 'Path to Briefing file (Leave empty to skip)',
-            initialValue: defaultBriefing || '',
-            placeholder: 'e.g., todo-list_briefing.md',
-            validate: (val) => {
-                if (val && !fs.existsSync(val)) return 'File not found';
-            }
-        }) as string;
-    }
-
-    if (tui.isCancel(briefingPath)) return;
-
-    if (briefingPath) {
+    if (fs.existsSync(contextPath)) {
         try {
-            briefingContent = fs.readFileSync(briefingPath, 'utf-8');
-            tui.log.info(`Loaded briefing: ${colors.bold(briefingPath)}`);
+            contextContent = fs.readFileSync(contextPath, 'utf-8');
+            tui.log.info(`📘 Context loaded from: ${colors.dim(path.relative(projectRoot, contextPath))}`);
         } catch (e) {
-            tui.log.error(`Failed to read briefing: ${e}`);
-            return;
+            tui.log.warning(`Failed to read context file: ${e}`);
         }
-    } else {
-        tui.log.info('Skipping briefing file. Starting fresh or exploring existing project.');
     }
 
-    // 2. Initial Prompt Construction
-    const initialPrompt = briefingContent ? `
-Tenho o seguinte Documento de Briefing de Negócio. 
-Por favor, analise-o e inicie o processo de definição da Especificação Técnica.
+    // 2. Resolve Briefing (Optional)
+    let briefingContent = '';
 
----
+    // a) Check Options first
+    if (options.briefingPath && fs.existsSync(options.briefingPath)) {
+        briefingContent = fs.readFileSync(options.briefingPath, 'utf-8');
+        tui.log.info(`📄 Briefing loaded from: ${colors.dim(options.briefingPath)}`);
+    } else {
+        // b) Check Standard Location: _sharkrc/briefing.md
+        const sharkRcBriefing = path.resolve(projectRoot, '_sharkrc', 'briefing.md');
+
+        if (fs.existsSync(sharkRcBriefing)) {
+            briefingContent = fs.readFileSync(sharkRcBriefing, 'utf-8');
+            tui.log.info(`📄 Standard Briefing loaded: ${colors.dim('_sharkrc/briefing.md')}`);
+        } else {
+            // c) No briefing found.
+            tui.log.info(colors.dim('ℹ️ No briefing file found in _sharkrc/briefing.md. Starting in interactive mode.'));
+        }
+    }
+
+    // 3. Initial Prompt Construction
+    let initialPrompt = "";
+
+    if (briefingContent) {
+        initialPrompt += `
+Abaixo está o **Briefing de Negócio** ou Descrição da Tarefa.
+Analise-o e ajude-me a definir a Especificação Técnica (tech-spec.md).
+
+--- BRIEFING ---
 ${briefingContent}
----
-    `.trim() : 'Gostaria de ajuda com uma especificação técnica ou explorar este projeto.';
+----------------
+`;
+    } else {
+        initialPrompt += `
+Não há um documento de briefing formal.
+Por favor, pergunte-me qual é a tarefa ou funcionalidade que vamos especificar hoje.
+`;
+    }
 
-    // 3. Start Conversation Loop
-    await runSpecLoop(initialPrompt, options.agentId);
+    if (contextContent) {
+        initialPrompt += `
+Abaixo está o **Contexto do Projeto** atual. Use-o para alinhar a especificação com a arquitetura existente.
+
+--- PROJECT CONTEXT ---
+${contextContent}
+-----------------------
+`;
+    }
+
+    initialPrompt += `
+\nSeu objetivo final é gerar o arquivo 'tech-spec.md'.
+Comece analisando o que temos e me faça perguntas se precisar esclarecer a stack ou requisitos.
+`;
+
+    // 4. Start Conversation Loop
+    await runSpecLoop(initialPrompt.trim(), options.agentId);
 }
 
 /**
@@ -100,20 +126,13 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
             // Call Agent
             lastResponse = await callSpecAgentApi(nextPrompt, (chunk) => {
                 responseText += chunk;
-                try {
-                    if (responseText.trim().startsWith('{')) {
-                        spinner.message(colors.dim('Receiving structured data...'));
-                    } else {
-                        spinner.message(colors.dim('Thinking...'));
-                    }
-                } catch (e) { }
+                // Optional: visual feedback
             }, overrideAgentId);
 
             spinner.stop('Response received');
 
             // Handle Response Actions
             if (lastResponse && lastResponse.actions) {
-                // Reset next prompt, we will build it based on actions results
                 let executionResults = "";
                 let waitingForUser = false;
 
@@ -126,24 +145,21 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
                     }
 
                     else if (action.type === 'list_files') {
-                        tui.log.info(`📂 List files in: ${colors.bold(action.path || '.')}`);
+                        tui.log.info(`📂 Scanning: ${colors.dim(action.path || '.')}`);
                         const result = handleListFiles(action.path || '.');
                         executionResults += `[Action list_files(${action.path}) Result]:\n${result}\n\n`;
-                        tui.log.info(colors.dim(`Files listed.`));
                     }
 
                     else if (action.type === 'read_file') {
-                        tui.log.info(`📖 Read file: ${colors.bold(action.path || '')}`);
+                        tui.log.info(`📖 Reading: ${colors.dim(action.path || '')}`);
                         const result = handleReadFile(action.path || '');
                         executionResults += `[Action read_file(${action.path}) Result]:\n${result}\n\n`;
-                        tui.log.info(colors.dim(`File read.`));
                     }
 
                     else if (action.type === 'search_file') {
-                        tui.log.info(`🔍 Search file: ${colors.bold(action.path || '')}`);
+                        tui.log.info(`🔍 Searching: ${colors.dim(action.path || '')}`);
                         const result = handleSearchFile(action.path || '');
                         executionResults += `[Action search_file(${action.path}) Result]:\n${result}\n\n`;
-                        tui.log.info(colors.dim(`Files found.`));
                     }
 
                     else if (['create_file', 'modify_file', 'delete_file'].includes(action.type)) {
@@ -151,9 +167,8 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
 
                         // Preview
                         if (action.content) {
-                            console.log(colors.dim('--- Content Preview ---'));
-                            console.log(action.content.substring(0, 300) + '...');
-                            console.log(colors.dim('-----------------------'));
+                            const preview = action.content.length > 500 ? action.content.substring(0, 500) + '...' : action.content;
+                            console.log(colors.dim('--- Preview ---\n') + preview + '\n' + colors.dim('---------------'));
                         }
 
                         const confirm = await tui.confirm({
@@ -169,6 +184,10 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
                                         const BOM = '\uFEFF';
                                         const contentToWrite = action.content || '';
                                         const finalContent = contentToWrite.startsWith(BOM) ? contentToWrite : BOM + contentToWrite;
+                                        // Ensure directory
+                                        const dir = path.dirname(action.path);
+                                        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
                                         fs.writeFileSync(action.path, finalContent, { encoding: 'utf-8' });
                                         tui.log.success(`✅ Created: ${action.path}`);
                                         executionResults += `[Action create_file(${action.path})]: Success\n\n`;
@@ -177,12 +196,10 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
                                             const success = startSmartReplace(action.path, action.content || '', action.target_content, tui);
                                             executionResults += `[Action modify_file(${action.path})]: ${success ? 'Success' : 'Failed'}\n\n`;
                                         } else {
-                                            const BOM = '\uFEFF';
-                                            const contentToWrite = action.content || '';
-                                            const finalContent = contentToWrite.startsWith(BOM) ? contentToWrite : BOM + contentToWrite;
-                                            fs.writeFileSync(action.path, finalContent, { encoding: 'utf-8' });
-                                            tui.log.success(`✅ Overwritten: ${action.path}`);
-                                            executionResults += `[Action modify_file(${action.path})]: Success (Overwrite)\n\n`;
+                                            // Fallback overwrite logic? Spec Agent documentation restricts this, but code can be defensive.
+                                            // Let's enforce the documentation rule: Require target_content.
+                                            tui.log.error('❌ Missing target_content. Modification aborted.');
+                                            executionResults += `[Action modify_file]: Failed. 'target_content' is mandatory required for precision.\n\n`;
                                         }
                                     } else if (action.type === 'delete_file') {
                                         fs.unlinkSync(action.path);
@@ -203,11 +220,6 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
 
                 // Prepare next prompt
                 if (executionResults) {
-                    // If actions produced output (like file list), send it back to agent automatically
-                    // But if the agent ALSO talked to user, we should give priority to user input??
-                    // Strategy: If agent asked something (talk_with_user), we MUST ask user.
-                    // The tool outputs are appended.
-
                     if (waitingForUser) {
                         const userReply = await tui.text({
                             message: 'Your answer',
@@ -218,12 +230,11 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
                             return;
                         }
                         nextPrompt = `${executionResults}\n\nUser Reply: ${userReply}`;
-                        tui.log.info(colors.dim('Auto-replying with tool results...'));
                     } else {
                         // Agent just did tools, let's auto-reply with results so it can continue
                         nextPrompt = executionResults;
                         FileLogger.log('SYSTEM', 'Auto-replying with Tool Results', { length: executionResults.length });
-                        tui.log.info(colors.dim('Auto-replying with tool results...'));
+                        tui.log.info(colors.dim('Processing tool results...'));
                     }
 
                 } else if (waitingForUser) {
@@ -238,9 +249,17 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
                     }
                     nextPrompt = userReply as string;
                 } else {
-                    // No actions? Weird.
-                    tui.log.warning('No actions taken.');
-                    keepGoing = false;
+                    // No actions?
+                    if (lastResponse.message) {
+                        tui.log.info(colors.primary('🤖 Architect:'));
+                        console.log(lastResponse.message);
+                        const userReply = await tui.text({ message: 'Your answer:' });
+                        if (tui.isCancel(userReply)) { keepGoing = false; break; }
+                        nextPrompt = userReply as string;
+                    } else {
+                        tui.log.warning('No actions taken.');
+                        keepGoing = false;
+                    }
                 }
 
             } else {
