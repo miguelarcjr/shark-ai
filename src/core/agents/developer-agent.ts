@@ -22,6 +22,50 @@ import { t } from '../i18n/index.js';
 
 const AGENT_TYPE = 'developer_agent';
 
+// Validation Functions
+async function validateTypeScript(filePath: string): Promise<{ valid: boolean, error?: string }> {
+    try {
+        const result = await handleRunCommand(`npx tsc --noEmit --skipLibCheck ${filePath}`);
+        if (result.trim() === '' || !result.includes('error TS')) {
+            return { valid: true };
+        }
+        return { valid: false, error: result };
+    } catch (e: any) {
+        return { valid: false, error: e.message || 'TypeScript validation failed' };
+    }
+}
+
+function validateHtmlTagBalance(filePath: string): { valid: boolean, error?: string } {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    const stack: string[] = [];
+    const tagRegex = /<\/?(\w+)(?:\s[^>]*)?\s*\/?>/g;
+    const selfClosingTags = ['br', 'hr', 'img', 'input', 'meta', 'link', 'area', 'base', 'col', 'embed', 'param', 'source', 'track', 'wbr'];
+
+    let match;
+    while ((match = tagRegex.exec(content)) !== null) {
+        const fullTag = match[0];
+        const tagName = match[1].toLowerCase();
+
+        if (fullTag.startsWith('</')) {
+            const expected = stack.pop();
+            if (expected !== tagName) {
+                return {
+                    valid: false,
+                    error: `Tag mismatch: expected </${expected}> but found </${tagName}> at position ${match.index}`
+                };
+            }
+        } else if (!fullTag.endsWith('/>') && !selfClosingTags.includes(tagName)) {
+            stack.push(tagName);
+        }
+    }
+
+    if (stack.length > 0) {
+        return { valid: false, error: `Unclosed tags: <${stack.join('>, <')}>` };
+    }
+
+    return { valid: true };
+}
+
 // Helper to get effective Agent ID
 function getAgentId(overrideId?: string): string {
     if (overrideId) return overrideId;
@@ -307,6 +351,33 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                                     tui.log.success(`✅ Created: ${filePath}`);
                                     executionResults += `[Action create_file(${filePath})]: Success\n\n`;
                                     if (filePath.endsWith('tech-spec.md')) specUpdated = true;
+
+                                    // Post-edit validation
+                                    const ext = path.extname(filePath);
+
+                                    if (['.ts', '.tsx'].includes(ext)) {
+                                        tui.log.info('🔍 Validating TypeScript...');
+                                        const validation = await validateTypeScript(filePath);
+                                        if (!validation.valid) {
+                                            tui.log.error('❌ TypeScript validation failed');
+                                            executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                            executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                        } else {
+                                            tui.log.success('✅ TypeScript OK');
+                                        }
+                                    }
+
+                                    if (ext === '.html') {
+                                        tui.log.info('🔍 Validating HTML...');
+                                        const validation = validateHtmlTagBalance(filePath);
+                                        if (!validation.valid) {
+                                            tui.log.error('❌ HTML validation failed');
+                                            executionResults += `\n[HTML VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                            executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                        } else {
+                                            tui.log.success('✅ HTML OK');
+                                        }
+                                    }
                                 } else {
                                     // Modify
                                     if (action.target_content) {
@@ -314,6 +385,33 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                                         if (success) {
                                             executionResults += `[Action modify_file(${filePath})]: Success\n\n`;
                                             if (filePath.endsWith('tech-spec.md')) specUpdated = true;
+
+                                            // Post-edit validation
+                                            const ext = path.extname(filePath);
+
+                                            if (['.ts', '.tsx'].includes(ext)) {
+                                                tui.log.info('🔍 Validating TypeScript...');
+                                                const validation = await validateTypeScript(filePath);
+                                                if (!validation.valid) {
+                                                    tui.log.error('❌ TypeScript validation failed');
+                                                    executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                                    executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                                } else {
+                                                    tui.log.success('✅ TypeScript OK');
+                                                }
+                                            }
+
+                                            if (ext === '.html') {
+                                                tui.log.info('🔍 Validating HTML...');
+                                                const validation = validateHtmlTagBalance(filePath);
+                                                if (!validation.valid) {
+                                                    tui.log.error('❌ HTML validation failed');
+                                                    executionResults += `\n[HTML VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                                    executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                                } else {
+                                                    tui.log.success('✅ HTML OK');
+                                                }
+                                            }
                                         } else {
                                             executionResults += `[Action modify_file(${filePath})]: FAILED. Target content not found or ambiguous. Read the file again to ensure accuracy.\n\n`;
                                         }
