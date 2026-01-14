@@ -218,14 +218,31 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                     else if (action.type === 'run_command') {
                         const cmd = action.command || '';
                         tui.log.info(`💻 Executing: ${colors.dim(cmd)}`);
-                        // Auto-approve common read-only commands? No, safety first.
-                        const confirm = await tui.confirm({
-                            message: `Execute: ${cmd}?`,
-                            active: 'Yes',
-                            inactive: 'No'
-                        });
 
-                        if (confirm) {
+                        let approved = false;
+                        if (autoApprovals.commands) {
+                            approved = true;
+                            tui.log.success(`⚡ Auto-Approved Command: ${cmd}`);
+                        } else {
+                            const choice = await tui.select({
+                                message: `Execute: ${cmd}?`,
+                                options: [
+                                    { value: 'yes', label: 'Yes (Execute once)' },
+                                    { value: 'always', label: 'Yes (Output & Auto-Approve Commands for Session)' },
+                                    { value: 'no', label: 'No (Skip)' }
+                                ]
+                            });
+
+                            if (choice === 'always') {
+                                autoApprovals.commands = true;
+                                approved = true;
+                                tui.log.success('⚡ COMMANDS Auto-Approval ENABLED for this session.');
+                            } else if (choice === 'yes') {
+                                approved = true;
+                            }
+                        }
+
+                        if (approved) {
                             const result = await handleRunCommand(cmd);
                             executionResults += `[Action run_command(${cmd}) Result]:\n${result}\n\n`;
                         } else {
@@ -240,20 +257,37 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
 
                         // Preview
                         if (action.content) {
-                            // Trim for display
                             const preview = action.content.length > 500
                                 ? action.content.substring(0, 500) + '... (truncated)'
                                 : action.content;
                             console.log(colors.dim('--- Content ---\n') + preview + '\n' + colors.dim('---------------'));
                         }
 
-                        const confirm = await tui.confirm({
-                            message: `Approve changes to ${filePath}?`,
-                            active: 'Yes',
-                            inactive: 'No'
-                        });
+                        let approved = false;
 
-                        if (confirm) {
+                        if (autoApprovals.files) {
+                            approved = true;
+                            tui.log.success(`⚡ Auto-Approved File Action: ${filePath}`);
+                        } else {
+                            const choice = await tui.select({
+                                message: `Approve changes to ${filePath}?`,
+                                options: [
+                                    { value: 'yes', label: 'Yes (Approve once)' },
+                                    { value: 'always', label: 'Yes (Approve & Auto-Approve FILES for Session)' },
+                                    { value: 'no', label: 'No (Skip)' }
+                                ]
+                            });
+
+                            if (choice === 'always') {
+                                autoApprovals.files = true;
+                                approved = true;
+                                tui.log.success('⚡ FILE ACTIONS Auto-Approval ENABLED for this session.');
+                            } else if (choice === 'yes') {
+                                approved = true;
+                            }
+                        }
+
+                        if (approved) {
                             if (filePath) {
                                 const targetPath = path.resolve(projectRoot, filePath);
                                 const dir = path.dirname(targetPath);

@@ -107,7 +107,17 @@ ${contextContent}
 2. **Explore**: Use 'list_files' e 'read_file' para encontrar os arquivos RELEVANTES para a tarefa.
 3. **Especifique**: Gere o 'tech-spec.md' citando nomes de arquivos REAIS que você leu.
 
-Não gere a spec baseada em suposições. Se vai editar algo, LEIA antes.
+⚠️ REGRA DE FORMATAÇÃO (CRITICA):
+Na seção 'Implementation Steps', você DEVE usar CHECKBOXES markdown ( - [ ] ) e NÃO listas numeradas.
+O agente de desenvolvimento SÓ reconhece checkboxes.
+
+Exemplo CORRETO:
+- [ ] Criar arquivo X
+- [ ] Atualizar função Y
+
+Exemplo ERRADO (NÃO FAÇA):
+1. Criar arquivo X
+2. Atualizar função Y
 `;
 
     // 4. Start Conversation Loop
