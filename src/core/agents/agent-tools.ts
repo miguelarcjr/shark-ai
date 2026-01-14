@@ -4,6 +4,11 @@ import path from 'node:path';
 import fg from 'fast-glob';
 import { colors } from '../../ui/colors.js';
 import { tui } from '../../ui/tui.js';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execAsync = promisify(exec);
+
 
 /**
  * Shared tools for Agent interaction (File System, etc.)
@@ -207,5 +212,128 @@ export async function handleRunCommand(command: string): Promise<string> {
 
     } catch (e: any) {
         return `Error launching command: ${e.message}`;
+    }
+}
+
+/**
+ * Executes ast-grep search via local CLI.
+ * Returns the raw output (JSON usually requested by consumer) or error message.
+ */
+export async function astGrepSearch(
+    pattern: string,
+    filePath: string,
+    language: string,
+    tui: any
+): Promise<string> {
+    const { spawn } = await import('node:child_process');
+    try {
+        if (!fs.existsSync(filePath)) {
+            return `❌ File not found: ${filePath}`;
+        }
+
+        // Use local sg binary with correct CLI syntax: sg run -p "pattern" -l language file
+        // --json for structured output
+        const isWin = process.platform === 'win32';
+        const sgBin = path.resolve(process.cwd(), 'node_modules', '.bin', isWin ? 'sg.cmd' : 'sg');
+        const cmd = `"${sgBin}" run -p "${pattern}" -l ${language} --json ${filePath}`;
+
+        tui.log.info(`🔍 [AST-GREP] Searching: ${cmd}`);
+
+        return new Promise((resolve) => {
+            const child = spawn(cmd, {
+                shell: true,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                cwd: process.cwd(),
+                env: { ...process.env, NO_COLOR: 'true' } // Avoid ANSI codes in JSON output
+            });
+
+            let stdout = '';
+            let stderr = '';
+
+            child.stdout.on('data', (data) => stdout += data.toString());
+            child.stderr.on('data', (data) => stderr += data.toString());
+
+            child.on('close', (code) => {
+                if (code === 0 && stdout) {
+                    resolve(stdout);
+                } else if (code === 1 && !stderr) {
+                    // ast-grep finds simply nothing
+                    resolve("No structural matches found.");
+                } else {
+                    // Real error or no matches with empty stdout
+                    if (!stdout && !stderr) resolve("No structural matches found.");
+                    else {
+                        tui.log.error(`❌ ast-grep search error (code ${code}): ${stderr}`);
+                        resolve(`Error executing ast-grep search: ${stderr || stdout}`);
+                    }
+                }
+            });
+
+            child.on('error', (err) => {
+                resolve(`Error executing ast-grep search: ${err.message}`);
+            });
+        });
+
+    } catch (e: any) {
+        tui.log.error(`❌ ast-grep search exception: ${e.message}`);
+        return `Error executing ast-grep search: ${e.message}`;
+    }
+}
+
+/**
+ * Executes ast-grep rewrite via local CLI.
+ * Returns boolean success/failure.
+ */
+export async function astGrepRewrite(
+    pattern: string,
+    fix: string,
+    filePath: string,
+    language: string,
+    tui: any
+): Promise<boolean> {
+    const { spawn } = await import('node:child_process');
+    try {
+        if (!fs.existsSync(filePath)) {
+            tui.log.error(`❌ File not found for AST modification: ${filePath}`);
+            return false;
+        }
+
+        // Use local sg binary with correct CLI syntax: sg run -p "pattern" -r "fix" -l language file
+        // -i for interactive (in-place) modification
+        const isWin = process.platform === 'win32';
+        const sgBin = path.resolve(process.cwd(), 'node_modules', '.bin', isWin ? 'sg.cmd' : 'sg');
+        const cmd = `"${sgBin}" run -p "${pattern}" -r "${fix}" -l ${language} ${filePath} --update-all`;
+
+        tui.log.info(`✏️ [AST-GREP] Rewriting: pattern="${pattern}" fix="${fix.substring(0, 50)}..."`);
+
+        return new Promise((resolve) => {
+            const child = spawn(cmd, {
+                shell: true,
+                stdio: ['ignore', 'pipe', 'pipe'],
+                cwd: process.cwd()
+            });
+
+            let stderr = '';
+            child.stderr.on('data', (data) => stderr += data.toString());
+
+            child.on('close', (code) => {
+                if (code === 0) {
+                    tui.log.success(`✅ AST Rewrite applied to ${filePath}`);
+                    resolve(true);
+                } else {
+                    tui.log.error(`❌ AST Rewrite failed (code ${code}): ${stderr}`);
+                    resolve(false);
+                }
+            });
+
+            child.on('error', (err) => {
+                tui.log.error(`❌ AST Rewrite spawn error: ${err.message}`);
+                resolve(false);
+            });
+        });
+
+    } catch (e: any) {
+        tui.log.error(`❌ Unexpected error in astGrepRewrite: ${e.message}`);
+        return false;
     }
 }

@@ -3,7 +3,7 @@ import { FileLogger } from '../debug/file-logger.js';
 
 // Action Schema
 export const AgentActionSchema = z.object({
-    type: z.enum(['create_file', 'modify_file', 'delete_file', 'talk_with_user', 'list_files', 'read_file', 'search_file', 'run_command', 'use_mcp_tool']),
+    type: z.enum(['create_file', 'modify_file', 'modify_ast', 'search_ast', 'delete_file', 'talk_with_user', 'list_files', 'read_file', 'search_file', 'run_command', 'use_mcp_tool']),
     path: z.string().nullable().optional(), // Nullable for strict mode combatibility
     content: z.string().nullable().optional(),
     line_range: z.array(z.number()).nullable().optional(),
@@ -11,6 +11,12 @@ export const AgentActionSchema = z.object({
     command: z.string().nullable().optional(),
     tool_name: z.string().nullable().optional(),
     tool_args: z.string().nullable().optional(), // JSON string argument
+
+    // AST-Grep fields
+    pattern: z.string().nullable().optional(),
+    fix: z.string().nullable().optional(),
+    language: z.string().nullable().optional(),
+    file_path: z.string().nullable().optional(), // Alias for path in ast-grep actions
 });
 
 export type AgentAction = z.infer<typeof AgentActionSchema>;

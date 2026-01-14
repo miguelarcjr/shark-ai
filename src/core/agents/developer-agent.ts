@@ -17,7 +17,9 @@ import {
     handleSearchFile,
     startSmartReplace,
     replaceLineRange,
-    handleRunCommand
+    handleRunCommand,
+    astGrepSearch,
+    astGrepRewrite
 } from './agent-tools.js';
 import { t } from '../i18n/index.js';
 
@@ -436,6 +438,55 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                         } else {
                             tui.log.error('❌ Denied.');
                             executionResults += `[Action ${action.type}]: User Denied.\n\n`;
+                        }
+                    } else if (action.type === 'search_ast') {
+                        tui.log.info(`🔍 Searching AST: ${action.pattern} in ${action.file_path || action.path}`);
+                        const result = await astGrepSearch(
+                            action.pattern || '',
+                            action.file_path || action.path || '',
+                            action.language || 'typescript', // default TS
+                            tui
+                        );
+                        executionResults += `[Action search_ast]:\n${result}\n\n`;
+
+                        // NEW: AST-GREP Support
+                    } else if (action.type === 'modify_ast') {
+                        const targetPath = action.file_path || action.path || '';
+                        tui.log.step(`🔄 [AST] Modifying: ${targetPath}`);
+                        tui.log.info(`Pattern: ${colors.primary(action.pattern || '')}`);
+                        tui.log.info(`Fix: ${colors.success(action.fix || '')}`);
+
+                        const approved = await tui.confirm({ message: 'Execute this AST modification?' });
+
+                        if (approved) {
+                            const success = await astGrepRewrite(
+                                action.pattern || '',
+                                action.fix || '',
+                                targetPath,
+                                action.language || 'typescript',
+                                tui
+                            );
+                            if (success) {
+                                executionResults += `[Action modify_ast]: Success.\n\n`;
+                                if (targetPath.endsWith('tech-spec.md')) specUpdated = true;
+
+                                // Post-edit validation (same as modify_file)
+                                const ext = path.extname(targetPath);
+                                if (['.ts', '.tsx'].includes(ext)) {
+                                    // ... TS validation call ...
+                                    // Reuse logic? Or simple check. Let's reuse existing validation logic if possible or copy.
+                                    // Copying logic for now to ensure safety.
+                                    const validation = await validateTypeScript(targetPath);
+                                    if (!validation.valid) {
+                                        executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                    }
+                                }
+                            } else {
+                                executionResults += `[Action modify_ast]: Failed. Check logs.\n\n`;
+                            }
+                        } else {
+                            tui.log.error('❌ Denied.');
+                            executionResults += `[Action modify_ast]: User Denied.\n\n`;
                         }
                     }
                 }

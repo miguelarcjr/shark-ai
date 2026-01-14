@@ -60,6 +60,7 @@
         "access": "public"
     },
     "dependencies": {
+        "@ast-grep/cli": "^0.40.5",
         "@clack/prompts": "^0.7.0",
         "@modelcontextprotocol/sdk": "^1.25.2",
         "@types/diff": "^7.0.2",
