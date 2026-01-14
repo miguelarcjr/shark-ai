@@ -149,6 +149,12 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
     const spinner = tui.spinner();
     let stepCount = 0;
 
+    // Auto-Approval State
+    let autoApprovals = {
+        files: false,
+        commands: false
+    };
+
     while (keepGoing) {
         stepCount++;
         try {
