@@ -381,8 +381,10 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                                     }
                                 } else {
                                     // Modify
-                                    // Modify
                                     let success = false;
+
+                                    // Debug logging
+                                    tui.log.info(`🔍 Debug modify_file: line_range=${JSON.stringify(action.line_range)}, type=${typeof action.line_range}, isArray=${Array.isArray(action.line_range)}`);
 
                                     if (action.line_range && Array.isArray(action.line_range) && action.line_range.length === 2) {
                                         const [start, end] = action.line_range;
