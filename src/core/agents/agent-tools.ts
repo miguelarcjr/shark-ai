@@ -23,7 +23,7 @@ export function handleListFiles(dirPath: string): string {
     }
 }
 
-export function handleReadFile(filePath: string): string {
+export function handleReadFile(filePath: string, showLineNumbers: boolean = true): string {
     try {
         const fullPath = path.resolve(process.cwd(), filePath);
         if (!fs.existsSync(fullPath)) return `Error: File ${filePath} does not exist.`;
@@ -32,9 +32,64 @@ export function handleReadFile(filePath: string): string {
         const stats = fs.statSync(fullPath);
         if (stats.size > 100 * 1024) return `Error: File too large to read (${stats.size} bytes). Limit is 100KB.`;
 
-        return fs.readFileSync(fullPath, 'utf-8');
+        const content = fs.readFileSync(fullPath, 'utf-8');
+
+        if (showLineNumbers) {
+            const lines = content.split('\n');
+            return lines.map((line, idx) => `${idx + 1}: ${line}`).join('\n');
+        }
+
+        return content;
     } catch (e: any) {
         return `Error reading file: ${e.message}`;
+    }
+}
+
+export function replaceLineRange(
+    filePath: string,
+    startLine: number, // 1-indexed
+    endLine: number,   // 1-indexed
+    newContent: string,
+    tui: any
+): boolean {
+    try {
+        if (!fs.existsSync(filePath)) {
+            tui.log.error(`❌ File not found for modification: ${filePath}`);
+            return false;
+        }
+
+        const currentFileContent = fs.readFileSync(filePath, 'utf-8');
+        const lines = currentFileContent.split('\n');
+
+        // Validation
+        if (startLine < 1 || startLine > lines.length) {
+            tui.log.error(`❌ Invalid start line: ${startLine}. File has ${lines.length} lines.`);
+            return false;
+        }
+
+        if (endLine < startLine || endLine > lines.length) {
+            tui.log.error(`❌ Invalid end line: ${endLine}. Must be >= startLine and <= file length.`);
+            return false;
+        }
+
+        // Replace lines [startLine-1, endLine-1]
+        // Note: lines array is 0-indexed
+        const before = lines.slice(0, startLine - 1);
+        const after = lines.slice(endLine);
+        const newLines = newContent.split('\n');
+
+        const result = [...before, ...newLines, ...after].join('\n');
+
+        const BOM = '\uFEFF';
+        const finalContent = result.startsWith(BOM) ? result : BOM + result;
+        fs.writeFileSync(filePath, finalContent, { encoding: 'utf-8' });
+
+        tui.log.success(`✅ Replaced lines ${startLine}-${endLine} in ${filePath}`);
+        return true;
+
+    } catch (e: any) {
+        tui.log.error(`❌ Error replacing line range: ${e.message}`);
+        return false;
     }
 }
 

@@ -16,6 +16,7 @@ import {
     handleReadFile,
     handleSearchFile,
     startSmartReplace,
+    replaceLineRange,
     handleRunCommand
 } from './agent-tools.js';
 import { t } from '../i18n/index.js';
@@ -380,44 +381,53 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                                     }
                                 } else {
                                     // Modify
-                                    if (action.target_content) {
-                                        const success = startSmartReplace(filePath, action.content || '', action.target_content, tui);
-                                        if (success) {
-                                            executionResults += `[Action modify_file(${filePath})]: Success\n\n`;
-                                            if (filePath.endsWith('tech-spec.md')) specUpdated = true;
+                                    // Modify
+                                    let success = false;
 
-                                            // Post-edit validation
-                                            const ext = path.extname(filePath);
-
-                                            if (['.ts', '.tsx'].includes(ext)) {
-                                                tui.log.info('🔍 Validating TypeScript...');
-                                                const validation = await validateTypeScript(filePath);
-                                                if (!validation.valid) {
-                                                    tui.log.error('❌ TypeScript validation failed');
-                                                    executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
-                                                    executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
-                                                } else {
-                                                    tui.log.success('✅ TypeScript OK');
-                                                }
-                                            }
-
-                                            if (ext === '.html') {
-                                                tui.log.info('🔍 Validating HTML...');
-                                                const validation = validateHtmlTagBalance(filePath);
-                                                if (!validation.valid) {
-                                                    tui.log.error('❌ HTML validation failed');
-                                                    executionResults += `\n[HTML VALIDATION FAILED]:\n${validation.error}\n\n`;
-                                                    executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
-                                                } else {
-                                                    tui.log.success('✅ HTML OK');
-                                                }
-                                            }
-                                        } else {
-                                            executionResults += `[Action modify_file(${filePath})]: FAILED. Target content not found or ambiguous. Read the file again to ensure accuracy.\n\n`;
-                                        }
+                                    if (action.line_range && Array.isArray(action.line_range) && action.line_range.length === 2) {
+                                        const [start, end] = action.line_range;
+                                        success = replaceLineRange(filePath, start, end, action.content || '', tui);
+                                    } else if (action.target_content) {
+                                        success = startSmartReplace(filePath, action.content || '', action.target_content, tui);
                                     } else {
-                                        tui.log.error('❌ Missing target_content for modification.');
-                                        executionResults += `[Action modify_file]: Failed. Missing target_content. PRESERVE context and use 'target_content' to specify what to replace.\n\n`;
+                                        tui.log.error('❌ Missing line_range (recommended) or target_content for modification.');
+                                        executionResults += `[Action modify_file]: Failed. Missing line_range or target_content.\n\n`;
+                                    }
+
+                                    if (success) {
+                                        executionResults += `[Action modify_file(${filePath})]: Success\n\n`;
+                                        if (filePath.endsWith('tech-spec.md')) specUpdated = true;
+
+                                        // Post-edit validation
+                                        const ext = path.extname(filePath);
+
+                                        if (['.ts', '.tsx'].includes(ext)) {
+                                            tui.log.info('🔍 Validating TypeScript...');
+                                            const validation = await validateTypeScript(filePath);
+                                            if (!validation.valid) {
+                                                tui.log.error('❌ TypeScript validation failed');
+                                                executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                                executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                            } else {
+                                                tui.log.success('✅ TypeScript OK');
+                                            }
+                                        }
+
+                                        if (ext === '.html') {
+                                            tui.log.info('🔍 Validating HTML...');
+                                            const validation = validateHtmlTagBalance(filePath);
+                                            if (!validation.valid) {
+                                                tui.log.error('❌ HTML validation failed');
+                                                executionResults += `\n[HTML VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                                executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                            } else {
+                                                tui.log.success('✅ HTML OK');
+                                            }
+                                        }
+                                    } else if (!action.line_range && !action.target_content) {
+                                        // Already handled error logging above
+                                    } else {
+                                        executionResults += `[Action modify_file(${filePath})]: FAILED. Target content not found or ambiguous. Read the file again to ensure accuracy.\n\n`;
                                     }
                                 }
                             }
