@@ -362,7 +362,7 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                                         if (!validation.valid) {
                                             tui.log.error('❌ TypeScript validation failed');
                                             executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
-                                            executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                            executionResults += `CRITICAL: The file has been saved but contains errors. Read the file again to verify line numbers before attempting to fix. Do not guess line numbers.\n`;
                                         } else {
                                             tui.log.success('✅ TypeScript OK');
                                         }

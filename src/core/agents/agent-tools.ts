@@ -9,6 +9,13 @@ import { tui } from '../../ui/tui.js';
  * Shared tools for Agent interaction (File System, etc.)
  */
 
+
+export function detectLineEnding(content: string): string {
+    const crlf = content.split('\r\n').length - 1;
+    const lf = content.split('\n').length - 1 - crlf;
+    return crlf > lf ? '\r\n' : '\n';
+}
+
 export function handleListFiles(dirPath: string): string {
     try {
         const fullPath = path.resolve(process.cwd(), dirPath);
@@ -59,7 +66,8 @@ export function replaceLineRange(
         }
 
         const currentFileContent = fs.readFileSync(filePath, 'utf-8');
-        const lines = currentFileContent.split('\n');
+        const lineEnding = detectLineEnding(currentFileContent);
+        const lines = currentFileContent.split(lineEnding);
 
         // Validation
         if (startLine < 1 || startLine > lines.length) {
@@ -76,9 +84,15 @@ export function replaceLineRange(
         // Note: lines array is 0-indexed
         const before = lines.slice(0, startLine - 1);
         const after = lines.slice(endLine);
-        const newLines = newContent.split('\n');
+        const newLines = newContent.split(lineEnding); // Use detected line ending for new content splitting if provided with one, usually agent provides \n
 
-        const result = [...before, ...newLines, ...after].join('\n');
+        // If newContent comes from LLM, it likely has \n. We should split by \n and join by detected.
+        // But wait, if newContent has \n and we join by \r\n, it works if we split newContent by \n.
+        // If newContent already has \r\n, splitting by \n leaves \r.
+        // Safe approach: Normalized split of new code.
+        const normalizedNewLines = newContent.replace(/\r\n/g, '\n').split('\n');
+
+        const result = [...before, ...normalizedNewLines, ...after].join(lineEnding);
 
         const BOM = '\uFEFF';
         const finalContent = result.startsWith(BOM) ? result : BOM + result;
@@ -114,9 +128,12 @@ export function startSmartReplace(filePath: string, newContent: string, targetCo
     const currentFileContent = fs.readFileSync(filePath, 'utf-8');
 
     // 1. Validation: Does target exist?
-    // Normalize line endings?
-    if (!currentFileContent.includes(targetContent)) {
-        tui.log.error(`❌ Target content not found in ${filePath}. Modification aborted.`);
+    // Normalize string for comparison to avoid CRLF issues during check
+    const normalizedTarget = targetContent.replace(/\r\n/g, '\n');
+    const normalizedContent = currentFileContent.replace(/\r\n/g, '\n');
+
+    if (!normalizedContent.includes(normalizedTarget)) {
+        tui.log.error(`❌ Target content not found in ${filePath} (checked with normalized line endings). Modification aborted.`);
         console.log(colors.dim('--- Target Content Expected ---'));
         console.log(targetContent.substring(0, 200) + '...');
         return false;
