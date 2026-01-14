@@ -1,5 +1,5 @@
 
-import { STACKSPOT_AGENT_API_BASE } from '../api/stackspot-client.js';
+import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from '../api/stackspot-client.js';
 import { sseClient } from '../api/sse-client.js';
 import { parseAgentResponse, AgentResponse } from './agent-response-parser.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
@@ -297,8 +297,8 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
 
 async function callSpecAgentApi(prompt: string, onChunk: (chunk: string) => void, agentId?: string): Promise<AgentResponse> {
     const realm = await getActiveRealm();
-    const token = await tokenStorage.getToken(realm);
-    if (!token) throw new Error('Not logged in');
+    const token = await ensureValidToken(realm);
+    // if (!token) throw new Error('Not logged in'); // ensureValidToken throws if missing
 
     const conversationId = await conversationManager.getConversationId(AGENT_TYPE);
 

@@ -17,6 +17,47 @@ interface RequestOptions extends RequestInit {
 export const STACKSPOT_API_BASE = 'https://api.stackspot.com';
 export const STACKSPOT_AGENT_API_BASE = 'https://genai-inference-app.stackspot.com';
 
+// Shared Token Validation & Refresh Logic
+export async function ensureValidToken(realm: string): Promise<string> {
+    let creds = await tokenStorage.getCredentials(realm);
+
+    if (!creds?.accessToken) {
+        throw new AuthError(`Authentication required for realm '${realm}'.\nPlease run 'shark login' to authenticate.`);
+    }
+
+    // Auto-Refresh Logic
+    const now = Math.floor(Date.now() / 1000);
+    const buffer = 300; // 5 minutes buffer
+
+    // If we have credentials and expiry time, check if we need to refresh
+    if (creds.expiresAt && creds.clientId && creds.clientKey) {
+        if (now > creds.expiresAt - buffer) {
+            try {
+                // console.log(colors.dim('🔄 Refreshing expired token...'));
+                // We keep it silent or use a global logger if available
+
+                const newTokens = await authenticate(realm, creds.clientId, creds.clientKey);
+
+                await tokenStorage.saveToken(
+                    realm,
+                    newTokens.access_token,
+                    creds.clientId,
+                    creds.clientKey,
+                    newTokens.expires_in
+                );
+
+                return newTokens.access_token;
+
+            } catch (error) {
+                console.warn(colors.warning(`⚠️ Failed to auto-refresh token: ${(error as Error).message}`));
+                // Fallback to existing token
+            }
+        }
+    }
+
+    return creds.accessToken;
+}
+
 export class StackSpotClient {
     private readonly MAX_RETRIES = 3;
     private readonly RETRY_DELAYS = [1000, 2000, 4000]; // 1s, 2s, 4s
@@ -29,44 +70,9 @@ export class StackSpotClient {
     }
 
     private async getHeaders(): Promise<Headers> {
-        let creds = await tokenStorage.getCredentials(this.realm);
-
-        if (!creds?.accessToken) {
-            throw new AuthError(`Authentication required for realm '${this.realm}'.\nPlease run 'shark login' to authenticate.`);
-        }
-
-        // Auto-Refresh Logic
-        const now = Math.floor(Date.now() / 1000);
-        const buffer = 300; // 5 minutes buffer
-
-        if (creds.expiresAt && creds.clientId && creds.clientKey) {
-            if (now > creds.expiresAt - buffer) {
-                try {
-                    if (this.debugMode) console.log(colors.dim('🔄 Refreshing expired token...'));
-
-                    const newTokens = await authenticate(this.realm, creds.clientId, creds.clientKey);
-
-                    await tokenStorage.saveToken(
-                        this.realm,
-                        newTokens.access_token,
-                        creds.clientId,
-                        creds.clientKey,
-                        newTokens.expires_in
-                    );
-
-                    // Update local reference with new token
-                    creds.accessToken = newTokens.access_token;
-                    if (this.debugMode) console.log(colors.success('✅ Token refreshed successfully.'));
-
-                } catch (error) {
-                    console.warn(colors.warning(`⚠️ Failed to auto-refresh token: ${(error as Error).message}`));
-                    // Fallback to existing token (might still work for a few seconds or fail at API)
-                }
-            }
-        }
-
+        const token = await ensureValidToken(this.realm);
         const headers = new Headers();
-        headers.set('Authorization', `Bearer ${creds?.accessToken}`);
+        headers.set('Authorization', `Bearer ${token}`);
         headers.set('Content-Type', 'application/json');
         return headers;
     }

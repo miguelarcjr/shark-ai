@@ -1,5 +1,5 @@
 
-import { STACKSPOT_AGENT_API_BASE } from '../api/stackspot-client.js';
+import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from '../api/stackspot-client.js';
 import { sseClient } from '../api/sse-client.js';
 import { parseAgentResponse, AgentResponse, AgentAction } from './agent-response-parser.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
@@ -400,8 +400,8 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
 
 async function callDevAgentApi(prompt: string, onChunk: (chunk: string) => void): Promise<AgentResponse> {
     const realm = await getActiveRealm();
-    const token = await tokenStorage.getToken(realm);
-    if (!token) throw new Error('Not logged in. Run shark login.');
+    const token = await ensureValidToken(realm);
+    // if (!token) throw new Error('Not logged in. Run shark login.'); // ensureValidToken throws if missing
 
     const conversationId = await conversationManager.getConversationId(AGENT_TYPE);
 
