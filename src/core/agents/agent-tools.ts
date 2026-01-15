@@ -6,6 +6,7 @@ import { colors } from '../../ui/colors.js';
 import { tui } from '../../ui/tui.js';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
 
 const execAsync = promisify(exec);
 
@@ -215,23 +216,46 @@ export async function handleRunCommand(command: string): Promise<string> {
     }
 }
 
+
 /**
  * Resolves the ast-grep command to use.
  * Priorities:
- * 1. Local node_modules binary (if exists)
- * 2. Global 'sg' command (assumed if local missing)
- * 3. Fallback to 'npx sg' (slowest, but safest)
+ * 1. Package-local node_modules binary (for global installs)
+ * 2. CWD node_modules binary (for local dev)
+ * 3. Fallback to 'npx sg'
  */
 function resolveAstGrepCommand(): string {
     const isWin = process.platform === 'win32';
-    const localBin = path.resolve(process.cwd(), 'node_modules', '.bin', isWin ? 'sg.cmd' : 'sg');
+    const binName = isWin ? 'sg.cmd' : 'sg';
 
-    if (fs.existsSync(localBin)) {
-        return `"${localBin}"`;
+    // 1. Try to find binary relative to THIS file (package root)
+    try {
+        const currentFile = fileURLToPath(import.meta.url);
+        // Go up until we find package root or hit root
+        let dir = path.dirname(currentFile);
+
+        // Simple heuristic: walk up up to 5 levels to find node_modules
+        // When bundled, we might be in dist/ or dist/bin/
+        for (let i = 0; i < 5; i++) {
+            const candidate = path.join(dir, 'node_modules', '.bin', binName);
+            if (fs.existsSync(candidate)) {
+                return `"${candidate}"`;
+            }
+            const parent = path.dirname(dir);
+            if (parent === dir) break;
+            dir = parent;
+        }
+    } catch (e) {
+        // Ignore errors resolving path
     }
 
-    // If local not found, return 'npx sg' which handles finding it or installing it temporarily
-    // Ideally we would check for global 'sg' but npx is safer as a generic fallback
+    // 2. Try CWD (User's project)
+    const cwdBin = path.resolve(process.cwd(), 'node_modules', '.bin', binName);
+    if (fs.existsSync(cwdBin)) {
+        return `"${cwdBin}"`;
+    }
+
+    // 3. Fallback
     return 'npx sg';
 }
 
