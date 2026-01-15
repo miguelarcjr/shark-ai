@@ -1,6 +1,6 @@
 {
     "name": "shark-ai",
-    "version": "0.3.15",
+    "version": "0.3.16",
     "description": "Shark AI: AI-Native Collaborative Development Tool powered by StackSpot AI and BMAD Method",
     "main": "dist/index.js",
     "bin": {
