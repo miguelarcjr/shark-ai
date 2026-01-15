@@ -73,8 +73,8 @@ Respond in JSON format with status, issues array, and summary.`;
 
             const payload = {
                 user_prompt: prompt,
-                streaming: false,
-                use_conversation: false,
+                streaming: true,
+                use_conversation: true,
                 stackspot_knowledge: false
             };
 
