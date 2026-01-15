@@ -18,7 +18,8 @@ export const ConfigSchema = z.object({
     }).default({}),
     validation: z.object({
         llmReviewExtensions: z.array(z.string()).default(['.ts', '.tsx']),
-        syntaxCheckExtensions: z.array(z.string()).default(['*'])
+        syntaxCheckExtensions: z.array(z.string()).default(['*']),
+        enablePostSaveValidation: z.boolean().default(true)
     }).default({})
 });
 

@@ -375,30 +375,35 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                                     executionResults += `[Action create_file(${filePath})]: Success\n\n`;
                                     if (filePath.endsWith('tech-spec.md')) specUpdated = true;
 
-                                    // Post-edit validation
-                                    const ext = path.extname(filePath);
+                                    // Post-edit validation (if enabled in config)
+                                    const config = ConfigManager.getInstance().getConfig();
+                                    const validationEnabled = (config as any).validation?.enablePostSaveValidation ?? true;
 
-                                    if (['.ts', '.tsx'].includes(ext)) {
-                                        tui.log.info('🔍 Validating TypeScript...');
-                                        const validation = await validateTypeScript(filePath);
-                                        if (!validation.valid) {
-                                            tui.log.error('❌ TypeScript validation failed');
-                                            executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
-                                            executionResults += `CRITICAL: The file has been saved but contains errors. Read the file again to verify line numbers before attempting to fix. Do not guess line numbers.\n`;
-                                        } else {
-                                            tui.log.success('✅ TypeScript OK');
+                                    if (validationEnabled) {
+                                        const ext = path.extname(filePath);
+
+                                        if (['.ts', '.tsx'].includes(ext)) {
+                                            tui.log.info('🔍 Validating TypeScript...');
+                                            const validation = await validateTypeScript(filePath);
+                                            if (!validation.valid) {
+                                                tui.log.error('❌ TypeScript validation failed');
+                                                executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                                executionResults += `CRITICAL: The file has been saved but contains errors. Read the file again to verify line numbers before attempting to fix. Do not guess line numbers.\n`;
+                                            } else {
+                                                tui.log.success('✅ TypeScript OK');
+                                            }
                                         }
-                                    }
 
-                                    if (ext === '.html') {
-                                        tui.log.info('🔍 Validating HTML...');
-                                        const validation = validateHtmlTagBalance(filePath);
-                                        if (!validation.valid) {
-                                            tui.log.error('❌ HTML validation failed');
-                                            executionResults += `\n[HTML VALIDATION FAILED]:\n${validation.error}\n\n`;
-                                            executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
-                                        } else {
-                                            tui.log.success('✅ HTML OK');
+                                        if (ext === '.html') {
+                                            tui.log.info('🔍 Validating HTML...');
+                                            const validation = validateHtmlTagBalance(filePath);
+                                            if (!validation.valid) {
+                                                tui.log.error('❌ HTML validation failed');
+                                                executionResults += `\n[HTML VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                                executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                            } else {
+                                                tui.log.success('✅ HTML OK');
+                                            }
                                         }
                                     }
                                 } else {
@@ -422,30 +427,35 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                                         executionResults += `[Action modify_file(${filePath})]: Success\n\n`;
                                         if (filePath.endsWith('tech-spec.md')) specUpdated = true;
 
-                                        // Post-edit validation
-                                        const ext = path.extname(filePath);
+                                        // Post-edit validation (if enabled in config)
+                                        const config = ConfigManager.getInstance().getConfig();
+                                        const validationEnabled = (config as any).validation?.enablePostSaveValidation ?? true;
 
-                                        if (['.ts', '.tsx'].includes(ext)) {
-                                            tui.log.info('🔍 Validating TypeScript...');
-                                            const validation = await validateTypeScript(filePath);
-                                            if (!validation.valid) {
-                                                tui.log.error('❌ TypeScript validation failed');
-                                                executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
-                                                executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
-                                            } else {
-                                                tui.log.success('✅ TypeScript OK');
+                                        if (validationEnabled) {
+                                            const ext = path.extname(filePath);
+
+                                            if (['.ts', '.tsx'].includes(ext)) {
+                                                tui.log.info('🔍 Validating TypeScript...');
+                                                const validation = await validateTypeScript(filePath);
+                                                if (!validation.valid) {
+                                                    tui.log.error('❌ TypeScript validation failed');
+                                                    executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                                    executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                                } else {
+                                                    tui.log.success('✅ TypeScript OK');
+                                                }
                                             }
-                                        }
 
-                                        if (ext === '.html') {
-                                            tui.log.info('🔍 Validating HTML...');
-                                            const validation = validateHtmlTagBalance(filePath);
-                                            if (!validation.valid) {
-                                                tui.log.error('❌ HTML validation failed');
-                                                executionResults += `\n[HTML VALIDATION FAILED]:\n${validation.error}\n\n`;
-                                                executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
-                                            } else {
-                                                tui.log.success('✅ HTML OK');
+                                            if (ext === '.html') {
+                                                tui.log.info('🔍 Validating HTML...');
+                                                const validation = validateHtmlTagBalance(filePath);
+                                                if (!validation.valid) {
+                                                    tui.log.error('❌ HTML validation failed');
+                                                    executionResults += `\n[HTML VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                                    executionResults += `CRITICAL: Fix these errors before proceeding to next task.\n`;
+                                                } else {
+                                                    tui.log.success('✅ HTML OK');
+                                                }
                                             }
                                         }
                                     } else if (!action.line_range && !action.target_content) {

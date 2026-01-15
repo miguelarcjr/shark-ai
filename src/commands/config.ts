@@ -42,25 +42,46 @@ export const configCommand = {
                     options: [
                         { value: 'llm', label: 'Configure LLM Review Extensions' },
                         { value: 'syntax', label: 'Configure Syntax Check Extensions' },
+                        { value: 'postSave', label: 'Enable/Disable Post-Save Validation' },
                         { value: 'back', label: 'Back' }
                     ]
                 });
 
                 if (validationAction !== 'back' && !tui.isCancel(validationAction)) {
-                    const key = validationAction === 'llm' ? 'llmReviewExtensions' : 'syntaxCheckExtensions';
-                    const currentList = (currentConfig.validation as any)?.[key] || [];
 
-                    const newListStr = await tui.text({
-                        message: `Enter extensions for ${validationAction === 'llm' ? 'AI Review' : 'Syntax Check'} (comma separated):`,
-                        initialValue: currentList.join(', '),
-                        placeholder: '.ts, .tsx, .py'
-                    });
+                    if (validationAction === 'postSave') {
+                        // Toggle post-save validation
+                        const currentValue = (currentConfig.validation as any)?.enablePostSaveValidation ?? true;
+                        const newValue = await tui.select({
+                            message: 'Post-Save Validation (TypeScript/HTML after file is saved):',
+                            options: [
+                                { value: 'true', label: 'Enabled (Recommended)' },
+                                { value: 'false', label: 'Disabled' }
+                            ],
+                            initialValue: currentValue ? 'true' : 'false'
+                        });
 
-                    if (!tui.isCancel(newListStr)) {
-                        const newList = newListStr.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-                        const newValidation = { ...currentConfig.validation, [key]: newList };
-                        saveGlobalRC({ validation: newValidation as any });
-                        tui.log.success(`Updated validation rules for ${key}`);
+                        if (!tui.isCancel(newValue)) {
+                            const newValidation = { ...currentConfig.validation, enablePostSaveValidation: newValue === 'true' };
+                            saveGlobalRC({ validation: newValidation as any });
+                            tui.log.success(`Post-Save Validation: ${newValue === 'true' ? 'ENABLED' : 'DISABLED'}`);
+                        }
+                    } else {
+                        const key = validationAction === 'llm' ? 'llmReviewExtensions' : 'syntaxCheckExtensions';
+                        const currentList = (currentConfig.validation as any)?.[key] || [];
+
+                        const newListStr = await tui.text({
+                            message: `Enter extensions for ${validationAction === 'llm' ? 'AI Review' : 'Syntax Check'} (comma separated):`,
+                            initialValue: currentList.join(', '),
+                            placeholder: '.ts, .tsx, .py'
+                        });
+
+                        if (!tui.isCancel(newListStr)) {
+                            const newList = newListStr.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+                            const newValidation = { ...currentConfig.validation, [key]: newList };
+                            saveGlobalRC({ validation: newValidation as any });
+                            tui.log.success(`Updated validation rules for ${key}`);
+                        }
                     }
                 }
             }
