@@ -1,4 +1,5 @@
 import { ConfigManager } from '../config-manager.js';
+import { extractFirstJson } from '../agents/agent-response-parser.js';
 import path from 'path';
 import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from '../api/stackspot-client.js';
 import { sseClient } from '../api/sse-client.js';
@@ -79,20 +80,28 @@ Respond in JSON format with status, issues array, and summary.`;
 
             const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${agentId}/chat`;
             let reviewText = '';
-
             await sseClient.streamAgentResponse(url, payload, { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, {
                 onChunk: (c) => { reviewText += c; },
                 onComplete: () => { },
                 onError: (e) => { throw e; }
             });
 
+            const cleanedText = reviewText.trim();
+            FileLogger.log('CODE_REVIEW', 'Raw Response Received', { length: cleanedText.length, content: cleanedText });
+
             // Parse JSON response
             try {
-                const reviewData = JSON.parse(reviewText.trim());
+                // Use robust extraction that handles markdown fences and extra text
+                const reviewData = extractFirstJson(cleanedText);
                 return this.formatReviewResponse(reviewData);
-            } catch (parseErr) {
+            } catch (parseErr: any) {
+                FileLogger.log('CODE_REVIEW', 'JSON Parse Failed', {
+                    error: parseErr.message,
+                    rawText: cleanedText
+                });
+
                 // If JSON parsing fails, return the raw text with a warning
-                return `🤖 **[AI Code Review Agent]**\n⚠️ Response format error. Raw output:\n${reviewText.trim()}`;
+                return `🤖 **[AI Code Review Agent]**\n⚠️ Response format error. Raw output:\n${cleanedText}`;
             }
 
         } catch (err: any) {

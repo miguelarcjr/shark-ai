@@ -149,7 +149,7 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
     }
 }
 
-function extractFirstJson(str: string): any {
+export function extractFirstJson(str: string): any {
     try {
         return JSON.parse(str);
     } catch (e) {
