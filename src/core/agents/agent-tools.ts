@@ -216,6 +216,26 @@ export async function handleRunCommand(command: string): Promise<string> {
 }
 
 /**
+ * Resolves the ast-grep command to use.
+ * Priorities:
+ * 1. Local node_modules binary (if exists)
+ * 2. Global 'sg' command (assumed if local missing)
+ * 3. Fallback to 'npx sg' (slowest, but safest)
+ */
+function resolveAstGrepCommand(): string {
+    const isWin = process.platform === 'win32';
+    const localBin = path.resolve(process.cwd(), 'node_modules', '.bin', isWin ? 'sg.cmd' : 'sg');
+
+    if (fs.existsSync(localBin)) {
+        return `"${localBin}"`;
+    }
+
+    // If local not found, return 'npx sg' which handles finding it or installing it temporarily
+    // Ideally we would check for global 'sg' but npx is safer as a generic fallback
+    return 'npx sg';
+}
+
+/**
  * Executes ast-grep search via local CLI.
  * Returns the raw output (JSON usually requested by consumer) or error message.
  */
@@ -231,11 +251,9 @@ export async function astGrepSearch(
             return `❌ File not found: ${filePath}`;
         }
 
-        // Use local sg binary with correct CLI syntax: sg run -p "pattern" -l language file
-        // --json for structured output
-        const isWin = process.platform === 'win32';
-        const sgBin = path.resolve(process.cwd(), 'node_modules', '.bin', isWin ? 'sg.cmd' : 'sg');
-        const cmd = `"${sgBin}" run -p "${pattern}" -l ${language} --json ${filePath}`;
+        // Resolve sg command robustly
+        const sgCmd = resolveAstGrepCommand();
+        const cmd = `${sgCmd} run -p "${pattern}" -l ${language} --json ${filePath}`;
 
         tui.log.info(`🔍 [AST-GREP] Searching: ${cmd}`);
 
@@ -298,11 +316,9 @@ export async function astGrepRewrite(
             return false;
         }
 
-        // Use local sg binary with correct CLI syntax: sg run -p "pattern" -r "fix" -l language file
-        // -i for interactive (in-place) modification
-        const isWin = process.platform === 'win32';
-        const sgBin = path.resolve(process.cwd(), 'node_modules', '.bin', isWin ? 'sg.cmd' : 'sg');
-        const cmd = `"${sgBin}" run -p "${pattern}" -r "${fix}" -l ${language} ${filePath} --update-all`;
+        // Resolve sg command robustly
+        const sgCmd = resolveAstGrepCommand();
+        const cmd = `${sgCmd} run -p "${pattern}" -r "${fix}" -l ${language} ${filePath} --update-all`;
 
         tui.log.info(`✏️ [AST-GREP] Rewriting: pattern="${pattern}" fix="${fix.substring(0, 50)}..."`);
 
