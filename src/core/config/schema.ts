@@ -13,7 +13,12 @@ export const ConfigSchema = z.object({
         ba: z.string().optional(),
         spec: z.string().optional(),
         qa: z.string().optional(),
-        scan: z.string().optional()
+        scan: z.string().optional(),
+        codeReview: z.string().optional()
+    }).default({}),
+    validation: z.object({
+        llmReviewExtensions: z.array(z.string()).default(['.ts', '.tsx']),
+        syntaxCheckExtensions: z.array(z.string()).default(['*'])
     }).default({})
 });
 

@@ -113,12 +113,14 @@ export function replaceLineRange(
     }
 }
 
-export function generateFilePreview(
+import { CodeReviewService } from '../services/code-review.service.js';
+
+export async function generateFilePreview(
     filePath: string,
     startLine: number,
     endLine: number,
     newContent: string
-): string {
+): Promise<string> {
     try {
         const fullPath = path.resolve(process.cwd(), filePath);
         if (!fs.existsSync(fullPath)) return `Error: File ${filePath} does not exist.`;
@@ -139,6 +141,14 @@ export function generateFilePreview(
 
         const newLines = newContent.split('\n').map(l => `+ ${l}`).join('\n');
 
+        // INTEGRATE CODE REVIEW AGENT
+        let reviewFeedback = '';
+        try {
+            reviewFeedback = await CodeReviewService.reviewCode(filePath, newContent);
+        } catch (err) {
+            reviewFeedback = `⚠️ Code Review Service Unavailable: ${(err as any).message}`;
+        }
+
         return `PREVIEW OF CHANGES to ${filePath}:
 --------------------------------------------------
 CONTEXT BEFORE:
@@ -151,6 +161,8 @@ ${newLines}
 CONTEXT AFTER:
 ${contextAfter}
 --------------------------------------------------
+${reviewFeedback}
+
 IMPORTANT: Please verify that the lines being replaced (marked with -) are exactly what you intend to remove.
 If the context looks wrong, DO NOT CONFIRM. Re-read the file to check line numbers.
 `;

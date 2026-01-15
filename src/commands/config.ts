@@ -24,6 +24,7 @@ export const configCommand = {
                 { value: 'language', label: t('commands.config.actions.language') },
                 { value: 'logLevel', label: t('commands.config.actions.logLevel') },
                 { value: 'agents', label: t('commands.config.actions.agents') },
+                { value: 'validation', label: 'Validation Rules (Code Review)' },
                 { value: 'exit', label: t('commands.config.actions.back') }
             ]
         });
@@ -34,6 +35,36 @@ export const configCommand = {
         }
 
         try {
+
+            if (action === 'validation') {
+                const validationAction = await tui.select({
+                    message: 'Manage Validation Rules:',
+                    options: [
+                        { value: 'llm', label: 'Configure LLM Review Extensions' },
+                        { value: 'syntax', label: 'Configure Syntax Check Extensions' },
+                        { value: 'back', label: 'Back' }
+                    ]
+                });
+
+                if (validationAction !== 'back' && !tui.isCancel(validationAction)) {
+                    const key = validationAction === 'llm' ? 'llmReviewExtensions' : 'syntaxCheckExtensions';
+                    const currentList = (currentConfig.validation as any)?.[key] || [];
+
+                    const newListStr = await tui.text({
+                        message: `Enter extensions for ${validationAction === 'llm' ? 'AI Review' : 'Syntax Check'} (comma separated):`,
+                        initialValue: currentList.join(', '),
+                        placeholder: '.ts, .tsx, .py'
+                    });
+
+                    if (!tui.isCancel(newListStr)) {
+                        const newList = newListStr.split(',').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+                        const newValidation = { ...currentConfig.validation, [key]: newList };
+                        saveGlobalRC({ validation: newValidation as any });
+                        tui.log.success(`Updated validation rules for ${key}`);
+                    }
+                }
+            }
+
             if (action === 'project') {
                 const project = await tui.text({
                     message: 'Enter default project slug:',
@@ -91,6 +122,7 @@ export const configCommand = {
                         { value: 'spec', label: t('commands.config.agentMenu.options.spec') },
                         { value: 'qa', label: t('commands.config.agentMenu.options.qa') },
                         { value: 'scan', label: t('commands.config.agentMenu.options.scan') },
+                        { value: 'codeReview', label: 'Code Review Agent' },
                         { value: 'back', label: t('commands.config.agentMenu.options.back') }
                     ]
                 });

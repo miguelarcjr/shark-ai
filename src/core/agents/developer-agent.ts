@@ -322,11 +322,11 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                         if (!isCreate && action.line_range && !action.confirmed) {
                             tui.log.info('🛡️  Generation Preview for Agent Verification...');
                             const [start, end] = action.line_range;
-                            const previewDiff = generateFilePreview(filePath, start, end, action.content || '');
+                            const previewDiff = await generateFilePreview(filePath, start, end, action.content || '');
 
                             // Send preview back to Agent
                             executionResults += `[Action modify_file]: PENDING CONFIRMATION.\n\n${previewDiff}\n\n`;
-                            executionResults += `USER/SYSTEM INSTRUCTION: Please review the above preview carefully. 
+                            executionResults += `USER/SYSTEM INSTRUCTION: Please review the above preview carefully.
 1. If the context and changes look correct, call 'modify_file' again with the SAME parameters AND "confirmed": true.
 2. If the context is wrong (e.g. wrong line numbers), call 'read_file' to check line numbers again, then correct your request.\n\n`;
 
