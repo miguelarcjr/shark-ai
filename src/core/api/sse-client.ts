@@ -54,6 +54,27 @@ export class SSEClient {
                 throw new Error('Response body is null');
             }
 
+            const contentType = response.headers.get('content-type') || '';
+            const isJson = contentType.includes('application/json');
+
+            if (isJson) {
+                // Handle non-streaming JSON response properly
+                const jsonBody = await response.json();
+                FileLogger.log('SSE', 'Received Non-Streaming JSON Response', { length: JSON.stringify(jsonBody).length });
+
+                // Try to extract message content depending on structure
+                let content = '';
+                if (typeof jsonBody === 'string') content = jsonBody;
+                else if (jsonBody.message) content = jsonBody.message;
+                else if (jsonBody.choices?.[0]?.message?.content) content = jsonBody.choices[0].message.content; // OpenAI style just in case
+                else content = JSON.stringify(jsonBody); // Fallback to raw JSON
+
+                // Trigger callbacks as if it streamed in one chunk
+                if (onChunk) onChunk(content);
+                if (onComplete) onComplete(content, jsonBody);
+                return;
+            }
+
             const reader = response.body.getReader();
             const decoder = new TextDecoder();
             let buffer = '';
