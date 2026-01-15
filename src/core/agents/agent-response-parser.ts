@@ -17,6 +17,9 @@ export const AgentActionSchema = z.object({
     fix: z.string().nullable().optional(),
     language: z.string().nullable().optional(),
     file_path: z.string().nullable().optional(), // Alias for path in ast-grep actions
+
+    // Preview confirmation
+    confirmed: z.boolean().nullable().optional(),
 });
 
 export type AgentAction = z.infer<typeof AgentActionSchema>;

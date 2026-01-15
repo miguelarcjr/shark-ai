@@ -113,6 +113,52 @@ export function replaceLineRange(
     }
 }
 
+export function generateFilePreview(
+    filePath: string,
+    startLine: number,
+    endLine: number,
+    newContent: string
+): string {
+    try {
+        const fullPath = path.resolve(process.cwd(), filePath);
+        if (!fs.existsSync(fullPath)) return `Error: File ${filePath} does not exist.`;
+
+        const content = fs.readFileSync(fullPath, 'utf-8');
+        const lines = content.split(/\r\n|\r|\n/);
+
+        // 0-indexed adjustment
+        const startIdx = startLine - 1;
+        const endIdx = endLine - 1;
+
+        if (startIdx < 0 || startIdx >= lines.length) return `Error: Start line ${startLine} is out of bounds (File has ${lines.length} lines).`;
+        if (endIdx < startIdx || endIdx >= lines.length) return `Error: End line ${endLine} is invalid.`;
+
+        const contextBefore = lines.slice(Math.max(0, startIdx - 3), startIdx).map((l, i) => `${Math.max(1, startLine - 3) + i} | ${l}`).join('\n');
+        const contentReplacing = lines.slice(startIdx, endIdx + 1).map((l, i) => `${startLine + i} | - ${l}`).join('\n');
+        const contextAfter = lines.slice(endIdx + 1, Math.min(lines.length, endIdx + 4)).map((l, i) => `${endLine + 1 + i} | ${l}`).join('\n');
+
+        const newLines = newContent.split('\n').map(l => `+ ${l}`).join('\n');
+
+        return `PREVIEW OF CHANGES to ${filePath}:
+--------------------------------------------------
+CONTEXT BEFORE:
+${contextBefore}
+
+CHANGES:
+${contentReplacing}
+${newLines}
+
+CONTEXT AFTER:
+${contextAfter}
+--------------------------------------------------
+IMPORTANT: Please verify that the lines being replaced (marked with -) are exactly what you intend to remove.
+If the context looks wrong, DO NOT CONFIRM. Re-read the file to check line numbers.
+`;
+    } catch (e: any) {
+        return `Error generating preview: ${e.message}`;
+    }
+}
+
 export function handleSearchFile(pattern: string): string {
     try {
         // Limit scope to current directory for safety?
