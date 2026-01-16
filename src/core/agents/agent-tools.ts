@@ -533,9 +533,26 @@ export async function astAddMethod(
     methodCode: string
 ): Promise<boolean> {
     const editor = CodeEditorFactory.getEditor(filePath);
-    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
-
+    if (!editor) {
+        throw new Error(`No AST editor available for ${filePath}`);
+    }
     return await editor.addMethod(filePath, className, methodCode);
+}
+
+export async function astGetMethod(
+    filePath: string,
+    className: string,
+    methodName: string
+): Promise<string> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) {
+        throw new Error(`No AST editor available for ${filePath}`);
+    }
+    const methodContent = await editor.getMethod(filePath, className, methodName);
+    if (!methodContent) {
+        return `Method "${methodName}" not found in class "${className}"`;
+    }
+    return methodContent;
 }
 
 export async function astAddClass(

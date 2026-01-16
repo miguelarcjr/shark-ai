@@ -328,6 +328,27 @@ export class TypeScriptEditor implements CodeEditor {
         }
     }
 
+    async getMethod(
+        filePath: string,
+        className: string,
+        methodName: string
+    ): Promise<string | null> {
+        try {
+            const sourceFile = this.getSourceFile(filePath);
+            const classDecl = this.getClass(sourceFile, className);
+
+            const method = classDecl.getMethod(methodName);
+            if (!method) {
+                return null;
+            }
+
+            return method.getText();
+        } catch (error) {
+            console.error(`Failed to get method "${methodName}":`, error);
+            return null;
+        }
+    }
+
     // ═══════════════════════════════════════════════════════
     // IMPLEMENTATION: Interface/Type Operations
     // ═══════════════════════════════════════════════════════

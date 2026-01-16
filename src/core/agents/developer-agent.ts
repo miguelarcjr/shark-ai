@@ -23,6 +23,7 @@ import {
     generateFilePreview,
     astListStructure,
     astAddMethod,
+    astGetMethod,
     astAddClass,
     astAddProperty,
     astRemoveProperty,
@@ -545,6 +546,9 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                         if (action.type === 'ast_list_structure') {
                             const result = await astListStructure(targetPath);
                             executionResults += `[Action ast_list_structure]:\n${result}\n\n`;
+                        } else if (action.type === 'ast_get_method') {
+                            const result = await astGetMethod(targetPath, action.class_name || '', action.method_name || '');
+                            executionResults += `[Action ast_get_method]:\n${result}\n\n`;
                         } else {
                             // Modification Action
                             let approved = false;
