@@ -7,6 +7,8 @@ import { tui } from '../../ui/tui.js';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { CodeEditorFactory } from '../ast-editing/editors/code-editor-factory.js';
+import { CodeStructure } from '../ast-editing/interfaces/structure.types.js';
 
 const execAsync = promisify(exec);
 
@@ -434,4 +436,241 @@ export async function astGrepRewrite(
         tui.log.error(`❌ Unexpected error in astGrepRewrite: ${e.message}`);
         return false;
     }
+}
+
+// ═══════════════════════════════════════════════════════
+// AST TOOLS IMPLEMENTATION
+// ═══════════════════════════════════════════════════════
+
+/**
+ * AST Tool: List file structure
+ */
+export async function astListStructure(filePath: string): Promise<string> {
+    try {
+        const editor = CodeEditorFactory.getEditor(filePath);
+
+        if (!editor) {
+            return `[AST Error] File type not supported: ${filePath}. Use read_file instead.`;
+        }
+
+        const structure: CodeStructure = await editor.listStructure(filePath);
+
+        // Format for LLM consumption
+        let output = `[AST Structure of ${filePath}]\n\n`;
+
+        // Classes
+        if (structure.classes.length > 0) {
+            output += `CLASSES:\n`;
+            structure.classes.forEach(cls => {
+                output += `  - ${cls.name}`;
+                if (cls.extendsClass) output += ` extends ${cls.extendsClass}`;
+                if (cls.implementsInterfaces.length > 0) {
+                    output += ` implements ${cls.implementsInterfaces.join(', ')}`;
+                }
+                output += `\n`;
+
+                if (cls.decorators.length > 0) {
+                    output += `    Decorators: ${cls.decorators.join(', ')}\n`;
+                }
+
+                if (cls.properties.length > 0) {
+                    output += `    Properties:\n`;
+                    cls.properties.forEach(prop => {
+                        output += `      - ${prop.visibility} ${prop.name}: ${prop.type}\n`;
+                    });
+                }
+
+                if (cls.methods.length > 0) {
+                    output += `    Methods:\n`;
+                    cls.methods.forEach(method => {
+                        const params = method.parameters.map(p => `${p.name}: ${p.type}`).join(', ');
+                        output += `      - ${method.visibility} ${method.name}(${params}): ${method.returnType}\n`;
+                    });
+                }
+                output += `\n`;
+            });
+        }
+
+        // Interfaces
+        if (structure.interfaces.length > 0) {
+            output += `INTERFACES:\n`;
+            structure.interfaces.forEach(iface => {
+                output += `  - ${iface.name}\n`;
+                iface.properties.forEach(prop => {
+                    output += `      ${prop.name}: ${prop.type}\n`;
+                });
+            });
+            output += `\n`;
+        }
+
+        // Functions
+        if (structure.functions.length > 0) {
+            output += `FUNCTIONS:\n`;
+            structure.functions.forEach(fn => {
+                const params = fn.parameters.map(p => `${p.name}: ${p.type}`).join(', ');
+                output += `  - ${fn.name}(${params}): ${fn.returnType}\n`;
+            });
+            output += `\n`;
+        }
+
+        // Imports
+        if (structure.imports.length > 0) {
+            output += `IMPORTS:\n`;
+            structure.imports.forEach(imp => {
+                output += `  - from "${imp.modulePath}": ${imp.namedImports.join(', ')}\n`;
+            });
+        }
+
+        return output;
+    } catch (error: any) {
+        return `[AST Error] ${error.message}`;
+    }
+}
+
+export async function astAddMethod(
+    filePath: string,
+    className: string,
+    methodCode: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.addMethod(filePath, className, methodCode);
+}
+
+export async function astAddClass(
+    filePath: string,
+    className: string,
+    extendsClass?: string,
+    implementsInterfaces?: string[]
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.addClass(filePath, className, { extendsClass, implementsInterfaces });
+}
+
+export async function astAddProperty(
+    filePath: string,
+    className: string,
+    propertyCode: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.addProperty(filePath, className, propertyCode);
+}
+
+export async function astRemoveProperty(
+    filePath: string,
+    className: string,
+    propertyName: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.removeProperty(filePath, className, propertyName);
+}
+
+export async function astModifyMethod(
+    filePath: string,
+    className: string,
+    methodName: string,
+    newBody: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.modifyMethod(filePath, className, methodName, newBody);
+}
+
+export async function astRemoveMethod(
+    filePath: string,
+    className: string,
+    methodName: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.removeMethod(filePath, className, methodName);
+}
+
+export async function astAddDecorator(
+    filePath: string,
+    className: string,
+    decoratorCode: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.addDecorator(filePath, className, decoratorCode);
+}
+
+export async function astAddInterface(
+    filePath: string,
+    interfaceCode: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.addInterface(filePath, interfaceCode);
+}
+
+export async function astAddTypeAlias(
+    filePath: string,
+    typeCode: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.addTypeAlias(filePath, typeCode);
+}
+
+export async function astAddFunction(
+    filePath: string,
+    functionCode: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.addFunction(filePath, functionCode);
+}
+
+export async function astRemoveFunction(
+    filePath: string,
+    functionName: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.removeFunction(filePath, functionName);
+}
+
+export async function astAddImport(
+    filePath: string,
+    importStatement: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.addImport(filePath, importStatement);
+}
+
+export async function astRemoveImport(
+    filePath: string,
+    modulePath: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.removeImport(filePath, modulePath);
+}
+
+export async function astOrganizeImports(
+    filePath: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.organizeImports(filePath);
 }

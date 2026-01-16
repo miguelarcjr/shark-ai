@@ -3,7 +3,15 @@ import { FileLogger } from '../debug/file-logger.js';
 
 // Action Schema
 export const AgentActionSchema = z.object({
-    type: z.enum(['create_file', 'modify_file', 'modify_ast', 'search_ast', 'delete_file', 'talk_with_user', 'list_files', 'read_file', 'search_file', 'run_command', 'use_mcp_tool']),
+    type: z.enum([
+        'create_file', 'modify_file', 'modify_ast', 'search_ast', 'delete_file',
+        'talk_with_user', 'list_files', 'read_file', 'search_file', 'run_command', 'use_mcp_tool',
+        // New AST Tools
+        'ast_list_structure', 'ast_add_method', 'ast_modify_method', 'ast_remove_method',
+        'ast_add_class', 'ast_add_property', 'ast_remove_property', 'ast_add_decorator',
+        'ast_add_interface', 'ast_add_type_alias', 'ast_add_function', 'ast_remove_function',
+        'ast_add_import', 'ast_remove_import', 'ast_organize_imports'
+    ]),
     path: z.string().nullable().optional(), // Nullable for strict mode combatibility
     content: z.string().nullable().optional(),
     line_range: z.array(z.number()).nullable().optional(),
@@ -17,6 +25,23 @@ export const AgentActionSchema = z.object({
     fix: z.string().nullable().optional(),
     language: z.string().nullable().optional(),
     file_path: z.string().nullable().optional(), // Alias for path in ast-grep actions
+
+    // New AST Tool Specific Fields
+    class_name: z.string().nullable().optional(),
+    method_name: z.string().nullable().optional(),
+    method_code: z.string().nullable().optional(),
+    property_name: z.string().nullable().optional(),
+    property_code: z.string().nullable().optional(),
+    extends_class: z.string().nullable().optional(),
+    implements_interfaces: z.array(z.string()).nullable().optional(),
+    decorator_code: z.string().nullable().optional(),
+    interface_code: z.string().nullable().optional(),
+    type_code: z.string().nullable().optional(),
+    function_name: z.string().nullable().optional(),
+    function_code: z.string().nullable().optional(),
+    import_statement: z.string().nullable().optional(),
+    module_path: z.string().nullable().optional(),
+    new_body: z.string().nullable().optional(),
 
     // Preview confirmation
     confirmed: z.boolean().nullable().optional(),

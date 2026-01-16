@@ -20,7 +20,22 @@ import {
     handleRunCommand,
     astGrepSearch,
     astGrepRewrite,
-    generateFilePreview
+    generateFilePreview,
+    astListStructure,
+    astAddMethod,
+    astAddClass,
+    astAddProperty,
+    astRemoveProperty,
+    astModifyMethod,
+    astRemoveMethod,
+    astAddDecorator,
+    astAddInterface,
+    astAddTypeAlias,
+    astAddFunction,
+    astRemoveFunction,
+    astAddImport,
+    astRemoveImport,
+    astOrganizeImports
 } from './agent-tools.js';
 import { t } from '../i18n/index.js';
 
@@ -518,10 +533,122 @@ export async function interactiveDeveloperAgent(options: { task?: string, contex
                             tui.log.error('❌ Denied.');
                             executionResults += `[Action modify_ast]: User Denied.\n\n`;
                         }
+
+                        // ═══════════════════════════════════════════════════════
+                        // NEW AST ACTIONS HANDLERS
+                        // ═══════════════════════════════════════════════════════
+
+                    } else if (action.type.startsWith('ast_')) {
+                        const targetPath = action.file_path || action.path || '';
+                        tui.log.info(`🔧 [AST] Action: ${colors.bold(action.type)} on ${targetPath}`);
+
+                        if (action.type === 'ast_list_structure') {
+                            const result = await astListStructure(targetPath);
+                            executionResults += `[Action ast_list_structure]:\n${result}\n\n`;
+                        } else {
+                            // Modification Action
+                            let approved = false;
+                            if (autoApprovals.files) {
+                                approved = true;
+                                tui.log.success(`⚡ Auto-Approved AST Action: ${action.type}`);
+                            } else {
+                                const choice = await tui.select({
+                                    message: `Execute ${action.type} on ${targetPath}?`,
+                                    options: [
+                                        { value: 'yes', label: 'Yes' },
+                                        { value: 'always', label: 'Yes (Auto-Approve ALL Files)' },
+                                        { value: 'no', label: 'No' }
+                                    ]
+                                });
+
+                                if (choice === 'always') {
+                                    autoApprovals.files = true;
+                                    approved = true;
+                                    tui.log.success('⚡ FILE ACTIONS Auto-Approval ENABLED for this session.');
+                                } else if (choice === 'yes') {
+                                    approved = true;
+                                }
+                            }
+
+                            if (approved) {
+                                try {
+                                    let success = false;
+                                    // Dispatcher
+                                    switch (action.type) {
+                                        case 'ast_add_class':
+                                            success = await astAddClass(targetPath, action.class_name || '', action.extends_class || undefined, action.implements_interfaces || undefined);
+                                            break;
+                                        case 'ast_add_method':
+                                            success = await astAddMethod(targetPath, action.class_name || '', action.method_code || '');
+                                            break;
+                                        case 'ast_add_property':
+                                            success = await astAddProperty(targetPath, action.class_name || '', action.property_code || '');
+                                            break;
+                                        case 'ast_remove_property':
+                                            success = await astRemoveProperty(targetPath, action.class_name || '', action.property_name || '');
+                                            break;
+                                        case 'ast_modify_method':
+                                            success = await astModifyMethod(targetPath, action.class_name || '', action.method_name || '', action.new_body || '');
+                                            break;
+                                        case 'ast_remove_method':
+                                            success = await astRemoveMethod(targetPath, action.class_name || '', action.method_name || '');
+                                            break;
+                                        case 'ast_add_decorator':
+                                            success = await astAddDecorator(targetPath, action.class_name || '', action.decorator_code || '');
+                                            break;
+                                        case 'ast_add_interface':
+                                            success = await astAddInterface(targetPath, action.interface_code || '');
+                                            break;
+                                        case 'ast_add_type_alias':
+                                            success = await astAddTypeAlias(targetPath, action.type_code || '');
+                                            break;
+                                        case 'ast_add_function':
+                                            success = await astAddFunction(targetPath, action.function_code || '');
+                                            break;
+                                        case 'ast_remove_function':
+                                            success = await astRemoveFunction(targetPath, action.function_name || '');
+                                            break;
+                                        case 'ast_add_import':
+                                            success = await astAddImport(targetPath, action.import_statement || '');
+                                            break;
+                                        case 'ast_remove_import':
+                                            success = await astRemoveImport(targetPath, action.module_path || '');
+                                            break;
+                                        case 'ast_organize_imports':
+                                            success = await astOrganizeImports(targetPath);
+                                            break;
+                                    }
+
+                                    if (success) {
+                                        executionResults += `[Action ${action.type}]: Success\n\n`;
+
+                                        // Reuse Post-Edit Verification
+                                        const config = ConfigManager.getInstance().getConfig();
+                                        const validationEnabled = (config as any).validation?.enablePostSaveValidation ?? true;
+
+                                        if (validationEnabled) {
+                                            const ext = path.extname(targetPath);
+                                            if (['.ts', '.tsx'].includes(ext)) {
+                                                const validation = await validateTypeScript(targetPath);
+                                                if (!validation.valid) {
+                                                    executionResults += `\n[TYPESCRIPT VALIDATION FAILED]:\n${validation.error}\n\n`;
+                                                } else {
+                                                    tui.log.success('✅ TypeScript OK');
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        executionResults += `[Action ${action.type}]: Failed (internal editor returned false).\n\n`;
+                                    }
+                                } catch (e: any) {
+                                    executionResults += `[Action ${action.type}]: Exception: ${e.message}\n\n`;
+                                }
+                            } else {
+                                executionResults += `[Action ${action.type}]: User Denied.\n\n`;
+                            }
+                        }
                     }
                 }
-
-                // 4. Update Knowledge & Prepare Next Prompt
                 const previousState = specState;
                 specState = analyzeSpecState(projectRoot); // Refresh state
 
