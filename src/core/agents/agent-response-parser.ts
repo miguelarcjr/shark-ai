@@ -4,7 +4,7 @@ import { FileLogger } from '../debug/file-logger.js';
 // Action Schema
 export const AgentActionSchema = z.object({
     type: z.enum([
-        'create_file', 'modify_file', 'list_files', 'search_file',
+        'create_file', 'modify_file', 'list_files', 'search_file', 'read_file', 'delete_file',
         'list_structure', 'modify_ast', 'search_ast', 'run_command',
         'talk_with_user',
         'ast_list_structure',

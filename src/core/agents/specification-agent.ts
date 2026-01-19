@@ -25,6 +25,7 @@ function getAgentId(overrideId?: string): string {
 export interface SpecAgentOptions {
     agentId?: string;
     briefingPath?: string; // Path to the briefing file to read, explicit override
+    initialContext?: string; // Handover context from Dev Agent or Orchestrator
 }
 
 /**
@@ -73,6 +74,18 @@ export async function interactiveSpecificationAgent(options: SpecAgentOptions = 
     // 3. Initial Prompt Construction
     let initialPrompt = "";
 
+    // Inject Context from Options (Orchestrator Handover)
+    if (options.initialContext) {
+        initialPrompt += `
+⚠️ **CONTEXTO DE EXECUÇÃO ANTERIOR (HANDOVER)**:
+O Developer Agent estava executando tarefas. Aqui está o resumo do que aconteceu até agora:
+"""
+${options.initialContext}
+"""
+Analise esse histórico acima. Se houve falha, proponha fixes na spec. Se o usuário pediu mudança, use isso como base.
+`;
+    }
+
     if (briefingContent) {
         initialPrompt += `
 Abaixo está o **Briefing de Negócio** ou Descrição da Tarefa.
@@ -98,6 +111,7 @@ ${contextContent}
 -----------------------
 `;
     }
+
 
     initialPrompt += `
 \nSeu objetivo final é gerar o arquivo 'tech-spec.md'.

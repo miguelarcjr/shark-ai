@@ -47,6 +47,15 @@ export interface CodeEditor {
     ): Promise<boolean>;
 
     /**
+     * Gets the content of an existing method
+     */
+    getMethod(
+        filePath: string,
+        className: string,
+        methodName: string
+    ): Promise<string | undefined>;
+
+    /**
      * Modifies the body of an existing method (keeps signature)
      */
     modifyMethod(
