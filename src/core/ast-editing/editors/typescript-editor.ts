@@ -207,6 +207,27 @@ export class TypeScriptEditor implements CodeEditor {
         }
     }
 
+    async getProperty(
+        filePath: string,
+        className: string,
+        propertyName: string
+    ): Promise<string | undefined> {
+        try {
+            const sourceFile = this.getSourceFile(filePath);
+            const classDecl = this.getClass(sourceFile, className);
+
+            const property = classDecl.getProperty(propertyName);
+            if (!property) {
+                return undefined;
+            }
+
+            return property.getText();
+        } catch (error) {
+            console.error(`Failed to get property "${propertyName}":`, error);
+            return undefined;
+        }
+    }
+
     async modifyProperty(
         filePath: string,
         className: string,
