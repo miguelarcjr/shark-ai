@@ -38,40 +38,52 @@ export class TaskManager {
 
         let taskIndex = 1;
 
-        lines.forEach((line, index) => {
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
             const trimmed = line.trim();
-            // Match checkbox patterns: 
-            // - [ ] Task = PENDING
-            // - [x] Task = COMPLETED
-            // - [/] Task = IN_PROGRESS (optional convention)
 
             const pendingMatch = trimmed.match(/^- \[ \] (.*)/);
             const completedMatch = trimmed.match(/^- \[x\] (.*)/i);
             const progressMatch = trimmed.match(/^- \[\/\] (.*)/);
 
+            let currentTask: SpecTask | null = null;
+            let status: 'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | null = null;
+            let description = '';
+
             if (pendingMatch) {
-                tasks.push({
-                    id: `task-${taskIndex++}`,
-                    description: pendingMatch[1].trim(),
-                    status: 'PENDING',
-                    line_number: index
-                });
+                description = pendingMatch[1].trim();
+                status = 'PENDING';
             } else if (completedMatch) {
-                tasks.push({
-                    id: `task-${taskIndex++}`,
-                    description: completedMatch[1].trim(),
-                    status: 'COMPLETED',
-                    line_number: index
-                });
+                description = completedMatch[1].trim();
+                status = 'COMPLETED';
             } else if (progressMatch) {
-                tasks.push({
-                    id: `task-${taskIndex++}`,
-                    description: progressMatch[1].trim(),
-                    status: 'IN_PROGRESS',
-                    line_number: index
-                });
+                description = progressMatch[1].trim();
+                status = 'IN_PROGRESS';
             }
-        });
+
+            if (status && description) {
+                // Look ahead for sub-bullets or details
+                let j = i + 1;
+                while (j < lines.length) {
+                    const nextLine = lines[j];
+                    const nextTrimmed = nextLine.trim();
+                    // Stop if next line is empty, a new task, or a new section
+                    if (!nextTrimmed || nextTrimmed.match(/^- \[[ x\/]\]/) || nextTrimmed.startsWith('#')) {
+                        break;
+                    }
+                    description += '\n' + nextTrimmed;
+                    j++;
+                }
+
+                currentTask = {
+                    id: `task-${taskIndex++}`,
+                    description: description,
+                    status: status,
+                    line_number: i
+                };
+                tasks.push(currentTask);
+            }
+        }
 
         // Determine next actionable task
         // Priority: IN_PROGRESS -> First PENDING
