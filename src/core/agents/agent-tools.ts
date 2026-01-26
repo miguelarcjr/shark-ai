@@ -578,6 +578,21 @@ export async function astAddProperty(
     return await editor.addProperty(filePath, className, propertyCode);
 }
 
+export async function astGetProperty(
+    filePath: string,
+    className: string,
+    propertyName: string
+): Promise<string> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    const propContent = await editor.getProperty(filePath, className, propertyName);
+    if (!propContent) {
+        return `Property "${propertyName}" not found in class "${className}"`;
+    }
+    return propContent;
+}
+
 export async function astModifyProperty(
     filePath: string,
     className: string,

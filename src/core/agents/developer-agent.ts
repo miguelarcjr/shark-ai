@@ -25,6 +25,7 @@ import {
     astAddMethod,
     astGetMethod,
     astAddClass,
+    astGetProperty,
     astAddProperty,
     astRemoveProperty,
     astModifyMethod,
@@ -420,6 +421,11 @@ Your goal is to COMPLETE this specific task and then STOP.
                             else if (action.type === 'ast_add_class') {
                                 const success = await astAddClass(action.path || '', action.class_name || '', action.extends_class || undefined, action.implements_interfaces || undefined);
                                 result = success ? 'Class added successfully.' : 'Failed to add class.';
+                            }
+                            else if (action.type === 'ast_get_property') {
+                                tui.log.info(`🔍 Reading property ${colors.gray(action.property_name || '')} in ${colors.gray(action.class_name || '')}`);
+                                const propContent = await astGetProperty(action.path || '', action.class_name || '', action.property_name || '');
+                                result = `[AST Get Property] Content:\n${propContent}`;
                             }
                             else if (action.type === 'ast_add_property') {
                                 const success = await astAddProperty(action.path || '', action.class_name || '', action.property_code || '');

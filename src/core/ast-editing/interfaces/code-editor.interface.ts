@@ -29,6 +29,15 @@ export interface CodeEditor {
     ): Promise<boolean>;
 
     /**
+     * Gets the content of an existing property
+     */
+    getProperty(
+        filePath: string,
+        className: string,
+        propertyName: string
+    ): Promise<string | undefined>;
+
+    /**
      * Removes a property from a class
      */
     removeProperty(

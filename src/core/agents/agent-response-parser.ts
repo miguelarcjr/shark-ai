@@ -11,7 +11,7 @@ export const AgentActionSchema = z.object({
         'ast_get_method',
         'ast_add_method', 'ast_modify_method', 'ast_remove_method',
         'ast_add_class',
-        'ast_add_property', 'ast_modify_property', 'ast_remove_property',
+        'ast_get_property', 'ast_add_property', 'ast_modify_property', 'ast_remove_property',
         'ast_add_decorator',
         'ast_add_interface', 'ast_add_type_alias',
         'ast_add_function', 'ast_remove_function',
