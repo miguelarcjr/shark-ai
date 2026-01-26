@@ -166,6 +166,14 @@ async function runSpecLoop(initialMessage: string, overrideAgentId?: string) {
                 let executionResults = "";
                 let waitingForUser = false;
 
+                // Check for completion signal first
+                if (lastResponse.message && lastResponse.message.includes('SPEC_UPDATED:')) {
+                    const updateSummary = lastResponse.message.split('SPEC_UPDATED:')[1].trim();
+                    tui.log.success(`✅ Spec Updated: ${updateSummary}`);
+                    tui.log.info('📋 Returning to orchestration loop...');
+                    return; // Exit spec agent, return to orchestrator
+                }
+
                 for (const action of lastResponse.actions) {
 
                     if (action.type === 'talk_with_user') {

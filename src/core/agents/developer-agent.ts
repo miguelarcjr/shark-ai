@@ -275,12 +275,19 @@ Your goal is to COMPLETE this specific task and then STOP.
                 const response = lastResponse;
                 const actions = response.actions || []; // Should be array by schema, but safe fallback
 
-                // Check Global Message first (e.g. Completion)
+                // Check Global Message first (e.g. Completion or Failure)
                 if (response.message && response.message.includes('TASK_COMPLETED:')) {
                     isTaskCompleted = true;
                     finalSummary = response.message.split('TASK_COMPLETED:')[1].trim();
                     // We continue to process actions if any, but stop loop after
                     keepGoing = false;
+                }
+
+                // Check for explicit task failure signal from agent
+                if (response.message && response.message.includes('TASK_FAILED:')) {
+                    const failureReason = response.message.split('TASK_FAILED:')[1].trim();
+                    tui.log.error(`❌ Agent reported task failure: ${failureReason}`);
+                    return { success: false, summary: failureReason };
                 }
 
                 // If we have just a message and NO actions (or empty actions), treat as talk
