@@ -38,6 +38,16 @@ export interface CodeEditor {
     ): Promise<boolean>;
 
     /**
+     * Modifies an existing property in a class
+     */
+    modifyProperty(
+        filePath: string,
+        className: string,
+        propertyName: string,
+        newCode: string
+    ): Promise<boolean>;
+
+    /**
      * Adds a method to an existing class
      */
     addMethod(

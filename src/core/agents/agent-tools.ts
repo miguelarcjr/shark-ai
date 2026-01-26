@@ -578,6 +578,18 @@ export async function astAddProperty(
     return await editor.addProperty(filePath, className, propertyCode);
 }
 
+export async function astModifyProperty(
+    filePath: string,
+    className: string,
+    propertyName: string,
+    propertyCode: string
+): Promise<boolean> {
+    const editor = CodeEditorFactory.getEditor(filePath);
+    if (!editor) throw new Error(`AST editing not supported for: ${filePath}`);
+
+    return await editor.modifyProperty(filePath, className, propertyName, propertyCode);
+}
+
 export async function astRemoveProperty(
     filePath: string,
     className: string,

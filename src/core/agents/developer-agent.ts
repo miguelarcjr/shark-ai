@@ -36,7 +36,8 @@ import {
     astRemoveFunction,
     astAddImport,
     astRemoveImport,
-    astOrganizeImports
+    astOrganizeImports,
+    astModifyProperty
 } from './agent-tools.js';
 import { t } from '../i18n/index.js';
 
@@ -423,6 +424,12 @@ Your goal is to COMPLETE this specific task and then STOP.
                             else if (action.type === 'ast_add_property') {
                                 const success = await astAddProperty(action.path || '', action.class_name || '', action.property_code || '');
                                 result = success ? 'Property added successfully.' : 'Failed to add property.';
+                            }
+                            else if (action.type === 'ast_modify_property') {
+                                tui.log.info(`✏️ Modifying property ${colors.gray(action.property_name || '')} in ${colors.gray(action.class_name || '')}`);
+                                // Note: property_code here is the NEW full property definition
+                                const success = await astModifyProperty(action.path || '', action.class_name || '', action.property_name || '', action.property_code || '');
+                                result = success ? 'Property modified successfully.' : 'Failed to modify property.';
                             }
                             else if (action.type === 'ast_remove_property') {
                                 const success = await astRemoveProperty(action.path || '', action.class_name || '', action.property_name || '');

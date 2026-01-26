@@ -207,6 +207,35 @@ export class TypeScriptEditor implements CodeEditor {
         }
     }
 
+    async modifyProperty(
+        filePath: string,
+        className: string,
+        propertyName: string,
+        newCode: string
+    ): Promise<boolean> {
+        try {
+            const sourceFile = this.getSourceFile(filePath);
+            const classDecl = this.getClass(sourceFile, className);
+
+            const property = classDecl.getProperty(propertyName);
+            if (!property) {
+                throw new Error(`Property "${propertyName}" not found in class "${className}"`);
+            }
+
+            // Replace the entire property text
+            property.replaceWithText(newCode);
+
+            // Reformat
+            classDecl.formatText();
+
+            await sourceFile.save();
+            return true;
+        } catch (error) {
+            console.error(`Failed to modify property "${propertyName}":`, error);
+            return false;
+        }
+    }
+
     async removeProperty(
         filePath: string,
         className: string,
@@ -332,20 +361,20 @@ export class TypeScriptEditor implements CodeEditor {
         filePath: string,
         className: string,
         methodName: string
-    ): Promise<string | null> {
+    ): Promise<string | undefined> {
         try {
             const sourceFile = this.getSourceFile(filePath);
             const classDecl = this.getClass(sourceFile, className);
 
             const method = classDecl.getMethod(methodName);
             if (!method) {
-                return null;
+                return undefined;
             }
 
             return method.getText();
         } catch (error) {
             console.error(`Failed to get method "${methodName}":`, error);
-            return null;
+            return undefined;
         }
     }
 
