@@ -208,9 +208,19 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
 
                 // Check for completion signal
                 if (lastResponse.message && lastResponse.message.includes('SPEC_UPDATED:')) {
-                    const updateSummary = lastResponse.message.split('SPEC_UPDATED:')[1].trim();
-                    tui.log.success(`✅ Spec Finalized: ${updateSummary}`);
-                    return;
+                    const content = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf-8') : '';
+                    if (content.includes('[TO BE')) {
+                        const pendingMatches = [...content.matchAll(/## ([^\n]+)[\s\S]*?\[TO BE/g)].map(m => m[1]);
+                        let missing = pendingMatches.length > 0 ? pendingMatches.join(', ') : 'algumas seções';
+                        
+                        tui.log.warning(`O agente tentou concluir prematuramente, mas há placeholders pendentes. Forçando retorno...`);
+                        nextPrompt = `[System Error]: Você tentou enviar 'SPEC_UPDATED: Complete', mas o arquivo AINDA possui placeholders '[TO BE...]'. \nAs seguintes seções parecem incompletas: ${missing}.\n\nPor favor, retome a FASE 3 e continue editando o arquivo até que NENHUM placeholder reste. Lembre-se, use \`modify_file\` para cada uma dessas seções e foque na tarefa discutida.`;
+                        continue;
+                    } else {
+                        const updateSummary = lastResponse.message.split('SPEC_UPDATED:')[1].trim();
+                        tui.log.success(`✅ Spec Finalized: ${updateSummary}`);
+                        return;
+                    }
                 }
 
                 for (const action of lastResponse.actions) {
@@ -296,9 +306,11 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                     let systemMsg = "Execução da ferramenta concluída.";
                     if (specUpdated) {
                         if (content.includes('[TO BE')) {
-                            systemMsg += "\n[System]: Seção atualizada. Por favor, continue harmonizando e preenchendo os placeholders '[TO BE ...]' restantes.";
+                            const pendingMatches = [...content.matchAll(/## ([^\n]+)[\s\S]*?\[TO BE/g)].map(m => m[1]);
+                            let missing = pendingMatches.length > 0 ? pendingMatches.join(', ') : 'várias seções';
+                            systemMsg += `\n[System]: Seção atualizada. Por favor, continue preenchendo os placeholders '[TO BE ...]' restantes nas seguintes seções: ${missing}.`;
                         } else {
-                            systemMsg += "\n[System]: O arquivo parece completo! Se estiver satisfeito, retorne 'SPEC_UPDATED: Complete'.";
+                            systemMsg += "\n[System]: O arquivo parece completo! Se estiver satisfeito e possuir TODAS as implementações descritas, retorne 'SPEC_UPDATED: Complete'.";
                         }
                     }
                     nextPrompt = `${executionResults}\n\n${systemMsg}`;
