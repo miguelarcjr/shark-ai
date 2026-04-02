@@ -110,7 +110,7 @@ interface SpecState {
 }
 
 function analyzeSpecState(projectRoot: string): SpecState {
-    const specPath = path.resolve(projectRoot, 'tech-spec.md');
+    const specPath = path.resolve(projectRoot, '_sharkrc', 'tech-spec.md');
     if (!fs.existsSync(specPath)) {
         return { status: 'MISSING' };
     }

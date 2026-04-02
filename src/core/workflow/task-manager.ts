@@ -21,7 +21,7 @@ export class TaskManager {
 
     constructor(projectRoot: string = process.cwd()) {
         this.projectRoot = projectRoot;
-        this.specPath = path.resolve(this.projectRoot, 'tech-spec.md');
+        this.specPath = path.resolve(this.projectRoot, '_sharkrc', 'tech-spec.md');
     }
 
     /**
