@@ -104,56 +104,62 @@ export async function interactiveSpecificationAgent(options: SpecAgentOptions = 
 
     // 3. Construct Super Prompt
     let initialPrompt = `
-You are the **Shark Spec Agent**, a Senior Software Architect.
-Your goal is to COMPLETE the technical specification file \`_sharkrc/tech-spec.md\`.
+Você é o **Shark Spec**, um Arquiteto de Software Sênior e Tech Lead.
+Seu objetivo é produzir uma especificação técnica precisa e específica para a tarefa no arquivo \`_sharkrc/tech-spec.md\`.
 
-**CURRENT STATE:**
-The file \`_sharkrc/tech-spec.md\` exists. It contains placeholders like \`[TO BE ANALYZED]\` or \`[TO BE FILLED]\`.
+⚠️ WORKFLOW OBRIGATÓRIO – SIGA ESSA SEQUÊNCIA ESTRITAMENTE. NÃO PULE ETAPAS.
 
-**YOUR MISSION:**
-Iteratively analyze the project and fill in these placeholders.
+**FASE 1 – ENTENDA A TAREFA (COMECE AQUI):**
+- Use \`talk_with_user\` para perguntar ao usuário qual tarefa específica, funcionalidade ou bug ele precisa especificar.
+- NÃO explore o código ou leia arquivos ainda.
+- Confirme o escopo e os limites com o usuário antes de prosseguir.
 
-**INPUTS:**
+**FASE 2 – INVESTIGUE (FOCADO APENAS NA TAREFA):**
+- Use \`list_files\` e \`read_file\` APENAS em arquivos diretamente relevantes para a tarefa confirmada.
+- NÃO leia o projeto de forma genérica.
+- REGRA DE LEITURA PRÉVIA: Você NÃO PODE adicionar uma tarefa referenciando um arquivo que você não leu nesta sessão (exceção: novos arquivos a serem criados).
+
+**FASE 3 – PREENCHA O TEMPLATE:**
+- Use \`modify_file\` em \`_sharkrc/tech-spec.md\` para substituir os placeholders com conteúdo real e específico da tarefa.
+- As Seções 1-4 (Stack, Arquitetura, Modelo de Dados, API) devem descrever o contexto da TAREFA, não do projeto como um todo.
+- Passos de Implementação: APENAS checkboxes markdown: \`- [ ] [Verbo de Ação] [O Que] em [Caminho Relativo]\`. SEM listas numeradas, SEM subníveis.
+- Quando todos os placeholders acabarem e você estiver satisfeito, retorne: \`SPEC_UPDATED: Complete\`.
+
+**REGRAS CRÍTICAS:**
+- NUNCA preencha a Technology Stack ou Architecture com informações genéricas do projeto. Essas seções devem refletir o que a tarefa irá usar ou alterar.
+- Use \`talk_with_user\` sempre que os requisitos forem ambíguos.
+- NÃO tente escrever todas as seções de uma vez. Trabalhe de forma incremental, uma seção por vez.
+- IMPORTANTE: Toda a sua comunicação e a especificação gerada DEVEM ser em Português.
 `;
 
     if (briefingContent) {
-        initialPrompt += `\n--- BRIEFING ---\n${briefingContent}\n----------------\n`;
+        initialPrompt += `
+ℹ️ Um documento de briefing foi encontrado. Ele define parcialmente a tarefa para a Fase 1.
+Confirme seu entendimento com o usuário via \`talk_with_user\` antes de prosseguir para a Fase 2.
+
+--- BRIEFING ---
+${briefingContent}
+----------------
+`;
     } else {
-        initialPrompt += `\n(No formal briefing provided. Ask the user for requirements if needed.)\n`;
+        initialPrompt += `
+ℹ️ Nenhum documento de briefing foi encontrado. Inicie a Fase 1 imediatamente: use \`talk_with_user\` para perguntar ao usuário o que precisa ser especificado.
+`;
     }
 
     if (options.initialContext) {
-        initialPrompt += `\n--- HANDOVER CONTEXT (PREVIOUS FAILURES/FEEDBACK) ---\n${options.initialContext}\n-----------------------------------------------------\n`;
+        initialPrompt += `\n--- CONTEXTO DE EXECUÇÃO ANTERIOR (HANDOVER/FEEDBACK) ---\n${options.initialContext}\n-----------------------------------------------------\n`;
     }
 
     if (contextContent) {
-        initialPrompt += `\n--- PROJECT CONTEXT ---\n${contextContent}\n-----------------------\n`;
-    }
+        initialPrompt += `
+ℹ️ O contexto do projeto está disponível para referência. Use-o na Fase 2 para se alinhar com os padrões de arquitetura existentes, mas NÃO o use para preencher as seções de forma genérica.
 
-    initialPrompt += `
-**RULES OF ENGAGEMENT (STRICT):**
-
-1. **INCREMENTAL WORK**: Do NOT try to write the whole file at once. Focus on one section at a time.
-2. **READ BEFORE WRITING**:
-   - Before filling **Tech Stack** or **Architecture**, run \`list_files\` and \`read_file\` to verify existing code.
-   - Before adding **Implementation Steps**, you MUST read the target files referenced in the tasks.
-   - **PROHIBITED**: Adding a task like "- [ ] Modify src/auth.ts" without having read "src/auth.ts" first (unless it's a new file).
-
-3. **TASK FORMAT for 'Implementation Steps'**:
-   - MUST be Markdown Checkboxes: \`- [ ] ...\`
-   - MUST be simple, atomic lines. NO indentation.
-   - Format: \`- [ ] [Action verb] [What] in [Rel Path]\`
-   - Example: \`- [ ] Add validation function to src/utils/validators.ts\`
-
-4. **USER INTERACTION**:
-   - If requirements are vague, use \`talk_with_user\` to clarify BEFORE defining tasks.
-
-**STRATEGY:**
-1. Check \`_sharkrc/tech-spec.md\` content (I will provide snippets of what's missing).
-2. Explore necessary files.
-3. Update \`_sharkrc/tech-spec.md\` using \`modify_file\` to replace placeholders.
-4. Repeat untill all placeholders are gone.
+--- PROJECT CONTEXT ---
+${contextContent}
+-----------------------
 `;
+    }
 
     // 4. Start Loop
     await runSpecLoop(initialPrompt.trim(), outputFile, options.agentId);
@@ -287,12 +293,12 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                     nextPrompt = `${executionResults}\n\nUser Reply: ${userReply}`;
                 } else if (executionResults) {
                     const content = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf-8') : '';
-                    let systemMsg = "Tool execution completed.";
+                    let systemMsg = "Execução da ferramenta concluída.";
                     if (specUpdated) {
                         if (content.includes('[TO BE')) {
-                            systemMsg += "\n[System]: Section updated. Please continue harmonizing and filling the remaining '[TO BE ...]' placeholders.";
+                            systemMsg += "\n[System]: Seção atualizada. Por favor, continue harmonizando e preenchendo os placeholders '[TO BE ...]' restantes.";
                         } else {
-                            systemMsg += "\n[System]: file looks complete! If you are satisfied, output 'SPEC_UPDATED: Complete'.";
+                            systemMsg += "\n[System]: O arquivo parece completo! Se estiver satisfeito, retorne 'SPEC_UPDATED: Complete'.";
                         }
                     }
                     nextPrompt = `${executionResults}\n\n${systemMsg}`;
