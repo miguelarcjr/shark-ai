@@ -1,5 +1,5 @@
 
-import { STACKSPOT_AGENT_API_BASE } from '../api/stackspot-client.js';
+import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from '../api/stackspot-client.js';
 import { sseClient } from '../api/sse-client.js';
 import { parseAgentResponse, AgentResponse } from './agent-response-parser.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
@@ -536,8 +536,7 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
 
 async function callScanAgentApi(prompt: string, onChunk: (chunk: string) => void): Promise<AgentResponse> {
     const realm = await getActiveRealm();
-    const token = await tokenStorage.getToken(realm);
-    if (!token) throw new Error('Not logged in');
+    const token = await ensureValidToken(realm);
 
     // Generate a temporary conversation ID for this scan session
     // We might not need to persist it long-term, but we need one for the session.
