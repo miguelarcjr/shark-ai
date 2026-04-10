@@ -214,7 +214,7 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                         let missing = pendingMatches.length > 0 ? pendingMatches.join(', ') : 'algumas seções';
                         
                         tui.log.warning(`O agente tentou concluir prematuramente, mas há placeholders pendentes. Forçando retorno...`);
-                        nextPrompt = `[System Error]: Você tentou enviar 'SPEC_UPDATED: Complete', mas o arquivo AINDA possui placeholders '[TO BE...]'. \nAs seguintes seções parecem incompletas: ${missing}.\n\nPor favor, retome a FASE 3 e continue editando o arquivo até que NENHUM placeholder reste. Lembre-se, use \`modify_file\` para cada uma dessas seções e foque na tarefa discutida.`;
+                        nextPrompt = `[System Error]: A validação falhou e o bloqueio automático foi acionado.\nVocê tentou concluir a tarefa, mas o arquivo AINDA possui placeholders '[TO BE ANALYZED]' ou '[TO BE FILLED]'.\nAs seguintes seções ainda contêm estes placeholders: ${missing}.\nVocê é OBRIGADO a usar a action \`modify_file\` para preencher o conteúdo de cada uma dessas seções. Use o placeholder exato no campo \`target_content\`. NÃO repita a conclusão da tarefa até corrigir todas as pendências.`;
                         continue;
                     } else {
                         const updateSummary = lastResponse.message.split('SPEC_UPDATED:')[1].trim();
@@ -308,7 +308,7 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                         if (content.includes('[TO BE')) {
                             const pendingMatches = [...content.matchAll(/## ([^\n]+)[\s\S]*?\[TO BE/g)].map(m => m[1]);
                             let missing = pendingMatches.length > 0 ? pendingMatches.join(', ') : 'várias seções';
-                            systemMsg += `\n[System]: Seção atualizada. Por favor, continue preenchendo os placeholders '[TO BE ...]' restantes nas seguintes seções: ${missing}.`;
+                            systemMsg += `\n[System]: Seção atualizada com sucesso. A validação detectou que AINDA HÁ placeholders pendentes ('[TO BE...]') nas seguintes seções: ${missing}.\nPor favor, envie uma nova action \`modify_file\` focada em uma destas seções obrigatoriamente. USE o respectivo placeholder no campo \`target_content\` para que o replace funcione.`;
                         } else {
                             systemMsg += "\n[System]: O arquivo parece completo! Se estiver satisfeito e possuir TODAS as implementações descritas, retorne 'SPEC_UPDATED: Complete'.";
                         }
