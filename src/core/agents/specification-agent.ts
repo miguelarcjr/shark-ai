@@ -56,22 +56,22 @@ export async function interactiveSpecificationAgent(options: SpecAgentOptions = 
         let initialContent = `# Technical Specification: {{PROJECT_NAME}}
 
 ## 1. Technology Stack
-[TO BE ANALYZED]
+[TO BE ANALYZED - STACK]
 - Language: [e.g. TypeScript]
 - Framework: [e.g. Node.js / React]
 - Database: [e.g. SQLite / PostgreSQL]
 - Key Libraries: [Top 5 dependencies]
 
 ## 2. Architecture Overview
-[TO BE ANALYZED]
+[TO BE ANALYZED - ARCHITECTURE]
 [Brief description of architectural pattern]
 
 ## 3. Data Model
-[TO BE ANALYZED]
+[TO BE ANALYZED - DATA MODEL]
 [Schema/ERD definitions]
 
 ## 4. API / Interface Contracts
-[TO BE ANALYZED]
+[TO BE ANALYZED - API]
 [Main endpoints or CLI commands]
 
 ## 5. Implementation Steps
@@ -200,44 +200,6 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                 let waitingForUser = false;
                 let specUpdated = false;
 
-                // Check for Phase completion signal
-                if (lastResponse.message && lastResponse.message.includes('PHASE_COMPLETED')) {
-                    if (currentPhase === 1) {
-                        currentPhase = 2;
-                        tui.log.success(`✅ Fase 1 Concluída. Iniciando Fase 2 (Investigação).`);
-                        nextPrompt = `[System Message]\nVocê completou a FASE 1 com sucesso.\n\n**VOCÊ AGORA ESTÁ NA FASE 2: INVESTIGAÇÃO**\n- Use \`search_code\` e \`list_files\` para explorar os arquivos relevantes à tarefa.\n- Prefira \`search_code\` em vez de \`read_file\` para buscar código sem inflar o contexto.\n- NÃO leia o projeto inteiro de forma genérica.\n- REGRA DE OURO (READ-FIRST): Você NÃO PODE referenciar um arquivo na especificação técnica que não tenha investigado nesta fase.\n- Quando achar que possui toda a clareza técnica sobre onde e o que deve ser feito no código, emita "PHASE_COMPLETED" no summary.`;
-                        continue;
-                    } else if (currentPhase === 2) {
-                        currentPhase = 3;
-                        tui.log.success(`✅ Fase 2 Concluída. Iniciando Fase 3 (Preenchimento).`);
-                        nextPrompt = `[System Message]\nVocê completou a FASE 2 com sucesso.\n\n**VOCÊ AGORA ESTÁ NA FASE 3: PREENCHIMENTO DO TEMPLATE**\n- Use \`modify_file\` no arquivo \`${targetPath}\` para substituir os placeholders pelo conteúdo real levantado na fase de investigação.\n- As seções 1-4 devem descrever o contexto da TAREFA, e não o projeto como um todo.\n- Passos de Implementação (Implementation Steps): APENAS checkboxes markdown: \`- [ ] [Verbo de Ação] [O Que] em [Caminho Relativo]\`.\n- Quando TODOS os placeholders ([TO BE ANALYZED] ou [TO BE FILLED]) forem substituídos e o trabalho concluído, emita "SPEC_UPDATED: Complete" no summary para finalizar.`;
-                        continue;
-                    }
-                }
-
-                // Check for final completion signal
-                if (lastResponse.message && lastResponse.message.includes('SPEC_UPDATED:')) {
-                    if (currentPhase < 3) {
-                        tui.log.warning(`O agente tentou finalizar prematuramente. Forçando retorno para a fase atual...`);
-                        nextPrompt = `[System Error]: Você tentou finalizar a especificação prematuramente emitindo SPEC_UPDATED, mas ainda está na Fase ${currentPhase}. Você só pode finalizar quando estiver na Fase 3.\n\nContinue seu trabalho na Fase ${currentPhase} ou emita "PHASE_COMPLETED" se terminou esta etapa atual.`;
-                        continue;
-                    }
-
-                    const content = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf-8') : '';
-                    if (content.includes('[TO BE')) {
-                        const pendingMatches = [...content.matchAll(/## ([^\n]+)[\s\S]*?\[TO BE/g)].map(m => m[1]);
-                        let missing = pendingMatches.length > 0 ? pendingMatches.join(', ') : 'algumas seções';
-                        
-                        tui.log.warning(`O agente tentou concluir prematuramente, mas há placeholders pendentes. Forçando retorno...`);
-                        nextPrompt = `[System Error]: A validação falhou e o bloqueio automático foi acionado.\nVocê tentou concluir a tarefa, mas o arquivo AINDA possui placeholders '[TO BE ANALYZED]' ou '[TO BE FILLED]'.\nAs seguintes seções ainda contêm estes placeholders: ${missing}.\nVocê é OBRIGADO a usar a action \`modify_file\` para preencher o conteúdo de cada uma dessas seções. Use o placeholder exato no campo \`target_content\`. NÃO repita a conclusão da tarefa até corrigir todas as pendências.`;
-                        continue;
-                    } else {
-                        const updateSummary = lastResponse.message.split('SPEC_UPDATED:')[1].trim();
-                        tui.log.success(`✅ Spec Finalized: ${updateSummary}`);
-                        return;
-                    }
-                }
-
                 for (const action of lastResponse.actions) {
                     if (action.type === 'talk_with_user') {
                         tui.log.info(colors.primary('🤖 Architect:'));
@@ -308,7 +270,7 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                                         executionResults += `[Action modify_file]: Success.\n`;
                                         specUpdated = true;
                                     } else {
-                                        executionResults += `[Action modify_file]: Failed. Target content not found.\n`;
+                                        executionResults += `[Action modify_file]: Failed. Target content not found or ambiguous.\n`;
                                     }
                                 } else {
                                     executionResults += `[Action modify_file]: Failed. 'target_content' is required.\n`;
@@ -317,6 +279,46 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                         } catch (e: any) {
                             executionResults += `[Action ${action.type}]: Error: ${e.message}\n`;
                         }
+                    }
+                }
+
+                // Check for Phase completion signal
+                if (lastResponse.message && lastResponse.message.includes('PHASE_COMPLETED')) {
+                    const extraContext = executionResults ? `\n\nResultados das últimas ações executadas antes da conclusão:\n${executionResults}` : "";
+                    
+                    if (currentPhase === 1) {
+                        currentPhase = 2;
+                        tui.log.success(`✅ Fase 1 Concluída. Iniciando Fase 2 (Investigação).`);
+                        nextPrompt = `[System Message]\nVocê completou a FASE 1 com sucesso.\n\n**VOCÊ AGORA ESTÁ NA FASE 2: INVESTIGAÇÃO**\n- Use \`search_code\` e \`list_files\` para explorar os arquivos relevantes à tarefa.\n- Prefira \`search_code\` em vez de \`read_file\` para buscar código sem inflar o contexto.\n- NÃO leia o projeto inteiro de forma genérica.\n- REGRA DE OURO (READ-FIRST): Você NÃO PODE referenciar um arquivo na especificação técnica que não tenha investigado nesta fase.\n- Quando achar que possui toda a clareza técnica sobre onde e o que deve ser feito no código, emita "PHASE_COMPLETED" no summary.${extraContext}`;
+                        continue;
+                    } else if (currentPhase === 2) {
+                        currentPhase = 3;
+                        tui.log.success(`✅ Fase 2 Concluída. Iniciando Fase 3 (Preenchimento).`);
+                        nextPrompt = `[System Message]\nVocê completou a FASE 2 com sucesso.\n\n**VOCÊ AGORA ESTÁ NA FASE 3: PREENCHIMENTO DO TEMPLATE**\n- Use \`modify_file\` no arquivo \`${targetPath}\` para substituir os placeholders pelo conteúdo real levantado na fase de investigação.\n- As seções 1-4 devem descrever o contexto da TAREFA, e não o projeto como um todo.\n- Passos de Implementação (Implementation Steps): APENAS checkboxes markdown: \`- [ ] [Verbo de Ação] [O Que] em [Caminho Relativo]\`.\n- Quando TODOS os placeholders ([TO BE ANALYZED...] ou [TO BE FILLED]) forem substituídos e o trabalho concluído, emita "SPEC_UPDATED: Complete" no summary para finalizar.${extraContext}`;
+                        continue;
+                    }
+                }
+
+                // Check for final completion signal
+                if (lastResponse.message && lastResponse.message.includes('SPEC_UPDATED:')) {
+                    if (currentPhase < 3) {
+                        tui.log.warning(`O agente tentou finalizar prematuramente. Forçando retorno para a fase atual...`);
+                        nextPrompt = `[System Error]: Você tentou finalizar a especificação prematuramente emitindo SPEC_UPDATED, mas ainda está na Fase ${currentPhase}. Você só pode finalizar quando estiver na Fase 3.\n\nContinue seu trabalho na Fase ${currentPhase} ou emita "PHASE_COMPLETED" se terminou esta etapa atual.`;
+                        continue;
+                    }
+
+                    const content = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf-8') : '';
+                    if (content.includes('[TO BE')) {
+                        const pendingMatches = [...content.matchAll(/## ([^\n]+)[\s\S]*?\[TO BE/g)].map(m => m[1]);
+                        let missing = pendingMatches.length > 0 ? pendingMatches.join(', ') : 'algumas seções';
+                        
+                        tui.log.warning(`O agente tentou concluir prematuramente, mas há placeholders pendentes. Forçando retorno...`);
+                        nextPrompt = `[System Error]: A validação falhou e o bloqueio automático foi acionado.\nVocê tentou concluir a tarefa, mas o arquivo AINDA possui placeholders '[TO BE ANALYZED...]' ou '[TO BE FILLED]'.\nAs seguintes seções ainda contêm estes placeholders: ${missing}.\nVocê é OBRIGADO a usar a action \`modify_file\` para preencher o conteúdo de cada uma dessas seções. Use o placeholder exato no campo \`target_content\`. NÃO repita a conclusão da tarefa até corrigir todas as pendências.`;
+                        continue;
+                    } else {
+                        const updateSummary = lastResponse.message.split('SPEC_UPDATED:')[1].trim();
+                        tui.log.success(`✅ Spec Finalized: ${updateSummary}`);
+                        return;
                     }
                 }
 
@@ -336,6 +338,9 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                         } else {
                             systemMsg += "\n[System]: O arquivo parece completo! Se estiver satisfeito e possuir TODAS as implementações descritas, retorne 'SPEC_UPDATED: Complete'.";
                         }
+                    } else {
+                        // Adicionando um aviso de que falhou e precisa tentar de novo
+                        systemMsg += "\n[System]: A modificação do arquivo falhou. Verifique se o \`target_content\` que você usou existe EXATAMENTE como no arquivo e se ele é ÚNICO na hora de usar a action \`modify_file\`.";
                     }
                     nextPrompt = `${executionResults}\n\n${systemMsg}`;
                 } else {
