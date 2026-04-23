@@ -17,6 +17,13 @@ function getAgentId(overrideId?: string): string {
     return process.env.STACKSPOT_BA_AGENT_ID || '01KEJ95G304TNNAKGH5XNEEBVD';
 }
 
+function getAgentVersion(overrideVersion?: string): string | undefined {
+    if (overrideVersion) return overrideVersion;
+    const config: any = ConfigManager.getInstance().getConfig();
+    if (config.agentVersions?.ba) return config.agentVersions.ba;
+    return process.env.STACKSPOT_BA_AGENT_VERSION;
+}
+
 export interface BAAgentOptions {
     agentId?: string; // Allow overriding agent ID
     onChunk?: (chunk: string) => void;
@@ -59,6 +66,11 @@ export async function runBusinessAnalystAgent(
         deep_search_ks: false,
         conversation_id: existingConversationId,
     };
+
+    const agentVersion = getAgentVersion();
+    if (agentVersion) {
+        (requestPayload as any).agent_version_number = agentVersion;
+    }
 
     // 4. Construct agent URL - CORRECT FORMAT
     const effectiveAgentId = getAgentId(options.agentId);

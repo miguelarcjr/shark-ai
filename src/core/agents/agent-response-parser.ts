@@ -4,9 +4,9 @@ import { FileLogger } from '../debug/file-logger.js';
 // Action Schema
 export const AgentActionSchema = z.object({
     type: z.enum([
-        'create_file', 'modify_file', 'list_files', 'search_file', 'read_file', 'delete_file',
+        'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
         'list_structure', 'modify_ast', 'search_ast', 'run_command',
-        'talk_with_user',
+        'talk_with_user', 'use_mcp_tool',
         'ast_list_structure',
         'ast_get_method',
         'ast_add_method', 'ast_modify_method', 'ast_remove_method',
@@ -24,6 +24,10 @@ export const AgentActionSchema = z.object({
     command: z.string().nullable().optional(),
     tool_name: z.string().nullable().optional(),
     tool_args: z.string().nullable().optional(), // JSON string argument
+
+    // search_code fields
+    query: z.string().nullable().optional(),
+    is_regex: z.boolean().nullable().optional(),
 
     // AST-Grep fields
     pattern: z.string().nullable().optional(),

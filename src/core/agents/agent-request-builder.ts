@@ -8,6 +8,7 @@ export const AgentRequestSchema = z.object({
     return_ks_in_response: z.boolean().default(false),
     use_conversation: z.boolean().default(true),
     conversation_id: z.string().optional(),
+    agent_version_number: z.string().optional(),
 });
 
 // TypeScript type derived from schema
@@ -20,6 +21,7 @@ export interface AgentRequestOptions {
     return_ks_in_response?: boolean;
     use_conversation?: boolean;
     conversation_id?: string;
+    agent_version_number?: string;
 }
 
 /**
@@ -41,6 +43,7 @@ export function buildAgentRequest(
         return_ks_in_response: options.return_ks_in_response ?? false,
         use_conversation: options.use_conversation ?? true,
         conversation_id: options.conversation_id,
+        agent_version_number: options.agent_version_number,
     };
 
     // Validate and return

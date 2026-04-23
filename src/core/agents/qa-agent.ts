@@ -1,16 +1,16 @@
-import { tui } from '../../ui/tui';
-import { colors } from '../../ui/colors';
-import { getActiveRealm } from '../auth/get-active-realm';
-import { tokenStorage } from '../auth/token-storage';
-import { sseClient } from '../api/sse-client';
-import { parseAgentResponse, AgentAction, AgentResponse } from './agent-response-parser';
-import { conversationManager } from '../workflow/conversation-manager';
-import { handleReadFile, handleListFiles, handleSearchFile, handleRunCommand } from './agent-tools';
+import { tui } from '../../ui/tui.js';
+import { colors } from '../../ui/colors.js';
+import { getActiveRealm } from '../auth/get-active-realm.js';
+import { tokenStorage } from '../auth/token-storage.js';
+import { sseClient } from '../api/sse-client.js';
+import { parseAgentResponse, AgentAction, AgentResponse } from './agent-response-parser.js';
+import { conversationManager } from '../workflow/conversation-manager.js';
+import { handleReadFile, handleListFiles, handleSearchFile, handleRunCommand } from './agent-tools.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { ConfigManager } from '../config-manager';
+import { ConfigManager } from '../config-manager.js';
 
 const AGENT_TYPE = 'qa_agent';
 
@@ -18,6 +18,12 @@ function getAgentId(): string {
     const config = ConfigManager.getInstance().getConfig();
     if (config.agents?.qa) return config.agents.qa;
     return process.env.STACKSPOT_QA_AGENT_ID || '01KEQFJZ3Q3JER11NH22HEZX9X';
+}
+
+function getAgentVersion(): string | undefined {
+    const config: any = ConfigManager.getInstance().getConfig();
+    if (config.agentVersions?.qa) return config.agentVersions.qa;
+    return process.env.STACKSPOT_QA_AGENT_VERSION;
 }
 
 interface QAAgentOptions {
@@ -142,19 +148,20 @@ export async function runQAAgent(options: QAAgentOptions) {
                     user_prompt: userMessage,
                     streaming: true,
                     use_conversation: true,
-                    conversation_id: existingConversationId
+                    conversation_id: existingConversationId,
+                    ...(getAgentVersion() ? { agent_version_number: getAgentVersion() } : {})
                 },
                 {
                     'Authorization': `Bearer ${token}`
                 },
                 {
-                    onChunk: (chunk) => {
+                    onChunk: (chunk: string) => {
                         agentResponseText += chunk;
                         if (agentResponseText.length > 10 && agentResponseText.trim().startsWith('{')) {
                             spinner.message('Receiving structured plan...');
                         }
                     },
-                    onComplete: (fullText, metadata) => {
+                    onComplete: (fullText: string | undefined, metadata: any) => {
                         try {
                             if (metadata?.conversation_id) {
                                 conversationManager.saveConversationId(AGENT_TYPE, metadata.conversation_id);
@@ -177,14 +184,15 @@ export async function runQAAgent(options: QAAgentOptions) {
             break;
         }
 
-        if (!agentResponse) continue;
+        const currentResponse = agentResponse as AgentResponse | null;
+        if (!currentResponse) continue;
 
         // 3. Handle Actions
-        if (agentResponse.summary) {
-            tui.log.info(colors.primary(`📋 Plan: ${agentResponse.summary}`));
+        if (currentResponse.summary) {
+            tui.log.info(colors.primary(`📋 Plan: ${currentResponse.summary}`));
         }
 
-        if (agentResponse.actions.length === 0) {
+        if (currentResponse.actions.length === 0) {
             // No actions usually means it's waiting for user or finished
             const reply = await tui.text({
                 message: "🤖 Shark QA:",
@@ -199,7 +207,7 @@ export async function runQAAgent(options: QAAgentOptions) {
             continue;
         }
 
-        for (const action of agentResponse.actions) {
+        for (const action of currentResponse.actions) {
             tui.log.info(colors.dim(`Executing: ${action.type}`));
 
             let result = "";

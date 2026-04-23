@@ -10,7 +10,7 @@ import { colors } from '../../ui/colors.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { FileLogger } from '../debug/file-logger.js';
-import { handleListFiles, handleReadFile, handleSearchFile, startSmartReplace } from './agent-tools.js';
+import { handleListFiles, handleReadFile, handleSearchFile, handleSearchCode, startSmartReplace } from './agent-tools.js';
 import { ConfigManager } from '../config-manager.js';
 
 const AGENT_TYPE = 'specification_agent';
@@ -20,6 +20,13 @@ function getAgentId(overrideId?: string): string {
     const config = ConfigManager.getInstance().getConfig();
     if (config.agents?.spec) return config.agents.spec;
     return process.env.STACKSPOT_SPEC_AGENT_ID || '01KEPXTX37FTB4N672TZST4SGP';
+}
+
+function getAgentVersion(overrideVersion?: string): string | undefined {
+    if (overrideVersion) return overrideVersion;
+    const config: any = ConfigManager.getInstance().getConfig();
+    if (config.agentVersions?.spec) return config.agentVersions.spec;
+    return process.env.STACKSPOT_SPEC_AGENT_VERSION;
 }
 
 export interface SpecAgentOptions {
@@ -105,31 +112,17 @@ export async function interactiveSpecificationAgent(options: SpecAgentOptions = 
     // 3. Construct Super Prompt
     let initialPrompt = `
 Você é o **Shark Spec**, um Arquiteto de Software Sênior e Tech Lead.
-Seu objetivo é produzir uma especificação técnica precisa e específica para a tarefa no arquivo \`_sharkrc/tech-spec.md\`.
+Seu objetivo final é produzir uma especificação técnica precisa para a tarefa no arquivo \`_sharkrc/tech-spec.md\`.
 
-⚠️ WORKFLOW OBRIGATÓRIO – SIGA ESSA SEQUÊNCIA ESTRITAMENTE. NÃO PULE ETAPAS.
+⚠️ O SEU WORKFLOW É GUIADO POR FASES.
+NÃO TENTE ADIANTAR O TRABALHO (ex: investigar código ou preencher template agora).
 
-**FASE 1 – ENTENDA A TAREFA (COMECE AQUI):**
+**VOCÊ ESTÁ NA FASE 1: ENTENDIMENTO DA TAREFA**
 - Use \`talk_with_user\` para perguntar ao usuário qual tarefa específica, funcionalidade ou bug ele precisa especificar.
-- NÃO explore o código ou leia arquivos ainda.
-- Confirme o escopo e os limites com o usuário antes de prosseguir.
+- Confirme o escopo e os limites com o usuário.
+- Se o escopo estiver perfeitamente claro e confirmado (com o usuário), emita "PHASE_COMPLETED" no campo "summary" do JSON para avançar.
 
-**FASE 2 – INVESTIGUE (FOCADO APENAS NA TAREFA):**
-- Use \`list_files\` e \`read_file\` APENAS em arquivos diretamente relevantes para a tarefa confirmada.
-- NÃO leia o projeto de forma genérica.
-- REGRA DE LEITURA PRÉVIA: Você NÃO PODE adicionar uma tarefa referenciando um arquivo que você não leu nesta sessão (exceção: novos arquivos a serem criados).
-
-**FASE 3 – PREENCHA O TEMPLATE:**
-- Use \`modify_file\` em \`_sharkrc/tech-spec.md\` para substituir os placeholders com conteúdo real e específico da tarefa.
-- As Seções 1-4 (Stack, Arquitetura, Modelo de Dados, API) devem descrever o contexto da TAREFA, não do projeto como um todo.
-- Passos de Implementação: APENAS checkboxes markdown: \`- [ ] [Verbo de Ação] [O Que] em [Caminho Relativo]\`. SEM listas numeradas, SEM subníveis.
-- Quando todos os placeholders acabarem e você estiver satisfeito, retorne: \`SPEC_UPDATED: Complete\`.
-
-**REGRAS CRÍTICAS:**
-- NUNCA preencha a Technology Stack ou Architecture com informações genéricas do projeto. Essas seções devem refletir o que a tarefa irá usar ou alterar.
-- Use \`talk_with_user\` sempre que os requisitos forem ambíguos.
-- NÃO tente escrever todas as seções de uma vez. Trabalhe de forma incremental, uma seção por vez.
-- IMPORTANTE: Toda a sua comunicação e a especificação gerada DEVEM ser em Português.
+IMPORTANTE: Toda a sua comunicação DEVE ser em Português.
 `;
 
     if (briefingContent) {
@@ -172,6 +165,7 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
     let nextPrompt = initialMessage;
     let keepGoing = true;
     let stepCount = 0;
+    let currentPhase = 1;
     const MAX_STEPS = 30;
 
     while (keepGoing && stepCount < MAX_STEPS) {
@@ -206,8 +200,29 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                 let waitingForUser = false;
                 let specUpdated = false;
 
-                // Check for completion signal
+                // Check for Phase completion signal
+                if (lastResponse.message && lastResponse.message.includes('PHASE_COMPLETED')) {
+                    if (currentPhase === 1) {
+                        currentPhase = 2;
+                        tui.log.success(`✅ Fase 1 Concluída. Iniciando Fase 2 (Investigação).`);
+                        nextPrompt = `[System Message]\nVocê completou a FASE 1 com sucesso.\n\n**VOCÊ AGORA ESTÁ NA FASE 2: INVESTIGAÇÃO**\n- Use \`search_code\` e \`list_files\` para explorar os arquivos relevantes à tarefa.\n- Prefira \`search_code\` em vez de \`read_file\` para buscar código sem inflar o contexto.\n- NÃO leia o projeto inteiro de forma genérica.\n- REGRA DE OURO (READ-FIRST): Você NÃO PODE referenciar um arquivo na especificação técnica que não tenha investigado nesta fase.\n- Quando achar que possui toda a clareza técnica sobre onde e o que deve ser feito no código, emita "PHASE_COMPLETED" no summary.`;
+                        continue;
+                    } else if (currentPhase === 2) {
+                        currentPhase = 3;
+                        tui.log.success(`✅ Fase 2 Concluída. Iniciando Fase 3 (Preenchimento).`);
+                        nextPrompt = `[System Message]\nVocê completou a FASE 2 com sucesso.\n\n**VOCÊ AGORA ESTÁ NA FASE 3: PREENCHIMENTO DO TEMPLATE**\n- Use \`modify_file\` no arquivo \`${targetPath}\` para substituir os placeholders pelo conteúdo real levantado na fase de investigação.\n- As seções 1-4 devem descrever o contexto da TAREFA, e não o projeto como um todo.\n- Passos de Implementação (Implementation Steps): APENAS checkboxes markdown: \`- [ ] [Verbo de Ação] [O Que] em [Caminho Relativo]\`.\n- Quando TODOS os placeholders ([TO BE ANALYZED] ou [TO BE FILLED]) forem substituídos e o trabalho concluído, emita "SPEC_UPDATED: Complete" no summary para finalizar.`;
+                        continue;
+                    }
+                }
+
+                // Check for final completion signal
                 if (lastResponse.message && lastResponse.message.includes('SPEC_UPDATED:')) {
+                    if (currentPhase < 3) {
+                        tui.log.warning(`O agente tentou finalizar prematuramente. Forçando retorno para a fase atual...`);
+                        nextPrompt = `[System Error]: Você tentou finalizar a especificação prematuramente emitindo SPEC_UPDATED, mas ainda está na Fase ${currentPhase}. Você só pode finalizar quando estiver na Fase 3.\n\nContinue seu trabalho na Fase ${currentPhase} ou emita "PHASE_COMPLETED" se terminou esta etapa atual.`;
+                        continue;
+                    }
+
                     const content = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf-8') : '';
                     if (content.includes('[TO BE')) {
                         const pendingMatches = [...content.matchAll(/## ([^\n]+)[\s\S]*?\[TO BE/g)].map(m => m[1]);
@@ -246,6 +261,15 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                         tui.log.info(`🔍 Searching: ${colors.dim(action.path || '')}`);
                         const result = handleSearchFile(action.path || '');
                         executionResults += `[Action search_file(${action.path}) Result]:\n${result}\n\n`;
+                    }
+
+                    else if (action.type === 'search_code') {
+                        const glob = action.path || 'src/**/*';
+                        const query = action.query || '';
+                        const isRegex = action.is_regex === true;
+                        tui.log.info(`🔎 Search code: ${colors.dim(`"${query}" in ${glob}`)}`);
+                        const result = handleSearchCode(glob, query, isRegex);
+                        executionResults += `[Action search_code("${query}" in "${glob}") Result]:\n${result}\n\n`;
                     }
 
                     else if (['create_file', 'modify_file'].includes(action.type)) {
@@ -345,7 +369,7 @@ async function callSpecAgentApi(prompt: string, onChunk: (chunk: string) => void
     const token = await ensureValidToken(realm);
     const conversationId = await conversationManager.getConversationId(AGENT_TYPE);
 
-    const payload = {
+    const payload: any = {
         user_prompt: prompt,
         streaming: true,
         stackspot_knowledge: false,
@@ -353,6 +377,11 @@ async function callSpecAgentApi(prompt: string, onChunk: (chunk: string) => void
         use_conversation: true,
         conversation_id: conversationId
     };
+
+    const agentVersion = getAgentVersion();
+    if (agentVersion) {
+        payload.agent_version_number = agentVersion;
+    }
 
     const effectiveAgentId = getAgentId(agentId);
     const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${effectiveAgentId}/chat`;

@@ -23,6 +23,12 @@ function getAgentId(): string {
     return process.env.STACKSPOT_SCAN_AGENT_ID || '01KEQ9AHWB550J2244YBH3QATN';
 }
 
+function getAgentVersion(): string | undefined {
+    const config: any = ConfigManager.getInstance().getConfig();
+    if (config.agentVersions?.scan) return config.agentVersions.scan;
+    return process.env.STACKSPOT_SCAN_AGENT_VERSION;
+}
+
 /**
  * Scan Agent implementation.
  * It autonomously explores the project and generates project-context.md
@@ -545,7 +551,7 @@ async function callScanAgentApi(prompt: string, onChunk: (chunk: string) => void
 
     // If no conversation exists, that's fine, API will create one.
 
-    const payload = {
+    const payload: any = {
         user_prompt: prompt,
         streaming: true,
         stackspot_knowledge: false,
@@ -553,6 +559,11 @@ async function callScanAgentApi(prompt: string, onChunk: (chunk: string) => void
         use_conversation: true,
         conversation_id: conversationId
     };
+
+    const agentVersion = getAgentVersion();
+    if (agentVersion) {
+        payload.agent_version_number = agentVersion;
+    }
 
     const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${getAgentId()}/chat`;
     let fullMsg = '';

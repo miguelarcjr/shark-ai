@@ -103,6 +103,19 @@ function getAgentId(overrideId?: string): string {
     return '01KEQCGJ65YENRA4QBXVN1YFFX';
 }
 
+function getAgentVersion(overrideVersion?: string): string | undefined {
+    if (overrideVersion) return overrideVersion;
+
+    // Check Config
+    const config: any = ConfigManager.getInstance().getConfig();
+    if (config.agentVersions?.dev) return config.agentVersions.dev;
+
+    // Check Env
+    if (process.env.STACKSPOT_DEV_AGENT_VERSION) return process.env.STACKSPOT_DEV_AGENT_VERSION;
+
+    return undefined;
+}
+
 interface SpecState {
     status: 'MISSING' | 'PENDING' | 'COMPLETED';
     nextTask?: string;
@@ -537,13 +550,18 @@ async function callDevAgentApi(prompt: string, onChunk: (chunk: string) => void,
     // Get specific conversation ID for this TASK
     const conversationId = await conversationManager.getConversationId(conversationKey);
 
-    const payload = {
+    const payload: any = {
         user_prompt: prompt,
         streaming: true,
         use_conversation: true,
         conversation_id: conversationId,
         stackspot_knowledge: false
     };
+
+    const agentVersion = getAgentVersion();
+    if (agentVersion) {
+        payload.agent_version_number = agentVersion;
+    }
 
     const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${getAgentId()}/chat`;
     let fullMsg = '';

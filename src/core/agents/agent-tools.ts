@@ -185,6 +185,76 @@ export function handleSearchFile(pattern: string): string {
     }
 }
 
+/**
+ * Searches for a string or regex pattern within files matching a glob.
+ * Works like VSCode's "Find in Files" — returns matching lines with file path and line number.
+ * Use this instead of read_file when you only need to find specific symbols,
+ * exports, method names, or patterns — avoiding flooding the context with full file contents.
+ *
+ * @param globPattern  Glob pattern to select files (e.g., "src/**‌/*.ts")
+ * @param query        String or regex pattern to search for
+ * @param isRegex      If true, treats query as a regular expression
+ */
+export function handleSearchCode(
+    globPattern: string,
+    query: string,
+    isRegex: boolean = false
+): string {
+    const MAX_MATCHES = 50;
+    const MAX_FILE_SIZE_BYTES = 500 * 1024; // skip files > 500KB
+
+    try {
+        const files = fg.sync(globPattern, { dot: true, absolute: false });
+        if (files.length === 0) return `No files found matching pattern: "${globPattern}"`;
+
+        let searchRegex: RegExp;
+        try {
+            searchRegex = isRegex
+                ? new RegExp(query, 'gi')
+                : new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        } catch {
+            return `Error: Invalid regex pattern: "${query}"`;
+        }
+
+        const results: string[] = [];
+        let totalMatches = 0;
+
+        for (const filePath of files) {
+            if (totalMatches >= MAX_MATCHES) break;
+
+            try {
+                const fullPath = path.resolve(process.cwd(), filePath);
+                const stats = fs.statSync(fullPath);
+                if (stats.size > MAX_FILE_SIZE_BYTES) continue; // skip huge binaries
+
+                const content = fs.readFileSync(fullPath, 'utf-8');
+                const lines = content.split('\n');
+
+                for (let i = 0; i < lines.length; i++) {
+                    if (totalMatches >= MAX_MATCHES) break;
+                    searchRegex.lastIndex = 0; // reset for 'g' flag
+                    if (searchRegex.test(lines[i])) {
+                        results.push(`${filePath}:${i + 1}: ${lines[i].trim()}`);
+                        totalMatches++;
+                    }
+                }
+            } catch {
+                // skip unreadable files silently
+            }
+        }
+
+        if (results.length === 0) {
+            return `No matches found for "${query}" in files matching "${globPattern}"`;
+        }
+
+        const limited = totalMatches >= MAX_MATCHES ? ` (limited to ${MAX_MATCHES})` : '';
+        return `Found ${totalMatches} match(es) for "${query}" in "${globPattern}"${limited}:\n${results.join('\n')}`;
+
+    } catch (e: any) {
+        return `Error searching code: ${e.message}`;
+    }
+}
+
 export function startSmartReplace(filePath: string, newContent: string, targetContent: string, tui: any): boolean {
     if (!fs.existsSync(filePath)) {
         tui.log.error(`❌ File not found for modification: ${filePath}`);

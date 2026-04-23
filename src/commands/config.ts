@@ -156,9 +156,18 @@ export const configCommand = {
                     });
 
                     if (!tui.isCancel(agentId)) {
-                        const newAgents = { ...currentConfig.agents, [agentType as string]: agentId };
-                        saveGlobalRC({ agents: newAgents as any });
-                        tui.log.success(t('commands.config.agentMenu.updated', agentType as string));
+                        const agentVersion = await tui.text({
+                            message: `Enter the version for ${agentType} agent:`,
+                            initialValue: ((currentConfig as any).agentVersions && (currentConfig as any).agentVersions[agentType as string]) || '1',
+                            placeholder: '1'
+                        });
+                        
+                        if (!tui.isCancel(agentVersion)) {
+                            const newAgents = { ...currentConfig.agents, [agentType as string]: agentId };
+                            const newAgentVersions = { ...(currentConfig as any).agentVersions, [agentType as string]: agentVersion };
+                            saveGlobalRC({ agents: newAgents as any, agentVersions: newAgentVersions as any });
+                            tui.log.success(t('commands.config.agentMenu.updated', agentType as string));
+                        }
                     }
                 }
             }
