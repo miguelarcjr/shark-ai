@@ -2,6 +2,13 @@ import { z } from 'zod';
 
 export const ConfigSchema = z.object({
     logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+    provider: z.enum(['stackspot', 'openai-compatible']).default('stackspot'),
+    'openai-compatible': z.object({
+        baseURL: z.string().default('http://localhost:11434/v1'),
+        apiKey: z.string().default('ollama'),
+        model: z.string().default('llama3'),
+        useStructuredOutputs: z.boolean().default(true)
+    }).optional(),
     preferredStack: z.array(z.string()).default([]),
     apiBaseUrl: z.string().optional(),
     language: z.enum(['pt-br', 'en-us', 'es-es']).default('pt-br'),

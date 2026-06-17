@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ProviderResolver } from './provider-resolver.js';
 import { ConfigManager } from '../config-manager.js';
+import { StackSpotProvider } from './stackspot-provider.js';
 
 describe('ProviderResolver', () => {
     beforeEach(() => {
@@ -8,8 +9,25 @@ describe('ProviderResolver', () => {
     });
 
     it('should resolve StackSpotProvider by default', () => {
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({} as any);
         const provider = ProviderResolver.getProvider('developer_agent');
         expect(provider.constructor.name).toBe('StackSpotProvider');
+    });
+
+    it('should map agent types to config agents in StackSpotProvider', () => {
+        const mockConfig = {
+            agents: {
+                dev: 'dev-agent-uuid',
+                codeReview: 'cr-agent-uuid'
+            }
+        };
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue(mockConfig as any);
+
+        const devProvider = ProviderResolver.getProvider('developer_agent') as StackSpotProvider;
+        expect(devProvider.agentId).toBe('dev-agent-uuid');
+
+        const crProvider = ProviderResolver.getProvider('code_review') as StackSpotProvider;
+        expect(crProvider.agentId).toBe('cr-agent-uuid');
     });
 
     it('should resolve OpenAICompatibleProvider when configured', () => {
