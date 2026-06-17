@@ -152,7 +152,8 @@ export class AnchorStateManager {
 
         if (!lineStates) {
             const content = fs.readFileSync(absolutePath, 'utf8');
-            const lines = content.split('\n');
+            const hasTrailingNewline = content.endsWith('\n');
+            const lines = hasTrailingNewline ? content.slice(0, -1).split('\n') : content.split('\n');
             const usedAnchors = new Set<string>();
 
             lineStates = lines.map(line => {
@@ -189,8 +190,12 @@ export class AnchorStateManager {
             throw new Error(`Invalid range: start anchor "${startAnchor}" is after end anchor "${endAnchor}"`);
         }
 
+        const originalContent = fs.readFileSync(absolutePath, 'utf8');
+        const hasTrailingNewline = originalContent.endsWith('\n');
+
         const oldLines = lineStates.map(ls => ls.text);
-        const newEditLines = content.split('\n');
+        const cleanContent = content.endsWith('\n') ? content.slice(0, -1) : content;
+        const newEditLines = cleanContent.split('\n');
 
         const updatedLines = [
             ...oldLines.slice(0, startIndex),
@@ -198,7 +203,8 @@ export class AnchorStateManager {
             ...oldLines.slice(endIndex + 1)
         ];
 
-        fs.writeFileSync(absolutePath, updatedLines.join('\n'), 'utf8');
+        const fileContentToWrite = updatedLines.join('\n') + (hasTrailingNewline ? '\n' : '');
+        fs.writeFileSync(absolutePath, fileContentToWrite, 'utf8');
 
         // Collect all anchors in the file (unchanged prefix, suffix, and the old edit segment) to avoid duplicate allocations
         const usedAnchors = new Set<string>();
@@ -209,7 +215,7 @@ export class AnchorStateManager {
         // Diff only the edited range
         const oldEditSegment = lineStates.slice(startIndex, endIndex + 1);
         const oldEditLines = oldEditSegment.map(ls => ls.text);
-        const diffs = diffLines(oldEditLines.join('\n'), content);
+        const diffs = diffLines(oldEditLines.join('\n'), cleanContent);
 
         const reconciledEditStates: LineState[] = [];
         let oldEditIndex = 0;

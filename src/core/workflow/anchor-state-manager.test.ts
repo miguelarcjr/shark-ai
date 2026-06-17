@@ -174,4 +174,27 @@ describe('AnchorStateManager', () => {
             }
         }
     });
+
+    it('should not mismatch cached line count and file on disk when dealing with trailing newlines', () => {
+        fs.writeFileSync(testFile, 'line1\nline2\n');
+        try {
+            const firstRead = manager.getAnchoredContent(testFile);
+            const lines = firstRead.split('\n');
+            const anchor1 = lines[0].split('§')[0];
+            const anchor2 = lines[1].split('§')[0];
+
+            manager.applyAnchoredEdit(testFile, anchor1, anchor2, 'line1\nline2\n');
+
+            const secondRead = manager.getAnchoredContent(testFile);
+            const freshManager = new AnchorStateManager();
+            const freshRead = freshManager.getAnchoredContent(testFile);
+
+            expect(secondRead.split('\n')).toHaveLength(freshRead.split('\n').length);
+        } finally {
+            if (fs.existsSync(testFile)) {
+                fs.unlinkSync(testFile);
+            }
+        }
+    });
 });
+

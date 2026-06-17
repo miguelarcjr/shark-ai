@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { renderBox } from './box-container';
+import { renderBox } from './box-container.js';
 import stripAnsi from 'strip-ansi';
 
 describe('BoxContainer', () => {

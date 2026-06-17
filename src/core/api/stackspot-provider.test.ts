@@ -70,11 +70,11 @@ describe('StackSpotProvider', () => {
         // Mock streamAgentResponse to trigger callbacks
         vi.mocked(sseClient.streamAgentResponse).mockImplementation(
             async (url, payload, headers, callbacks) => {
-                if (callbacks.onChunk) {
+                if (callbacks?.onChunk) {
                     callbacks.onChunk('Hello ');
                     callbacks.onChunk('world!');
                 }
-                if (callbacks.onComplete) {
+                if (callbacks?.onComplete) {
                     callbacks.onComplete('Hello world!', { conversation_id: 'test-conv-id' });
                 }
             }
@@ -121,7 +121,7 @@ describe('StackSpotProvider', () => {
 
         vi.mocked(sseClient.streamAgentResponse).mockImplementation(
             async (url, payload, headers, callbacks) => {
-                if (callbacks.onComplete) {
+                if (callbacks?.onComplete) {
                     callbacks.onComplete('Hello world!', { conversation_id: 'test-conv-id' });
                 }
             }
@@ -149,7 +149,7 @@ describe('StackSpotProvider', () => {
 
         vi.mocked(sseClient.streamAgentResponse).mockImplementation(
             async (url, payload, headers, callbacks) => {
-                if (callbacks.onComplete) {
+                if (callbacks?.onComplete) {
                     callbacks.onComplete('{}', {});
                 }
             }
@@ -177,7 +177,7 @@ describe('StackSpotProvider', () => {
 
         vi.mocked(sseClient.streamAgentResponse).mockImplementation(
             async (url, payload, headers, callbacks) => {
-                if (callbacks.onComplete) {
+                if (callbacks?.onComplete) {
                     callbacks.onComplete('{}', {});
                 }
             }

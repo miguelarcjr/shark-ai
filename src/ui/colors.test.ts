@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { colors } from './colors';
+import { colors } from './colors.js';
 
 describe('Shark UI Colors', () => {
     it('should export all required semantic colors', () => {

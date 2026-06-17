@@ -106,11 +106,13 @@ describe('DeveloperAgent', () => {
                     type: 'read_file',
                     path: 'test.ts',
                 },
+                actions: [],
                 message: 'Reading file test.ts',
                 conversation_id: 'conv-123',
             })
             .mockResolvedValueOnce({
                 action: null,
+                actions: [],
                 message: 'TASK_COMPLETED: Read completed successfully',
                 conversation_id: 'conv-123',
             });
@@ -141,11 +143,13 @@ describe('DeveloperAgent', () => {
                     end_anchor: 'anchor2',
                     content: 'new code content',
                 },
+                actions: [],
                 message: 'Modifying test.ts',
                 conversation_id: 'conv-123',
             })
             .mockResolvedValueOnce({
                 action: null,
+                actions: [],
                 message: 'TASK_COMPLETED: Modify completed',
                 conversation_id: 'conv-123',
             });
@@ -178,11 +182,13 @@ describe('DeveloperAgent', () => {
                     end_anchor: 'anchor2',
                     content: 'new code content',
                 },
+                actions: [],
                 message: 'Modifying test.ts',
                 conversation_id: 'conv-123',
             })
             .mockResolvedValueOnce({
                 action: null,
+                actions: [],
                 message: 'TASK_COMPLETED: Modify completed',
                 conversation_id: 'conv-123',
             });
@@ -208,6 +214,7 @@ describe('DeveloperAgent', () => {
                     path: 'newfile.ts',
                     content: 'console.log("hello");',
                 },
+                actions: [],
                 message: 'Creating file',
                 conversation_id: 'conv-123',
             })
@@ -216,6 +223,7 @@ describe('DeveloperAgent', () => {
                     type: 'run_command',
                     command: 'echo "test"',
                 },
+                actions: [],
                 message: 'Running command',
                 conversation_id: 'conv-123',
             })
@@ -224,11 +232,13 @@ describe('DeveloperAgent', () => {
                     type: 'delete_file',
                     path: 'newfile.ts',
                 },
+                actions: [],
                 message: 'Deleting file',
                 conversation_id: 'conv-123',
             })
             .mockResolvedValueOnce({
                 action: null,
+                actions: [],
                 message: 'TASK_COMPLETED: Cleanup completed',
                 conversation_id: 'conv-123',
             });
@@ -253,11 +263,13 @@ describe('DeveloperAgent', () => {
                     type: 'talk_with_user',
                     content: 'How should I handle empty inputs?',
                 },
+                actions: [],
                 message: 'Asking user',
                 conversation_id: 'conv-123',
             })
             .mockResolvedValueOnce({
                 action: null,
+                actions: [],
                 message: 'TASK_COMPLETED: Conversation done',
                 conversation_id: 'conv-123',
             });

@@ -1,5 +1,5 @@
 import stringWidth from 'string-width';
-import { colors } from '../colors';
+import { colors } from '../colors.js';
 
 interface BoxOptions {
     padding?: number;
