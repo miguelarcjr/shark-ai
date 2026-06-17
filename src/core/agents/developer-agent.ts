@@ -1,10 +1,7 @@
 
-import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from '../api/stackspot-client.js';
-import { sseClient } from '../api/sse-client.js';
-import { parseAgentResponse, AgentResponse, AgentAction } from './agent-response-parser.js';
+import { ProviderResolver } from '../api/provider-resolver.js';
+import { AgentResponse } from './agent-response-parser.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
-import { tokenStorage } from '../auth/token-storage.js';
-import { getActiveRealm } from '../auth/get-active-realm.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
 import { ConfigManager } from '../config-manager.js';
@@ -544,45 +541,20 @@ Your goal is to COMPLETE this specific task and then STOP.
 
 // Helper to support key-based conversation
 async function callDevAgentApi(prompt: string, onChunk: (chunk: string) => void, conversationKey: string = AGENT_TYPE): Promise<AgentResponse> {
-    const realm = await getActiveRealm();
-    const token = await ensureValidToken(realm);
+    const existingConversationId = await conversationManager.getConversationId(conversationKey);
 
-    // Get specific conversation ID for this TASK
-    const conversationId = await conversationManager.getConversationId(conversationKey);
+    const provider = ProviderResolver.getProvider('developer_agent');
 
-    const payload: any = {
-        user_prompt: prompt,
-        streaming: true,
-        use_conversation: true,
-        conversation_id: conversationId,
-        stackspot_knowledge: false
-    };
-
-    const agentVersion = getAgentVersion();
-    if (agentVersion) {
-        payload.agent_version_number = agentVersion;
-    }
-
-    const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${getAgentId()}/chat`;
-    let fullMsg = '';
-    let raw: any = {};
-
-    await sseClient.streamAgentResponse(url, payload, { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, {
-        onChunk: (c) => { fullMsg += c; onChunk(c); },
-        onComplete: (msg, metadata) => {
-            const returnedId = metadata?.conversation_id;
-            raw = {
-                message: msg || fullMsg,
-                conversation_id: returnedId || conversationId
-            };
-        },
-        onError: (e) => { throw e; }
+    const parsedResponse = await provider.streamChat(prompt, {
+        conversationId: existingConversationId,
+        agentType: 'developer_agent',
+        onChunk
     });
 
-    const parsed = parseAgentResponse(raw);
-    if (parsed.conversation_id) {
-        await conversationManager.saveConversationId(conversationKey, parsed.conversation_id);
+    if (parsedResponse.conversation_id) {
+        await conversationManager.saveConversationId(conversationKey, parsedResponse.conversation_id);
     }
-    return parsed;
+
+    return parsedResponse;
 }
 
