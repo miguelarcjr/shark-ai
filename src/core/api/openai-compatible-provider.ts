@@ -1,6 +1,7 @@
 import { AIProvider, ChatOptions } from './provider.interface.js';
 import { AgentResponse, parseAgentResponse } from '../agents/agent-response-parser.js';
 import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
+import { UNIFIED_SYSTEM_PROMPT } from './prompts.js';
 import crypto from 'node:crypto';
 
 interface OpenAIConfig {
@@ -14,44 +15,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     constructor(private options: OpenAIConfig) {}
 
     private getAgentSystemPrompt(agentType: string): string {
-        // Base system instructions establishing JSON schema and available actions
-        const baseSystem = `You are a professional software engineer AI agent in a collaborative development environment.
-You MUST respond strictly with a single JSON object matching the schema.
-Do NOT output any markdown blocks or explanations outside of the JSON object.
-Use the 'talk_with_user' action inside the actions list to speak to the user.
-
-Required Output JSON Schema:
-{
-  "actions": [
-    {
-      "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_code" | "run_command" | "talk_with_user" | "delete_file",
-      "path": "relative path to file",
-      "content": "file content or talk message",
-      "target_content": "exact text block to replace (modify_file only)",
-      "command": "terminal command (run_command only)"
-    }
-  ],
-  "summary": "Short explanation of the actions performed."
-}`;
-
-        let specific = '';
-        if (agentType === 'business_analyst') {
-            specific = `You are the Business Analyst Agent. Understand user requirements, gather clarifications, and create technical briefings.`;
-        } else if (agentType === 'developer_agent') {
-            specific = `You are the Developer Agent. Implement code steps and fix compilation/test issues using terminal feedback.`;
-        } else if (agentType === 'specification_agent') {
-            specific = `You are the Specification Agent. Write and maintain the tech-spec.md file in the project.`;
-        } else if (agentType === 'qa_agent') {
-            specific = `You are the QA Agent. Write unit tests, run them, and verify coverage and correctness.`;
-        } else if (agentType === 'scan_agent') {
-            specific = `You are the Scan Agent. Analyze repository code for vulnerabilities, issues, and style guidelines.`;
-        } else if (agentType === 'code_review') {
-            specific = `You are the Code Review Agent. Review pull requests and code modifications, pointing out flaws and recommending improvements.`;
-        } else {
-            specific = `You are an AI Agent assisting in development.`;
-        }
-
-        return `${baseSystem}\n\nAgent Personality: ${specific}`;
+        return UNIFIED_SYSTEM_PROMPT;
     }
 
     async streamChat(prompt: string, options: ChatOptions): Promise<AgentResponse> {
@@ -83,27 +47,39 @@ Required Output JSON Schema:
                     schema: {
                         type: 'object',
                         properties: {
-                          actions: {
-                            type: 'array',
-                            items: {
-                              type: 'object',
-                              properties: {
-                                type: { 
-                                  type: 'string', 
-                                  enum: ["create_file", "modify_file", "read_file", "list_files", "search_code", "run_command", "talk_with_user", "delete_file"] 
-                                },
-                                path: { type: 'string' },
-                                content: { type: 'string' },
-                                target_content: { type: 'string' },
-                                command: { type: 'string' }
+                          action: {
+                            type: 'object',
+                            properties: {
+                              type: {
+                                type: 'string',
+                                enum: [
+                                  "create_file",
+                                  "modify_file",
+                                  "read_file",
+                                  "list_files",
+                                  "search_file",
+                                  "search_code",
+                                  "delete_file",
+                                  "run_command",
+                                  "talk_with_user",
+                                  "use_mcp_tool"
+                                ]
                               },
-                              required: ["type", "path", "content", "target_content", "command"],
-                              additionalProperties: false
-                            }
+                              path: { type: ['string', 'null'] },
+                              content: { type: ['string', 'null'] },
+                              start_anchor: { type: ['string', 'null'] },
+                              end_anchor: { type: ['string', 'null'] },
+                              command: { type: ['string', 'null'] },
+                              query: { type: ['string', 'null'] },
+                              tool_name: { type: ['string', 'null'] },
+                              tool_args: { type: ['string', 'null'] }
+                            },
+                            required: ["type", "path", "content", "start_anchor", "end_anchor", "command", "query", "tool_name", "tool_args"],
+                            additionalProperties: false
                           },
                           summary: { type: 'string' }
                         },
-                        required: ["actions", "summary"],
+                        required: ["action", "summary"],
                         additionalProperties: false
                     }
                 }

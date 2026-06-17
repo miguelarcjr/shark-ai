@@ -240,7 +240,7 @@ describe('OpenAICompatibleProvider', () => {
         expect(fetchOptions.headers.Authorization).toBeUndefined();
     });
 
-    it('should generate custom system prompt based on agentType', async () => {
+    it('should use the unified Portuguese system prompt', async () => {
         const provider = new OpenAICompatibleProvider({
             baseURL: 'http://localhost:11434/v1',
             apiKey: 'ollama',
@@ -256,16 +256,53 @@ describe('OpenAICompatibleProvider', () => {
             status: 200,
             statusText: 'OK',
             body: createMockStream([
-                'data: {"choices": [{"delta": {"content": "{\\"actions\\": [], \\"summary\\": \\"ok\\"}"}}]}\n',
+                'data: {"choices": [{"delta": {"content": "{\\"action\\": {\\"type\\": \\"talk_with_user\\", \\"content\\": \\"ok\\"}, \\"summary\\": \\"ok\\"}"}}]}\n',
                 'data: [DONE]\n'
             ])
         });
         vi.stubGlobal('fetch', mockFetch);
 
-        await provider.streamChat('test', { agentType: 'business_analyst' });
+        await provider.streamChat('test', { agentType: 'developer_agent' });
 
         const fetchOptions = mockFetch.mock.calls[0][1];
         const payload = JSON.parse(fetchOptions.body);
-        expect(payload.messages[0].content).toContain('Business Analyst Agent');
+        expect(payload.messages[0].content).toContain('Você é o Shark Dev, um agente de inteligência artificial');
+        expect(payload.messages[0].content).toContain('🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):');
+    });
+
+    it('should require action instead of actions in JSON Schema if useStructuredOutputs is true', async () => {
+        const provider = new OpenAICompatibleProvider({
+            baseURL: 'http://localhost:11434/v1',
+            apiKey: 'ollama',
+            model: 'llama3',
+            useStructuredOutputs: true
+        });
+
+        vi.spyOn(HistoryManager, 'getHistory').mockResolvedValue([]);
+        vi.spyOn(HistoryManager, 'saveHistory').mockResolvedValue(undefined);
+
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            body: createMockStream([
+                'data: {"choices": [{"delta": {"content": "{\\"action\\": {\\"type\\": \\"talk_with_user\\"}, \\"summary\\": \\"ok\\"}"}}]}\n',
+                'data: [DONE]\n'
+            ])
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        await provider.streamChat('test', {
+            agentType: 'developer_agent'
+        });
+
+        const fetchOptions = mockFetch.mock.calls[0][1];
+        const payload = JSON.parse(fetchOptions.body);
+        const schema = payload.response_format.json_schema.schema;
+        expect(schema.properties.action).toBeDefined();
+        expect(schema.properties.actions).toBeUndefined();
+        expect(schema.required).toContain('action');
+        expect(schema.required).not.toContain('actions');
+        expect(schema.properties.action.properties.type.enum).toContain('use_mcp_tool');
     });
 });

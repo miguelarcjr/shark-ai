@@ -5,21 +5,14 @@ import { sseClient } from './sse-client.js';
 import { tokenStorage } from '../auth/token-storage.js';
 import { getActiveRealm } from '../auth/get-active-realm.js';
 import { ConfigManager } from '../config-manager.js';
+import { UNIFIED_SYSTEM_PROMPT } from './prompts.js';
 
 export class StackSpotProvider implements AIProvider {
     public agentId?: string;
 
     constructor(private agentType: string) {
         const config = ConfigManager.getInstance().getConfig();
-        const mapping: Record<string, string | undefined> = {
-            'business_analyst': config.agents?.ba,
-            'developer_agent': config.agents?.dev,
-            'qa_agent': config.agents?.qa,
-            'specification_agent': config.agents?.spec,
-            'scan_agent': config.agents?.scan,
-            'code_review': config.agents?.codeReview
-        };
-        this.agentId = mapping[agentType];
+        this.agentId = config.stackspot?.agentId;
     }
 
     private getAgentId(): string {
@@ -73,8 +66,13 @@ export class StackSpotProvider implements AIProvider {
             throw new Error(`No authentication token found for realm '${realm}'. Please run 'shark login'.`);
         }
 
+        const isFirstTurn = !options.conversationId;
+        const finalPrompt = isFirstTurn
+            ? `SYSTEM INSTRUCTIONS:\n${UNIFIED_SYSTEM_PROMPT}\n\nUSER REQUEST:\n${prompt}`
+            : prompt;
+
         const requestPayload: any = {
-            user_prompt: prompt,
+            user_prompt: finalPrompt,
             streaming: true,
             stackspot_knowledge: false,
             return_ks_in_response: true,

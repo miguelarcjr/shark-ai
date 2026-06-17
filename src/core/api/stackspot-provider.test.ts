@@ -48,22 +48,20 @@ describe('StackSpotProvider', () => {
     it('should be instantiable and reference agentType', () => {
         const provider = new StackSpotProvider('developer_agent');
         expect(provider).toBeDefined();
-        expect(provider.agentId).toBeUndefined(); // mapping is empty in default config
     });
 
-    it('should retrieve agent ID from configuration mapping if available', () => {
+    it('should retrieve single agent ID from configuration stackspot.agentId', () => {
         vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
-            agents: {
-                dev: 'config-dev-agent-id',
-                ba: 'config-ba-agent-id'
+            stackspot: {
+                agentId: 'config-stackspot-agent-id'
             }
         } as any);
 
         const devProvider = new StackSpotProvider('developer_agent');
-        expect(devProvider.agentId).toBe('config-dev-agent-id');
+        expect(devProvider.agentId).toBe('config-stackspot-agent-id');
 
         const baProvider = new StackSpotProvider('business_analyst');
-        expect(baProvider.agentId).toBe('config-ba-agent-id');
+        expect(baProvider.agentId).toBe('config-stackspot-agent-id');
     });
 
     it('should stream chat response correctly', async () => {
@@ -139,5 +137,60 @@ describe('StackSpotProvider', () => {
         
         const [url, payload, headers] = vi.mocked(sseClient.streamAgentResponse).mock.calls[0] as any;
         expect(headers.Authorization).toBe('Bearer fallback-token');
+    });
+
+    it('should prepend system instructions if conversationId is undefined/empty', async () => {
+        const provider = new StackSpotProvider('developer_agent');
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
+            stackspot: {
+                agentId: 'test-agent-id'
+            }
+        } as any);
+
+        vi.mocked(sseClient.streamAgentResponse).mockImplementation(
+            async (url, payload, headers, callbacks) => {
+                if (callbacks.onComplete) {
+                    callbacks.onComplete('{}', {});
+                }
+            }
+        );
+
+        await provider.streamChat('Test prompt', {
+            agentType: 'developer_agent',
+            conversationId: undefined
+        });
+
+        expect(sseClient.streamAgentResponse).toHaveBeenCalled();
+        const [, payload] = vi.mocked(sseClient.streamAgentResponse).mock.calls[0] as any;
+        expect(payload.user_prompt).toContain('SYSTEM INSTRUCTIONS:');
+        expect(payload.user_prompt).toContain('USER REQUEST:');
+        expect(payload.user_prompt).toContain('Test prompt');
+    });
+
+    it('should not prepend system instructions if conversationId is defined', async () => {
+        const provider = new StackSpotProvider('developer_agent');
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
+            stackspot: {
+                agentId: 'test-agent-id'
+            }
+        } as any);
+
+        vi.mocked(sseClient.streamAgentResponse).mockImplementation(
+            async (url, payload, headers, callbacks) => {
+                if (callbacks.onComplete) {
+                    callbacks.onComplete('{}', {});
+                }
+            }
+        );
+
+        await provider.streamChat('Test prompt', {
+            agentType: 'developer_agent',
+            conversationId: 'existing-session-id'
+        });
+
+        expect(sseClient.streamAgentResponse).toHaveBeenCalled();
+        const [, payload] = vi.mocked(sseClient.streamAgentResponse).mock.calls[0] as any;
+        expect(payload.user_prompt).not.toContain('SYSTEM INSTRUCTIONS:');
+        expect(payload.user_prompt).toBe('Test prompt');
     });
 });

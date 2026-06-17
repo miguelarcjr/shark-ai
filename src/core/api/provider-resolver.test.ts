@@ -14,20 +14,16 @@ describe('ProviderResolver', () => {
         expect(provider.constructor.name).toBe('StackSpotProvider');
     });
 
-    it('should map agent types to config agents in StackSpotProvider', () => {
+    it('should configure StackSpotProvider with the single agentId from config', () => {
         const mockConfig = {
-            agents: {
-                dev: 'dev-agent-uuid',
-                codeReview: 'cr-agent-uuid'
+            stackspot: {
+                agentId: 'joker-agent-id'
             }
         };
         vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue(mockConfig as any);
 
         const devProvider = ProviderResolver.getProvider('developer_agent') as StackSpotProvider;
-        expect(devProvider.agentId).toBe('dev-agent-uuid');
-
-        const crProvider = ProviderResolver.getProvider('code_review') as StackSpotProvider;
-        expect(crProvider.agentId).toBe('cr-agent-uuid');
+        expect(devProvider.agentId).toBe('joker-agent-id');
     });
 
     it('should resolve OpenAICompatibleProvider when configured', () => {
