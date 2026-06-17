@@ -41,4 +41,10 @@ describe('HistoryManager', () => {
             { role: 'assistant', content: 'hi' }
         ]);
     });
+
+    it('should return empty array if history file exists but does not contain an array', async () => {
+        fs.writeFileSync(filePath, JSON.stringify({ invalid: true }), 'utf-8');
+        const history = await HistoryManager.getHistory(testId);
+        expect(history).toEqual([]);
+    });
 });

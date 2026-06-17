@@ -26,7 +26,8 @@ export class HistoryManager {
         }
         try {
             const raw = fs.readFileSync(filePath, 'utf-8');
-            return JSON.parse(raw) as ChatMessage[];
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? (parsed as ChatMessage[]) : [];
         } catch {
             return [];
         }
