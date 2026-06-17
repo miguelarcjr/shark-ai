@@ -9,7 +9,7 @@ describe('Dev Command (Single Agent)', () => {
         vi.resetAllMocks();
     });
 
-    it('should call interactiveDeveloperAgent with correct options', async () => {
+    it('should call interactiveDeveloperAgent with correct options (with -y)', async () => {
         vi.mocked(interactiveDeveloperAgent).mockResolvedValue({
             success: true,
             summary: 'Task completed'
@@ -21,6 +21,38 @@ describe('Dev Command (Single Agent)', () => {
             taskInstruction: 'Build UI',
             auto: true
         }));
+    });
+
+    it('should call interactiveDeveloperAgent with correct options (with --auto)', async () => {
+        vi.mocked(interactiveDeveloperAgent).mockResolvedValue({
+            success: true,
+            summary: 'Task completed'
+        });
+
+        await devCommand.parseAsync(['node', 'shark', 'dev', '-t', 'Build UI', '--auto']);
+
+        expect(interactiveDeveloperAgent).toHaveBeenCalledWith(expect.objectContaining({
+            taskInstruction: 'Build UI',
+            auto: true
+        }));
+    });
+
+    it('should exit with 1 on task failure', async () => {
+        vi.mocked(interactiveDeveloperAgent).mockResolvedValue({
+            success: false,
+            summary: 'Compilation failed'
+        });
+
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as any);
+        const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+        await devCommand.parseAsync(['node', 'shark', 'dev', '-t', 'Build UI']);
+
+        expect(exitSpy).toHaveBeenCalledWith(1);
+        expect(errSpy).toHaveBeenCalledWith('Task execution failed:', 'Compilation failed');
+
+        exitSpy.mockRestore();
+        errSpy.mockRestore();
     });
 
     it('should output the JSON Schema when --export-schema is passed', async () => {
@@ -36,3 +68,4 @@ describe('Dev Command (Single Agent)', () => {
         logSpy.mockRestore();
     });
 });
+
