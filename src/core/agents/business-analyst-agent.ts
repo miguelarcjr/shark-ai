@@ -1,28 +1,10 @@
-import { STACKSPOT_AGENT_API_BASE } from '../api/stackspot-client.js';
-import { sseClient } from '../api/sse-client.js';
-import { parseAgentResponse, AgentResponse } from './agent-response-parser.js';
+import { ProviderResolver } from '../api/provider-resolver.js';
+import { AgentResponse } from './agent-response-parser.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
-import { tokenStorage } from '../auth/token-storage.js';
-import { getActiveRealm } from '../auth/get-active-realm.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
-import { ConfigManager } from '../config-manager.js';
 
 const AGENT_TYPE = 'business_analyst';
-
-function getAgentId(overrideId?: string): string {
-    if (overrideId) return overrideId;
-    const config = ConfigManager.getInstance().getConfig();
-    if (config.agents?.ba) return config.agents.ba;
-    return process.env.STACKSPOT_BA_AGENT_ID || '01KEJ95G304TNNAKGH5XNEEBVD';
-}
-
-function getAgentVersion(overrideVersion?: string): string | undefined {
-    if (overrideVersion) return overrideVersion;
-    const config: any = ConfigManager.getInstance().getConfig();
-    if (config.agentVersions?.ba) return config.agentVersions.ba;
-    return process.env.STACKSPOT_BA_AGENT_VERSION;
-}
 
 export interface BAAgentOptions {
     agentId?: string; // Allow overriding agent ID
@@ -43,88 +25,32 @@ export async function runBusinessAnalystAgent(
     prompt: string,
     options: BAAgentOptions = {}
 ): Promise<AgentResponse> {
-    const { agentId, onChunk, onComplete } = options;
+    const { onChunk, onComplete } = options;
 
-    // 1. Get active realm from config (auto-detect)
-    const realm = await getActiveRealm();
-
-    // 1. Get auth token
-    const token = await tokenStorage.getToken(realm);
-    if (!token) {
-        throw new Error(`No authentication token found for realm '${realm}'. Please run 'shark login'.`);
-    }
-
-    // 2. Load existing conversation ID (if any)
     const existingConversationId = await conversationManager.getConversationId(AGENT_TYPE);
+    
+    // Resolve active provider dynamically
+    const provider = ProviderResolver.getProvider('business_analyst');
 
-    // 3. Build request payload (StackSpot agent format)
-    const requestPayload = {
-        user_prompt: prompt,
-        streaming: true,
-        stackspot_knowledge: false, // Use agent's configured KS instead
-        return_ks_in_response: true,
-        deep_search_ks: false,
-        conversation_id: existingConversationId,
-    };
-
-    const agentVersion = getAgentVersion();
-    if (agentVersion) {
-        (requestPayload as any).agent_version_number = agentVersion;
+    // Handle agent ID override if applicable for the provider
+    if (options.agentId && 'agentId' in provider) {
+        (provider as any).agentId = options.agentId;
     }
 
-    // 4. Construct agent URL - CORRECT FORMAT
-    const effectiveAgentId = getAgentId(options.agentId);
-    const agentUrl = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${effectiveAgentId}/chat`;
+    const parsedResponse = await provider.streamChat(prompt, {
+        conversationId: existingConversationId,
+        agentType: 'business_analyst',
+        onChunk,
+        onComplete
+    });
 
-    // 5. Prepare headers
-    const headers = {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-    };
-
-    // 6. Stream agent response
-    let fullMessage = '';
-    let rawResponse: any = {};
-
-    await sseClient.streamAgentResponse(
-        agentUrl,
-        requestPayload,
-        headers,
-        {
-            onChunk: (chunk) => {
-                fullMessage += chunk;
-                if (onChunk) {
-                    onChunk(chunk);
-                }
-            },
-            onComplete: async (message) => {
-                // Build complete response object
-                rawResponse = {
-                    message: message || fullMessage,
-                    conversation_id: existingConversationId, // Will be updated if new one provided
-                };
-            },
-            onError: (error) => {
-                throw error;
-            },
-        }
-    );
-
-    // 7. Parse response
-    const parsedResponse = parseAgentResponse(rawResponse);
-
-    // 8. Save new conversation ID (if provided)
     if (parsedResponse.conversation_id) {
         await conversationManager.saveConversationId(AGENT_TYPE, parsedResponse.conversation_id);
     }
 
-    // 9. Call completion callback
-    if (onComplete) {
-        onComplete(parsedResponse);
-    }
-
     return parsedResponse;
 }
+
 
 /**
  * Interactive Business Analyst session with TUI.
