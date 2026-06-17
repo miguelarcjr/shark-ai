@@ -1,10 +1,7 @@
 
-import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from '../api/stackspot-client.js';
-import { sseClient } from '../api/sse-client.js';
 import { parseAgentResponse, AgentResponse } from './agent-response-parser.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
-import { tokenStorage } from '../auth/token-storage.js';
-import { getActiveRealm } from '../auth/get-active-realm.js';
+import { ProviderResolver } from '../api/provider-resolver.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
 import { FileLogger } from '../debug/file-logger.js';
@@ -541,49 +538,17 @@ async function runScanLoop(initialPrompt: string, targetPath: string) {
 
 
 async function callScanAgentApi(prompt: string, onChunk: (chunk: string) => void): Promise<AgentResponse> {
-    const realm = await getActiveRealm();
-    const token = await ensureValidToken(realm);
-
-    // Generate a temporary conversation ID for this scan session
-    // We might not need to persist it long-term, but we need one for the session.
-    // Or we rely on the one returned.
     let conversationId = await conversationManager.getConversationId(AGENT_TYPE);
-
-    // If no conversation exists, that's fine, API will create one.
-
-    const payload: any = {
-        user_prompt: prompt,
-        streaming: true,
-        stackspot_knowledge: false,
-        return_ks_in_response: true,
-        use_conversation: true,
-        conversation_id: conversationId
-    };
-
-    const agentVersion = getAgentVersion();
-    if (agentVersion) {
-        payload.agent_version_number = agentVersion;
-    }
-
-    const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${getAgentId()}/chat`;
-    let fullMsg = '';
-    let raw: any = {};
 
     FileLogger.log('SCAN', 'Calling API', { promptLength: prompt.length });
 
-    await sseClient.streamAgentResponse(url, payload, { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, {
-        onChunk: (c) => { fullMsg += c; onChunk(c); },
-        onComplete: (msg, metadata) => {
-            const returnedId = metadata?.conversation_id;
-            raw = {
-                message: msg || fullMsg,
-                conversation_id: returnedId || conversationId
-            };
-        },
-        onError: (e) => { throw e; }
+    const provider = ProviderResolver.getProvider('scan_agent');
+    const parsed = await provider.streamChat(prompt, {
+        conversationId,
+        agentType: 'scan_agent',
+        onChunk
     });
 
-    const parsed = parseAgentResponse(raw);
     if (parsed.conversation_id) {
         await conversationManager.saveConversationId(AGENT_TYPE, parsed.conversation_id);
     }

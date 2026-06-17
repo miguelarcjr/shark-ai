@@ -1,10 +1,7 @@
 
-import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from '../api/stackspot-client.js';
-import { sseClient } from '../api/sse-client.js';
 import { parseAgentResponse, AgentResponse } from './agent-response-parser.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
-import { tokenStorage } from '../auth/token-storage.js';
-import { getActiveRealm } from '../auth/get-active-realm.js';
+import { ProviderResolver } from '../api/provider-resolver.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
 import fs from 'node:fs';
@@ -370,42 +367,21 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
 
 // --- API Wrapper Matches Scan/Dev Agent Pattern ---
 async function callSpecAgentApi(prompt: string, onChunk: (chunk: string) => void, agentId?: string): Promise<AgentResponse> {
-    const realm = await getActiveRealm();
-    const token = await ensureValidToken(realm);
     const conversationId = await conversationManager.getConversationId(AGENT_TYPE);
 
-    const payload: any = {
-        user_prompt: prompt,
-        streaming: true,
-        stackspot_knowledge: false,
-        return_ks_in_response: true,
-        use_conversation: true,
-        conversation_id: conversationId
-    };
+    FileLogger.log('AGENT', 'Calling Agent API', { agentId, conversationId });
 
-    const agentVersion = getAgentVersion();
-    if (agentVersion) {
-        payload.agent_version_number = agentVersion;
+    const provider = ProviderResolver.getProvider('specification_agent');
+    if (agentId && 'agentId' in provider) {
+        (provider as any).agentId = agentId;
     }
 
-    const effectiveAgentId = getAgentId(agentId);
-    const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${effectiveAgentId}/chat`;
-
-    let fullMsg = '';
-    let raw: any = {};
-
-    FileLogger.log('AGENT', 'Calling Agent API', { agentId: effectiveAgentId, conversationId });
-
-    await sseClient.streamAgentResponse(url, payload, { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, {
-        onChunk: (c) => { fullMsg += c; onChunk(c); },
-        onComplete: (msg, metadata) => {
-            const returnedId = metadata?.conversation_id;
-            raw = { message: msg || fullMsg, conversation_id: returnedId || conversationId };
-        },
-        onError: (e) => { throw e; }
+    const parsed = await provider.streamChat(prompt, {
+        conversationId,
+        agentType: 'specification_agent',
+        onChunk
     });
 
-    const parsed = parseAgentResponse(raw);
     if (parsed.conversation_id) {
         await conversationManager.saveConversationId(AGENT_TYPE, parsed.conversation_id);
     }

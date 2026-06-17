@@ -36,7 +36,15 @@ export class StackSpotProvider implements AIProvider {
             'code_review': process.env.STACKSPOT_CODE_REVIEW_AGENT_ID || ''
         };
 
-        return envIdMapping[this.agentType] || '01KEQCGJ65YENRA4QBXVN1YFFX';
+        const resolved = envIdMapping[this.agentType];
+        if (this.agentType === 'code_review') {
+            if (!resolved) {
+                throw new Error("Agent ID for 'code_review' is not configured.");
+            }
+            return resolved;
+        }
+
+        return resolved || '01KEQCGJ65YENRA4QBXVN1YFFX';
     }
 
     private getAgentVersion(): string | undefined {

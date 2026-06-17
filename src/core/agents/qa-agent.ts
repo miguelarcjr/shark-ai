@@ -2,7 +2,7 @@ import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
 import { getActiveRealm } from '../auth/get-active-realm.js';
 import { tokenStorage } from '../auth/token-storage.js';
-import { sseClient } from '../api/sse-client.js';
+import { ProviderResolver } from '../api/provider-resolver.js';
 import { parseAgentResponse, AgentAction, AgentResponse } from './agent-response-parser.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
 import { handleReadFile, handleListFiles, handleSearchFile, handleRunCommand } from './agent-tools.js';
@@ -83,9 +83,10 @@ class ChromeDevToolsClient {
 const mcpClient = new ChromeDevToolsClient();
 
 export async function runQAAgent(options: QAAgentOptions) {
+    const isStackSpot = ConfigManager.getInstance().getConfig().provider === 'stackspot';
     const agentId = getAgentId();
 
-    if (!agentId) {
+    if (isStackSpot && !agentId) {
         tui.log.error('❌ STACKSPOT_QA_AGENT_ID not configured.');
         tui.log.info('Please run: set STACKSPOT_QA_AGENT_ID=<your-id>');
         return;
@@ -97,12 +98,14 @@ export async function runQAAgent(options: QAAgentOptions) {
     tui.intro('🦈 Shark QA Agent');
     tui.log.info('Connecting to Chrome DevTools...');
 
-    const realm = await getActiveRealm();
-    const token = await tokenStorage.getToken(realm);
+    if (isStackSpot) {
+        const realm = await getActiveRealm();
+        const token = await tokenStorage.getToken(realm);
 
-    if (!token) {
-        tui.log.error('Authentication required. Run "shark login".');
-        return;
+        if (!token) {
+            tui.log.error('Authentication required. Run "shark login".');
+            return;
+        }
     }
 
     // 1. Prepare Initial Context
@@ -139,41 +142,24 @@ export async function runQAAgent(options: QAAgentOptions) {
         let agentResponse: AgentResponse | null = null;
 
         try {
-            // API Interaction (Manual Call until AgentManager is unified)
+            // API Interaction
             const existingConversationId = await conversationManager.getConversationId(AGENT_TYPE);
+            const provider = ProviderResolver.getProvider('qa_agent');
 
-            await sseClient.streamAgentResponse(
-                `https://genai-inference-app.stackspot.com/v1/agent/${getAgentId()}/chat`,
-                {
-                    user_prompt: userMessage,
-                    streaming: true,
-                    use_conversation: true,
-                    conversation_id: existingConversationId,
-                    ...(getAgentVersion() ? { agent_version_number: getAgentVersion() } : {})
-                },
-                {
-                    'Authorization': `Bearer ${token}`
-                },
-                {
-                    onChunk: (chunk: string) => {
-                        agentResponseText += chunk;
-                        if (agentResponseText.length > 10 && agentResponseText.trim().startsWith('{')) {
-                            spinner.message('Receiving structured plan...');
-                        }
-                    },
-                    onComplete: (fullText: string | undefined, metadata: any) => {
-                        try {
-                            if (metadata?.conversation_id) {
-                                conversationManager.saveConversationId(AGENT_TYPE, metadata.conversation_id);
-                            }
-                            agentResponse = parseAgentResponse(fullText || agentResponseText);
-                        } catch (e) {
-                            tui.log.error(`Parse Error: ${(e as Error).message}`);
-                            agentResponse = { actions: [], summary: "Error parsing response", message: fullText };
-                        }
+            agentResponse = await provider.streamChat(userMessage, {
+                conversationId: existingConversationId,
+                agentType: 'qa_agent',
+                onChunk: (chunk: string) => {
+                    agentResponseText += chunk;
+                    if (agentResponseText.length > 10 && agentResponseText.trim().startsWith('{')) {
+                        spinner.message('Receiving structured plan...');
                     }
                 }
-            );
+            });
+
+            if (agentResponse && agentResponse.conversation_id) {
+                await conversationManager.saveConversationId(AGENT_TYPE, agentResponse.conversation_id);
+            }
 
             spinner.stop('Response Received');
 

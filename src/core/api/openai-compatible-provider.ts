@@ -108,6 +108,8 @@ Required Output JSON Schema:
                     }
                 }
             };
+        } else {
+            requestPayload.response_format = { type: 'json_object' };
         }
 
         const headers: any = {
@@ -133,70 +135,85 @@ Required Output JSON Schema:
             throw new Error('Response body reader is undefined');
         }
 
-        const decoder = new TextDecoder();
-        let fullContent = '';
-        let done = false;
-        let buffer = '';
+        try {
+            const decoder = new TextDecoder();
+            let fullContent = '';
+            let done = false;
+            let buffer = '';
 
-        while (!done) {
-            const { value, done: doneReading } = await reader.read();
-            done = doneReading;
-            if (value) {
-                buffer += decoder.decode(value, { stream: !done });
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+            while (!done) {
+                const { value, done: doneReading } = await reader.read();
+                done = doneReading;
+                if (value) {
+                    buffer += decoder.decode(value, { stream: !done });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
 
-                for (const line of lines) {
-                    const clean = line.trim();
-                    if (!clean || clean === 'data: [DONE]') continue;
-                    if (clean.startsWith('data: ')) {
-                        try {
-                            const parsed = JSON.parse(clean.substring(6));
-                            const delta = parsed.choices?.[0]?.delta?.content || '';
+                    for (const line of lines) {
+                        const clean = line.trim();
+                        if (!clean || clean === 'data: [DONE]') continue;
+                        if (clean.startsWith('data: ')) {
+                            let parsed: any;
+                            try {
+                                parsed = JSON.parse(clean.substring(6));
+                            } catch {
+                                // ignore JSON parse error
+                                continue;
+                            }
+                            if (parsed && parsed.error) {
+                                throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
+                            }
+                            const delta = parsed?.choices?.[0]?.delta?.content || '';
                             if (delta) {
                                 fullContent += delta;
                                 if (options.onChunk) {
                                     options.onChunk(delta);
                                 }
                             }
-                        } catch {
-                            // ignore line chunk errors
                         }
                     }
                 }
             }
-        }
 
-        // Process any remaining data in buffer
-        if (buffer) {
-            const clean = buffer.trim();
-            if (clean && clean !== 'data: [DONE]' && clean.startsWith('data: ')) {
-                try {
-                    const parsed = JSON.parse(clean.substring(6));
-                    const delta = parsed.choices?.[0]?.delta?.content || '';
+            // Process any remaining data in buffer
+            if (buffer) {
+                const clean = buffer.trim();
+                if (clean && clean !== 'data: [DONE]' && clean.startsWith('data: ')) {
+                    let parsed: any;
+                    try {
+                        parsed = JSON.parse(clean.substring(6));
+                    } catch {
+                        // ignore JSON parse error
+                    }
+                    if (parsed && parsed.error) {
+                        throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
+                    }
+                    const delta = parsed?.choices?.[0]?.delta?.content || '';
                     if (delta) {
                         fullContent += delta;
                         if (options.onChunk) {
                             options.onChunk(delta);
                         }
                     }
-                } catch {
-                    // ignore line chunk errors
                 }
             }
+
+            const parsedResponse = parseAgentResponse(fullContent);
+            parsedResponse.conversation_id = conversationId;
+
+            // Save LLM response to history
+            history.push({ role: 'assistant', content: JSON.stringify(parsedResponse) });
+            await HistoryManager.saveHistory(conversationId, history);
+
+            if (options.onComplete) {
+                options.onComplete(parsedResponse);
+            }
+
+            return parsedResponse;
+        } finally {
+            if (typeof reader.releaseLock === 'function') {
+                reader.releaseLock();
+            }
         }
-
-        const parsedResponse = parseAgentResponse(fullContent);
-        parsedResponse.conversation_id = conversationId;
-
-        // Save LLM response to history
-        history.push({ role: 'assistant', content: JSON.stringify(parsedResponse) });
-        await HistoryManager.saveHistory(conversationId, history);
-
-        if (options.onComplete) {
-            options.onComplete(parsedResponse);
-        }
-
-        return parsedResponse;
     }
 }

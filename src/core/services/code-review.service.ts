@@ -1,9 +1,7 @@
 import { ConfigManager } from '../config-manager.js';
 import { extractFirstJson } from '../agents/agent-response-parser.js';
 import path from 'path';
-import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from '../api/stackspot-client.js';
-import { sseClient } from '../api/sse-client.js';
-import { getActiveRealm } from '../auth/get-active-realm.js';
+import { ProviderResolver } from '../api/provider-resolver.js';
 import { FileLogger } from '../debug/file-logger.js';
 
 export class CodeReviewService {
@@ -37,26 +35,8 @@ export class CodeReviewService {
         return "ℹ️  No specific validation configured for this file type.";
     }
 
-    private static getCodeReviewAgentId(): string {
-        const config = ConfigManager.getInstance().getConfig();
-        if (config.agents?.codeReview) return config.agents.codeReview;
-        if (process.env.STACKSPOT_CODE_REVIEW_AGENT_ID) return process.env.STACKSPOT_CODE_REVIEW_AGENT_ID;
-        // Return null/undefined to skip LLM review if not configured
-        return '';
-    }
-
     private static async performLlmReview(filePath: string, content: string): Promise<string> {
-        const agentId = this.getCodeReviewAgentId();
-
-        // If no agent configured, fall back to syntax check
-        if (!agentId) {
-            return this.performSyntaxCheck(filePath, content);
-        }
-
         try {
-            const realm = await getActiveRealm();
-            const token = await ensureValidToken(realm);
-
             const prompt = `You are a Code Review Specialist. Analyze the following code modification for file: ${path.basename(filePath)}
 
 NEW CODE TO BE ADDED:
@@ -71,19 +51,13 @@ Provide a concise review focusing on:
 
 Respond in JSON format with status, issues array, and summary.`;
 
-            const payload = {
-                user_prompt: prompt,
-                streaming: true,
-                use_conversation: true,
-                stackspot_knowledge: false
-            };
-
-            const url = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${agentId}/chat`;
             let reviewText = '';
-            await sseClient.streamAgentResponse(url, payload, { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }, {
-                onChunk: (c) => { reviewText += c; },
-                onComplete: () => { },
-                onError: (e) => { throw e; }
+            const provider = ProviderResolver.getProvider('code_review');
+            await provider.streamChat(prompt, {
+                agentType: 'code_review',
+                onChunk: (chunk: string) => {
+                    reviewText += chunk;
+                }
             });
 
             const cleanedText = reviewText.trim();
