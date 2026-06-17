@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { runBusinessAnalystAgent } from './business-analyst-agent.js';
+import { AgentResponse } from './agent-response-parser.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
 import { AIProvider } from '../api/provider.interface.js';
@@ -31,13 +32,17 @@ describe('BusinessAnalystAgent', () => {
     });
 
     it('should delegate calls to provider resolved via ProviderResolver', async () => {
-        const expectedResponse = {
+        const expectedResponse: AgentResponse = {
+            action: { type: 'talk_with_user', content: 'Design ideas', path: '' },
             actions: [{ type: 'talk_with_user', content: 'Design ideas', path: '' }],
             conversation_id: 'new-conv-id',
+            summary: 'Design ideas',
+            message: 'Design ideas',
+            commands: [],
         };
 
         vi.mocked(conversationManager.getConversationId).mockResolvedValue('existing-conv-id');
-        vi.mocked(mockProvider.streamChat).mockResolvedValue(expectedResponse as any);
+        vi.mocked(mockProvider.streamChat).mockResolvedValue(expectedResponse);
 
         const onChunk = vi.fn();
         const onComplete = vi.fn();

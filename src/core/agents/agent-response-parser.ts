@@ -160,7 +160,7 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
 
     if (!normalizedAction && normalizedActions && normalizedActions.length > 0) {
         normalizedAction = normalizedActions[0];
-    } else if (normalizedAction && !normalizedActions) {
+    } else if (normalizedAction && (!normalizedActions || normalizedActions.length === 0)) {
         normalizedActions = [normalizedAction];
     }
 

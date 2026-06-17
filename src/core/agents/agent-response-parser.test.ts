@@ -91,4 +91,15 @@ describe('AgentResponseParser', () => {
         expect(result.action?.type).toBe('talk_with_user');
         expect(result.action?.content).toBe('Hello user');
     });
+
+    it('should normalize actions array when single action is present and actions is empty array', () => {
+        const raw = {
+            action: { type: 'talk_with_user', content: 'Design ideas' },
+            actions: []
+        };
+        const result = parseAgentResponse(raw);
+        expect(result.action?.type).toBe('talk_with_user');
+        expect(result.actions).toHaveLength(1);
+        expect(result.actions[0]).toEqual(result.action);
+    });
 });
