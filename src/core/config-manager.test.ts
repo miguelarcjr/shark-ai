@@ -35,4 +35,72 @@ describe('ConfigManager', () => {
         const config = ConfigManager.getInstance().getConfig();
         expect(config.logLevel).toBe('debug');
     });
+
+    describe('LLM Provider Configuration', () => {
+        it('should include the default provider (stackspot) and leave openai-compatible undefined', () => {
+            const config = ConfigManager.getInstance().getConfig();
+            expect(config.provider).toBe('stackspot');
+            expect(config['openai-compatible']).toBeUndefined();
+        });
+
+        it('should parse provider settings from .sharkrc correctly', () => {
+            const customConfig = {
+                provider: 'openai-compatible',
+                'openai-compatible': {
+                    baseURL: 'https://custom-api.com/v1',
+                    apiKey: 'custom-key',
+                    model: 'custom-model',
+                    useStructuredOutputs: false
+                }
+            };
+
+            vi.mocked(fs.existsSync).mockImplementation((filePath) => {
+                return filePath.toString().endsWith('.sharkrc');
+            });
+            vi.mocked(fs.readFileSync).mockImplementation((filePath) => {
+                if (filePath.toString().endsWith('.sharkrc')) {
+                    return JSON.stringify(customConfig);
+                }
+                return '{}';
+            });
+
+            const config = ConfigManager.getInstance().getConfig();
+            expect(config.provider).toBe('openai-compatible');
+            expect(config['openai-compatible']).toEqual({
+                baseURL: 'https://custom-api.com/v1',
+                apiKey: 'custom-key',
+                model: 'custom-model',
+                useStructuredOutputs: false
+            });
+        });
+
+        it('should fill in defaults for openai-compatible when partial settings are provided', () => {
+            const customConfig = {
+                provider: 'openai-compatible',
+                'openai-compatible': {
+                    model: 'custom-model'
+                }
+            };
+
+            vi.mocked(fs.existsSync).mockImplementation((filePath) => {
+                return filePath.toString().endsWith('.sharkrc');
+            });
+            vi.mocked(fs.readFileSync).mockImplementation((filePath) => {
+                if (filePath.toString().endsWith('.sharkrc')) {
+                    return JSON.stringify(customConfig);
+                }
+                return '{}';
+            });
+
+            const config = ConfigManager.getInstance().getConfig();
+            expect(config.provider).toBe('openai-compatible');
+            expect(config['openai-compatible']).toEqual({
+                baseURL: 'http://localhost:11434/v1',
+                apiKey: 'ollama',
+                model: 'custom-model',
+                useStructuredOutputs: true
+            });
+        });
+    });
 });
+
