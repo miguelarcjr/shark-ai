@@ -1,5 +1,4 @@
 import { Command } from 'commander';
-import { interactiveDeveloperAgent } from '../core/agents/developer-agent.js';
 
 const schema = {
   "$schema": "http://json-schema.org/draft-07/schema#",
@@ -40,26 +39,8 @@ const schema = {
   "required": ["action"]
 };
 
-export const devCommand = new Command('dev')
-    .description('Starts the Shark Developer Agent (Shark Dev Orchestration V2)')
-    .option('-t, --task <type>', 'Initial task description (Quick Mode)')
-    .option('-c, --context <path>', 'Path to custom context file')
-    .option('-y, --yes', 'Automatically approve all actions without prompting')
-    .option('--export-schema', 'Export the agent response JSON schema')
-    .action(async (options) => {
-        if (options.exportSchema) {
-            console.log(JSON.stringify(schema, null, 2));
-            return;
-        }
-
-        try {
-            await interactiveDeveloperAgent({
-                taskInstruction: options.task,
-                context: options.context,
-                auto: options.yes
-            });
-        } catch (error: any) {
-            console.error('Error during development agent execution:', error.message);
-            process.exit(1);
-        }
+export const exportSchemaCommand = new Command('export-schema')
+    .description('Outputs the agent response JSON Schema')
+    .action(() => {
+        console.log(JSON.stringify(schema, null, 2));
     });
