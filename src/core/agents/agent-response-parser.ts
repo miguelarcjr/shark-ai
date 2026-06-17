@@ -54,6 +54,8 @@ export const AgentActionSchema = z.object({
 
     // Preview confirmation
     confirmed: z.boolean().nullable().optional(),
+    start_anchor: z.string().nullable().optional(),
+    end_anchor: z.string().nullable().optional(),
 });
 
 export type AgentAction = z.infer<typeof AgentActionSchema>;
@@ -67,8 +69,9 @@ export const AgentCommandSchema = z.object({
 
 // Full Structured Response Schema
 export const AgentResponseSchema = z.object({
-    actions: z.array(AgentActionSchema),
-    commands: z.array(AgentCommandSchema).optional(),
+    action: AgentActionSchema.nullable().optional(),
+    actions: z.array(AgentActionSchema).default([]), // Maintain backward compatibility
+    commands: z.array(AgentCommandSchema).optional(), // Maintain backward compatibility
     summary: z.string().optional(),
 
     // Legacy fields handling for smooth transition/fallback
@@ -96,6 +99,11 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
             FileLogger.log('PARSER', 'String Parse Failed', { error: (e as Error).message });
             // Fallback: treat as simple message if not valid JSON
             return {
+                action: {
+                    type: 'talk_with_user',
+                    content: rawResponse,
+                    path: ''
+                },
                 actions: [{
                     type: 'talk_with_user',
                     content: rawResponse,
@@ -120,7 +128,7 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         const stringContent = anyResp.content || anyResp.message;
         if (stringContent && typeof stringContent === 'string') {
             try {
-                // Try to parse it as JSON actions
+                // Try to parse it as JSON actions/action
                 const parsedInside = extractFirstJson(stringContent);
                 // Only use it if it looks like an object (not just a primitive)
                 if (typeof parsedInside === 'object' && parsedInside !== null) {
@@ -140,40 +148,45 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
             parsedObj = rawResponse;
         }
 
-        // If we didn't successfully parse inner JSON actions, use the raw object
-        if (!parsedObj.actions) {
+        // If we didn't successfully parse inner JSON actions/action, use the raw object
+        if (!parsedObj.actions && !parsedObj.action) {
             parsedObj = rawResponse;
         }
     }
 
-    // 3. Normalize Actions
-    // Ensure 'actions' array exists
-    if (!parsedObj.actions) {
-        FileLogger.log('PARSER', 'No Actions Found - Constructing Default');
-        // If it looks like the legacy format or direct message
-        return {
-            conversation_id,
-            actions: [{
-                type: 'talk_with_user',
-                content: parsedObj.message || JSON.stringify(parsedObj),
-                path: ''
-            }],
-            message: parsedObj.message
+    // 3. Normalize Actions/Action
+    let normalizedAction: any = parsedObj.action;
+    let normalizedActions: any[] = parsedObj.actions;
+
+    if (!normalizedAction && normalizedActions && normalizedActions.length > 0) {
+        normalizedAction = normalizedActions[0];
+    } else if (normalizedAction && !normalizedActions) {
+        normalizedActions = [normalizedAction];
+    }
+
+    if (!normalizedAction && !normalizedActions) {
+        FileLogger.log('PARSER', 'No Action/Actions Found - Constructing Default');
+        const content = parsedObj.message || (typeof parsedObj === 'object' ? JSON.stringify(parsedObj) : String(parsedObj));
+        normalizedAction = {
+            type: 'talk_with_user',
+            content,
+            path: ''
         };
+        normalizedActions = [normalizedAction];
     }
 
     // 4. Validate against Schema
     // We construct the final object to match our schema structure
     const result = {
-        actions: parsedObj.actions,
+        action: normalizedAction,
+        actions: normalizedActions,
         commands: parsedObj.commands || [],
         summary: parsedObj.summary || '',
         conversation_id,
         message: parsedObj.summary || 'Agent Action' // Backward compatibility
     };
 
-
-    FileLogger.log('PARSER', 'Final Result Constructed', { actionCount: result.actions.length });
+    FileLogger.log('PARSER', 'Final Result Constructed', { hasAction: !!result.action });
 
     try {
         return AgentResponseSchema.parse(result);

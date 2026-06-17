@@ -37,7 +37,7 @@ describe('BusinessAnalystAgent', () => {
         };
 
         vi.mocked(conversationManager.getConversationId).mockResolvedValue('existing-conv-id');
-        vi.mocked(mockProvider.streamChat).mockResolvedValue(expectedResponse);
+        vi.mocked(mockProvider.streamChat).mockResolvedValue(expectedResponse as any);
 
         const onChunk = vi.fn();
         const onComplete = vi.fn();

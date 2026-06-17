@@ -6,45 +6,40 @@ describe('AgentResponseParser', () => {
     it('should parse complete response with all fields', () => {
         const rawResponse = {
             summary: 'Here is your solution...',
-            actions: [
-                { type: 'create_file', path: 'test.ts', content: 'console.log("hello")' }
-            ],
+            action: { type: 'create_file', path: 'test.ts', content: 'console.log("hello")' },
             conversation_id: 'conv-abc123',
         };
 
         const result = parseAgentResponse(rawResponse);
 
         expect(result.summary).toBe('Here is your solution...');
-        expect(result.actions).toHaveLength(1);
+        expect(result.action?.type).toBe('create_file');
         expect(result.conversation_id).toBe('conv-abc123');
     });
 
     it('should parse minimal response with only required fields', () => {
         const minimalResponse = {
-            actions: [{ type: 'talk_with_user', content: 'Hello' }]
+            action: { type: 'talk_with_user', content: 'Hello' }
         };
 
         const result = parseAgentResponse(minimalResponse);
 
-        expect(result.actions).toHaveLength(1);
+        expect(result.action?.type).toBe('talk_with_user');
         expect(result.conversation_id).toBeUndefined();
     });
 
-    it('should throw ZodError on missing required field', () => {
+    it('should throw ZodError on missing action type', () => {
         const invalidResponse = {
-            summary: 'Missing actions',
-            // missing 'actions'
+            action: { path: 'test.ts' } // missing 'type'
         };
 
-        // parseAgentResponse adds default actions if missing, 
-        // but AgentResponseSchema.parse directly will fail.
         expect(() => AgentResponseSchema.parse(invalidResponse)).toThrow(ZodError);
     });
 
     it('should handle empty summary as valid', () => {
         const emptySummary = {
             summary: '',
-            actions: []
+            action: null
         };
 
         const result = parseAgentResponse(emptySummary);
@@ -52,37 +47,48 @@ describe('AgentResponseParser', () => {
     });
 
     it('should validate schema with optional summary', () => {
-        const responseWithActions = {
-            actions: [
-                { type: 'talk_with_user', content: 'Test' }
-            ],
+        const responseWithAction = {
+            action: { type: 'talk_with_user', content: 'Test' }
         };
 
-        const result = AgentResponseSchema.parse(responseWithActions);
-        expect(result.actions).toHaveLength(1);
+        const result = AgentResponseSchema.parse(responseWithAction);
+        expect(result.action?.type).toBe('talk_with_user');
     });
 
-    it('should handle complex response structure', () => {
+    it('should handle legacy actions array and map to single action', () => {
         const response = {
-            summary: 'Response with summary and actions',
+            summary: 'Response with actions array',
             actions: [
-                { type: 'talk_with_user', content: 'Step 1' },
                 { type: 'create_file', path: 'file.txt', content: 'data' }
             ]
         };
 
         const result = parseAgentResponse(response);
-        expect(result.actions).toHaveLength(2);
-        expect(result.actions[0].type).toBe('talk_with_user');
+        expect(result.action?.type).toBe('create_file');
+        expect(result.action?.path).toBe('file.txt');
     });
 
     it('should throw on invalid action type', () => {
         const invalidAction = {
-            actions: [
-                { type: 'invalid_type', content: 'Oops' }
-            ],
+            action: { type: 'invalid_type', content: 'Oops' }
         };
 
         expect(() => parseAgentResponse(invalidAction)).toThrow(ZodError);
+    });
+
+    it('should parse response with a single action', () => {
+        const raw = {
+            summary: 'Created test file',
+            action: { type: 'create_file', path: 'test.ts', content: 'console.log("hello")' }
+        };
+        const result = parseAgentResponse(raw);
+        expect(result.action?.type).toBe('create_file');
+        expect(result.action?.path).toBe('test.ts');
+    });
+
+    it('should fallback to talk_with_user action for raw text', () => {
+        const result = parseAgentResponse('Hello user');
+        expect(result.action?.type).toBe('talk_with_user');
+        expect(result.action?.content).toBe('Hello user');
     });
 });
