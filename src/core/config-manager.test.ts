@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ConfigManager } from './config-manager.js';
+import { ConfigSchema } from './config/schema.js';
 import fs from 'fs';
 import os from 'os';
 
@@ -37,6 +38,16 @@ describe('ConfigManager', () => {
     });
 
     describe('LLM Provider Configuration', () => {
+        it('should parse stackspot configuration with agentId', () => {
+            const config = ConfigSchema.parse({
+                provider: 'stackspot',
+                stackspot: {
+                    agentId: '01KEQCGJ65YENRA4QBXVN1YFFX'
+                }
+            });
+            expect(config.stackspot?.agentId).toBe('01KEQCGJ65YENRA4QBXVN1YFFX');
+        });
+
         it('should include the default provider (stackspot) and leave openai-compatible undefined', () => {
             const config = ConfigManager.getInstance().getConfig();
             expect(config.provider).toBe('stackspot');
