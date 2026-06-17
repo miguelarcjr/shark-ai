@@ -97,6 +97,63 @@ describe('AnchorStateManager', () => {
         }
     });
 
+    it('should not create duplicate anchors when inserting lines before existing ones and should preserve surrounding anchors', () => {
+        fs.writeFileSync(testFile, 'line1\nline2\nline3\nline4');
+        try {
+            const firstRead = manager.getAnchoredContent(testFile);
+            const linesBefore = firstRead.split('\n');
+            const anchor1 = linesBefore[0].split('§')[0];
+            const anchor2 = linesBefore[1].split('§')[0];
+            const anchor3 = linesBefore[2].split('§')[0];
+            const anchor4 = linesBefore[3].split('§')[0];
+
+            // Insert a new line before line2 by editing anchor2 (line2) to (new_inserted\nline2)
+            manager.applyAnchoredEdit(testFile, anchor2, anchor2, 'new_inserted\nline2');
+
+            // Verify content on disk
+            const onDisk = fs.readFileSync(testFile, 'utf8');
+            expect(onDisk).toBe('line1\nnew_inserted\nline2\nline3\nline4');
+
+            // Verify the new anchored content
+            const afterRead = manager.getAnchoredContent(testFile);
+            const linesAfter = afterRead.split('\n');
+            expect(linesAfter).toHaveLength(5);
+
+            // Anchors of unchanged lines before and after the insertion remain exactly unchanged
+            const finalAnchors = linesAfter.map(l => l.split('§')[0]);
+            const finalTexts = linesAfter.map(l => l.split('§')[1]);
+
+            expect(finalTexts[0]).toBe('line1');
+            expect(finalAnchors[0]).toBe(anchor1);
+
+            expect(finalTexts[1]).toBe('new_inserted');
+            const newAnchor = finalAnchors[1];
+
+            expect(finalTexts[2]).toBe('line2');
+            expect(finalAnchors[2]).toBe(anchor2);
+
+            expect(finalTexts[3]).toBe('line3');
+            expect(finalAnchors[3]).toBe(anchor3);
+
+            expect(finalTexts[4]).toBe('line4');
+            expect(finalAnchors[4]).toBe(anchor4);
+
+            // There are no duplicate anchors in the updated file state
+            const uniqueAnchors = new Set(finalAnchors);
+            expect(uniqueAnchors.size).toBe(5);
+
+            // Assert that the new anchor is indeed unique and not matching any existing one
+            expect(newAnchor).not.toBe(anchor1);
+            expect(newAnchor).not.toBe(anchor2);
+            expect(newAnchor).not.toBe(anchor3);
+            expect(newAnchor).not.toBe(anchor4);
+        } finally {
+            if (fs.existsSync(testFile)) {
+                fs.unlinkSync(testFile);
+            }
+        }
+    });
+
     it('should throw error if start or end anchor is not found', () => {
         fs.writeFileSync(testFile, 'line1\nline2');
         try {

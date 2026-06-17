@@ -200,11 +200,19 @@ export class AnchorStateManager {
 
         fs.writeFileSync(absolutePath, updatedLines.join('\n'), 'utf8');
 
-        const diffs = diffLines(oldLines.join('\n'), updatedLines.join('\n'));
-
-        const newLineStates: LineState[] = [];
+        // Collect all anchors in the file (unchanged prefix, suffix, and the old edit segment) to avoid duplicate allocations
         const usedAnchors = new Set<string>();
-        let oldIndex = 0;
+        for (let i = 0; i < lineStates.length; i++) {
+            usedAnchors.add(lineStates[i].anchor);
+        }
+
+        // Diff only the edited range
+        const oldEditSegment = lineStates.slice(startIndex, endIndex + 1);
+        const oldEditLines = oldEditSegment.map(ls => ls.text);
+        const diffs = diffLines(oldEditLines.join('\n'), content);
+
+        const reconciledEditStates: LineState[] = [];
+        let oldEditIndex = 0;
 
         for (const change of diffs) {
             const changeLines = change.value.split('\n');
@@ -213,27 +221,33 @@ export class AnchorStateManager {
             }
 
             if (change.removed) {
-                oldIndex += changeLines.length;
+                oldEditIndex += changeLines.length;
             } else if (change.added) {
                 for (const line of changeLines) {
                     const anchor = this.allocateAnchor(usedAnchors);
-                    newLineStates.push({ anchor, text: line });
+                    reconciledEditStates.push({ anchor, text: line });
                 }
             } else {
                 for (let i = 0; i < changeLines.length; i++) {
-                    const oldLs = lineStates[oldIndex];
+                    const oldLs = oldEditSegment[oldEditIndex];
                     if (oldLs) {
-                        newLineStates.push({ anchor: oldLs.anchor, text: oldLs.text });
+                        reconciledEditStates.push({ anchor: oldLs.anchor, text: oldLs.text });
                         usedAnchors.add(oldLs.anchor);
                     } else {
                         const anchor = this.allocateAnchor(usedAnchors);
-                        newLineStates.push({ anchor, text: changeLines[i] });
+                        reconciledEditStates.push({ anchor, text: changeLines[i] });
                     }
-                    oldIndex++;
+                    oldEditIndex++;
                 }
             }
         }
 
-        this.cache.set(absolutePath, newLineStates);
+        const finalLineStates = [
+            ...lineStates.slice(0, startIndex),
+            ...reconciledEditStates,
+            ...lineStates.slice(endIndex + 1)
+        ];
+
+        this.cache.set(absolutePath, finalLineStates);
     }
 }
