@@ -37,3 +37,23 @@ describe('TUI Wrapper', () => {
         expect(process.exit).toHaveBeenCalledWith(0);
     });
 });
+
+describe('TUI Mutex Lock', () => {
+    it('serializes concurrent acquisitions', async () => {
+        let order: number[] = [];
+        const task1 = async () => {
+            await (tui as any).acquireLock();
+            order.push(1);
+            (tui as any).releaseLock();
+        };
+        const task2 = async () => {
+            await (tui as any).acquireLock();
+            order.push(2);
+            (tui as any).releaseLock();
+        };
+
+        await Promise.all([task1(), task2()]);
+        expect(order).toEqual([1, 2]);
+    });
+});
+

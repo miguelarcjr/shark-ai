@@ -8,7 +8,41 @@ export interface TuiSpinner {
     message(msg: string): void;
 }
 
+class TuiMutex {
+    private queue: (() => void)[] = [];
+    private locked = false;
+
+    async acquireLock(): Promise<void> {
+        if (!this.locked) {
+            this.locked = true;
+            return;
+        }
+        return new Promise<void>((resolve) => {
+            this.queue.push(resolve);
+        });
+    }
+
+    releaseLock(): void {
+        if (this.queue.length > 0) {
+            const next = this.queue.shift();
+            next?.();
+        } else {
+            this.locked = false;
+        }
+    }
+}
+
+const mutex = new TuiMutex();
+
 export const tui = {
+    async acquireLock(): Promise<void> {
+        await mutex.acquireLock();
+    },
+
+    releaseLock(): void {
+        mutex.releaseLock();
+    },
+
     intro(title: string) {
         p.intro(colors.inverse(` ${title} `));
     },
@@ -30,9 +64,14 @@ export const tui = {
     },
 
     async text(opts: p.TextOptions): Promise<string> {
-        const result = await p.text(opts);
-        this.handleCancel(result);
-        return result as string;
+        await this.acquireLock();
+        try {
+            const result = await p.text(opts);
+            this.handleCancel(result);
+            return result as string;
+        } finally {
+            this.releaseLock();
+        }
     },
 
     async password(opts: p.PasswordOptions): Promise<string> {
@@ -42,9 +81,14 @@ export const tui = {
     },
 
     async confirm(opts: p.ConfirmOptions): Promise<boolean> {
-        const result = await p.confirm(opts);
-        this.handleCancel(result);
-        return result as boolean;
+        await this.acquireLock();
+        try {
+            const result = await p.confirm(opts);
+            this.handleCancel(result);
+            return result as boolean;
+        } finally {
+            this.releaseLock();
+        }
     },
 
     async select<Value>(opts: p.SelectOptions<any, Value>): Promise<Value> {
