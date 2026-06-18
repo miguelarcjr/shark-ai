@@ -1,4 +1,8 @@
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fork } from 'node:child_process';
+import { tui } from '../../ui/tui.js';
 
 interface SubagentState {
     id: string;
@@ -8,6 +12,7 @@ interface SubagentState {
     summary?: string;
     promise?: Promise<any>;
     parentId?: string;
+    childProcess?: any;
 }
 
 export interface CustomSubagentType {
@@ -21,7 +26,6 @@ export interface CustomSubagentType {
 
 export class SubagentManager {
     private subagents = new Map<string, SubagentState>();
-    private mailbox = new Map<string, string[]>(); // targetId -> messages
     private customTypes = new Map<string, CustomSubagentType>();
 
     registerSubagent(id: string, type: string, role: string, parentId?: string) {
@@ -55,16 +59,39 @@ export class SubagentManager {
     }
 
     sendMessage(recipient: string, message: string) {
-        if (!this.mailbox.has(recipient)) {
-            this.mailbox.set(recipient, []);
-        }
-        this.mailbox.get(recipient)!.push(message);
+        const mailboxDir = path.resolve(process.cwd(), '.shark', 'mailbox', recipient);
+        fs.mkdirSync(mailboxDir, { recursive: true });
+        const filePath = path.join(mailboxDir, `${Date.now()}-${crypto.randomUUID()}.json`);
+        fs.writeFileSync(filePath, JSON.stringify({ message }), 'utf-8');
     }
 
     retrieveMessages(id: string): string[] {
-        const msgs = this.mailbox.get(id) || [];
-        this.mailbox.set(id, []);
-        return msgs;
+        const mailboxDir = path.resolve(process.cwd(), '.shark', 'mailbox', id);
+        if (!fs.existsSync(mailboxDir)) {
+            return [];
+        }
+        const files = fs.readdirSync(mailboxDir);
+        // Sort files to process them in deterministic order (chronologically by filename prefix)
+        files.sort();
+        const messages: string[] = [];
+        for (const file of files) {
+            const filePath = path.join(mailboxDir, file);
+            try {
+                const content = fs.readFileSync(filePath, 'utf-8');
+                const data = JSON.parse(content);
+                if (data && typeof data.message === 'string') {
+                    messages.push(data.message);
+                }
+            } catch (e) {
+                // Ignore read/parse errors
+            }
+            try {
+                fs.unlinkSync(filePath);
+            } catch (e) {
+                // Ignore unlink errors
+            }
+        }
+        return messages;
     }
 
     defineSubagentType(
@@ -94,13 +121,23 @@ export class SubagentManager {
     }
 
     killSubagent(id: string) {
-        this.terminateSubagent(id, false);
+        const state = this.subagents.get(id);
+        if (state) {
+            if (state.childProcess) {
+                try {
+                    state.childProcess.kill('SIGTERM');
+                } catch (e) {
+                    // Ignore
+                }
+            }
+            this.terminateSubagent(id, false);
+        }
     }
 
     killAllSubagents() {
         for (const [id, state] of this.subagents.entries()) {
             if (state.status === 'running') {
-                this.terminateSubagent(id, false);
+                this.killSubagent(id);
             }
         }
     }
@@ -115,41 +152,86 @@ export class SubagentManager {
             const id = `subagent-${crypto.randomUUID()}`;
             this.registerSubagent(id, sub.TypeName, sub.Role, parentId);
 
-            // Spawn the subagent execution in the background as a Promise
+            // Spawn the subagent execution in the background as a child process
             const promise = (async () => {
                 try {
-                    // Dynamically import to avoid circular dependency at load time
-                    const { interactiveDeveloperAgent } = await import('../agents/developer-agent.js');
-                    
+                    const projectRoot = process.cwd();
+                    const pathToSharkJs = path.resolve(projectRoot, 'dist/bin/shark.js');
+
                     const customType = this.customTypes.get(sub.TypeName);
                     let customContext = `[Subagent Context] ID: ${id}, Parent ID: ${parentId}, Role: ${sub.Role}\n`;
                     if (customType) {
                         customContext += `Custom Prompt: ${customType.systemPrompt}\n`;
                     }
+                    const instruction = customContext + '\n\n' + sub.Prompt;
 
-                    const result = await interactiveDeveloperAgent({
-                        taskId: id,
-                        taskInstruction: customContext + '\n\n' + sub.Prompt,
-                        auto: true
+                    const args = ['dev', '-t', instruction, '--taskId', id, '--auto'];
+
+                    // Fork the child process silently (pipes stdout/stderr)
+                    const child = fork(pathToSharkJs, args, {
+                        cwd: projectRoot,
+                        silent: true,
+                        env: {
+                            ...process.env,
+                            SHARK_PARENT_ID: parentId,
+                            SHARK_SUBAGENT_ROLE: sub.Role
+                        }
                     });
 
-                    this.updateSubagentSummary(id, result.summary || 'Completed');
-                    this.terminateSubagent(id, result.success);
+                    // Store child process reference to allow termination (kill/kill_all)
+                    const state = this.subagents.get(id);
+                    if (state) {
+                        state.childProcess = child;
+                    }
 
-                    // Notify the parent agent of completion/failure
-                    const status = result.success ? 'COMPLETED' : 'FAILED';
-                    this.sendMessage(
-                        parentId,
-                        `[Subagent Notification] Subagent ${sub.Role} (${id}) has finished with status: ${status}. Summary: ${result.summary || 'No summary provided.'}`
-                    );
+                    // Pipe console output to a history log file for process isolation
+                    const historyDir = path.resolve(projectRoot, '_sharkrc', 'history');
+                    fs.mkdirSync(historyDir, { recursive: true });
+                    const consoleLogFile = path.join(historyDir, `subagent-${id}-console.log`);
+                    const logStream = fs.createWriteStream(consoleLogFile, { flags: 'a' });
+
+                    if (child.stdout) {
+                        child.stdout.pipe(logStream);
+                    }
+                    if (child.stderr) {
+                        child.stderr.pipe(logStream);
+                    }
+
+                    // Wait for the child process to exit
+                    const exitCode = await new Promise<number | null>(resolve => {
+                        child.on('exit', (code) => {
+                            resolve(code);
+                        });
+                    });
+
+                    logStream.end();
+
+                    const success = exitCode === 0;
+                    this.terminateSubagent(id, success);
+                    this.updateSubagentSummary(id, success ? 'Completed' : 'Failed');
+
+                    // If it failed, ensure there is a failure message in the mailbox if child didn't write it
+                    if (!success) {
+                        const fallbackMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) has finished with status: FAILED. Summary: Subagent process exited with code ${exitCode}`;
+                        const mailboxDir = path.resolve(projectRoot, '.shark', 'mailbox', parentId);
+                        const hasMessages = fs.existsSync(mailboxDir) && fs.readdirSync(mailboxDir).length > 0;
+                        if (!hasMessages) {
+                            this.sendMessage(parentId, fallbackMsg);
+                        }
+                        tui.log.error(`Subagent ${sub.Role} (${id}) failed.`);
+                    } else {
+                        tui.log.success(`Subagent ${sub.Role} (${id}) completed successfully.`);
+                    }
+
                 } catch (error) {
-                    console.error(`Subagent ${id} failed:`, error);
+                    console.error(`Subagent ${id} failed to spawn:`, error);
                     this.terminateSubagent(id, false);
                     const errorMsg = error instanceof Error ? error.message : 'Unknown error';
                     this.sendMessage(
                         parentId,
-                        `[Subagent Notification] Subagent ${sub.Role} (${id}) has finished with status: FAILED. Summary: Subagent execution failed: ${errorMsg}`
+                        `[Subagent Notification] Subagent ${sub.Role} (${id}) has finished with status: FAILED. Summary: Subagent spawn failed: ${errorMsg}`
                     );
+                    tui.log.error(`Subagent ${sub.Role} (${id}) failed to spawn.`);
                 }
             })();
 

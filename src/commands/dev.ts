@@ -9,6 +9,7 @@ export const devCommand = new Command('dev')
     .option('-y, --yes', 'Automatically approve all actions without prompting')
     .option('--auto', 'Automatically approve all actions without prompting')
     .option('--export-schema', 'Export the agent response JSON schema')
+    .option('--taskId <id>', 'ID of the current subagent task')
     .action(async (options) => {
         if (options.exportSchema) {
             console.log(JSON.stringify(AGENT_RESPONSE_JSON_SCHEMA, null, 2));
@@ -19,7 +20,8 @@ export const devCommand = new Command('dev')
             const result = await interactiveDeveloperAgent({
                 taskInstruction: options.task,
                 context: options.context,
-                auto: options.yes || options.auto
+                auto: options.yes || options.auto,
+                taskId: options.taskId
             });
             if (!result.success) {
                 console.error('Task execution failed:', result.summary);

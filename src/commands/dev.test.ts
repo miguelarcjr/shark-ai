@@ -7,6 +7,12 @@ vi.mock('../core/agents/developer-agent.js');
 describe('Dev Command (Single Agent)', () => {
     beforeEach(() => {
         vi.resetAllMocks();
+        devCommand.setOptionValue('task', undefined);
+        devCommand.setOptionValue('context', undefined);
+        devCommand.setOptionValue('yes', undefined);
+        devCommand.setOptionValue('auto', undefined);
+        devCommand.setOptionValue('exportSchema', undefined);
+        devCommand.setOptionValue('taskId', undefined);
     });
 
     it('should call interactiveDeveloperAgent with correct options (with -y)', async () => {
@@ -66,6 +72,19 @@ describe('Dev Command (Single Agent)', () => {
         expect(parsed).toHaveProperty('title', 'AgentResponse');
 
         logSpy.mockRestore();
+    });
+
+    it('should call interactiveDeveloperAgent with taskId option', async () => {
+        vi.mocked(interactiveDeveloperAgent).mockResolvedValue({
+            success: true,
+            summary: 'Task completed'
+        });
+
+        await devCommand.parseAsync(['node', 'shark', 'dev', '--taskId', 'subagent-123']);
+
+        expect(interactiveDeveloperAgent).toHaveBeenCalledWith(expect.objectContaining({
+            taskId: 'subagent-123'
+        }));
     });
 });
 

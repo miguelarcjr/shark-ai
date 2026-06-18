@@ -1,10 +1,46 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { subagentManager } from './subagent-manager.js';
 import { interactiveDeveloperAgent } from '../agents/developer-agent.js';
+import fs from 'node:fs';
+import path from 'node:path';
+import { EventEmitter } from 'node:events';
+import { Readable } from 'node:stream';
 
 vi.mock('../agents/developer-agent.js', () => ({
     interactiveDeveloperAgent: vi.fn()
 }));
+
+vi.mock('node:child_process', () => {
+    return {
+        fork: vi.fn().mockImplementation((modulePath, args, options) => {
+            const child: any = new EventEmitter();
+            child.stdout = new Readable({ read() {} });
+            child.stderr = new Readable({ read() {} });
+            
+            const parentId = options.env?.SHARK_PARENT_ID;
+            const taskId = args[args.indexOf('--taskId') + 1];
+            const role = options.env?.SHARK_SUBAGENT_ROLE;
+
+            process.nextTick(() => {
+                if (parentId && taskId) {
+                    subagentManager.sendMessage(
+                        parentId,
+                        `[Subagent Notification] Subagent ${role} (${taskId}) has finished with status: COMPLETED. Summary: Passed test checks`
+                    );
+                }
+                child.emit('exit', 0);
+            });
+            return child;
+        })
+    };
+});
+
+beforeEach(() => {
+    const mailboxDir = path.resolve(process.cwd(), '.shark', 'mailbox');
+    if (fs.existsSync(mailboxDir)) {
+        fs.rmSync(mailboxDir, { recursive: true, force: true });
+    }
+});
 
 describe('SubagentManager', () => {
     it('registers and manages subagent status', () => {
@@ -104,7 +140,27 @@ describe('SubagentManager', () => {
     });
 
     it('sends notification to parent mailbox on subagent failure', async () => {
-        vi.mocked(interactiveDeveloperAgent).mockRejectedValue(new Error('Simulated subagent failure'));
+        const { fork } = await import('node:child_process');
+        vi.mocked(fork).mockImplementationOnce((modulePath, args: any, options: any) => {
+            const child: any = new EventEmitter();
+            child.stdout = new Readable({ read() {} });
+            child.stderr = new Readable({ read() {} });
+            const parentId = options.env?.SHARK_PARENT_ID;
+            const taskId = args[args.indexOf('--taskId') + 1];
+            const role = options.env?.SHARK_SUBAGENT_ROLE;
+
+            process.nextTick(() => {
+                if (parentId && taskId) {
+                    subagentManager.sendMessage(
+                        parentId,
+                        `[Subagent Notification] Subagent ${role} (${taskId}) has finished with status: FAILED. Summary: Error: Simulated subagent failure`
+                    );
+                }
+                child.emit('exit', 1);
+            });
+            return child;
+        });
+
         const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Verify code' }];
         const parentId = 'parent-test';
 
@@ -118,5 +174,22 @@ describe('SubagentManager', () => {
         expect(parentMsgs[0]).toContain('[Subagent Notification]');
         expect(parentMsgs[0]).toContain('Tester');
         expect(parentMsgs[0]).toContain('FAILED');
+    });
+
+    it('creates files on the filesystem inside .shark/mailbox when sending messages', () => {
+        const subagentId = 'subagent-fs-test';
+        subagentManager.sendMessage(subagentId, 'Test FS Message');
+
+        const mailboxDir = path.resolve(process.cwd(), '.shark', 'mailbox', subagentId);
+        expect(fs.existsSync(mailboxDir)).toBe(true);
+        const files = fs.readdirSync(mailboxDir);
+        expect(files.length).toBe(1);
+
+        const content = fs.readFileSync(path.join(mailboxDir, files[0]), 'utf-8');
+        expect(JSON.parse(content)).toEqual({ message: 'Test FS Message' });
+
+        const retrieved = subagentManager.retrieveMessages(subagentId);
+        expect(retrieved).toEqual(['Test FS Message']);
+        expect(fs.existsSync(path.join(mailboxDir, files[0]))).toBe(false);
     });
 });

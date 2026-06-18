@@ -712,7 +712,7 @@ describe('DeveloperAgent', () => {
         expect(result).toEqual({ success: true, summary: 'Recovered successfully' });
     });
 
-    it('should block and wait for active subagents before checking mailbox', async () => {
+    it('should NOT block and wait for active subagents, allowing the loop to continue immediately', async () => {
         let subagentPromiseResolved = false;
         const subagentPromise = new Promise<void>(resolve => {
             setTimeout(() => {
@@ -740,53 +740,24 @@ describe('DeveloperAgent', () => {
         vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
             action: null,
             actions: [],
-            message: 'TASK_COMPLETED: Done with subagents',
+            message: 'TASK_COMPLETED: Done immediately',
             conversation_id: 'conv-subagent-wait-1',
         });
 
         // Run the agent with a taskInstruction so it doesn't prompt for task at start
         const result = await interactiveDeveloperAgent({
-            taskInstruction: 'Invoke and wait',
+            taskInstruction: 'Invoke and do not wait',
         });
 
-        // Verify it waited (i.e. subagentPromiseResolved is now true)
-        expect(subagentPromiseResolved).toBe(true);
+        // Verify it did NOT wait (i.e. subagentPromiseResolved is still false)
+        expect(subagentPromiseResolved).toBe(false);
 
-        // Verify that streamChat was called with the mailbox content
-        expect(mockProvider.streamChat).toHaveBeenCalledWith(
-            expect.stringContaining('✉️ NEW MAILBOX MESSAGES:\n- Subagent result message'),
-            expect.any(Object)
-        );
-
-        expect(result).toEqual({ success: true, summary: 'Done with subagents' });
+        expect(result).toEqual({ success: true, summary: 'Done immediately' });
     });
 
-    it('should truncate extremely long subagent role descriptions in spinner message and prefix', async () => {
+    it('should truncate extremely long subagent role descriptions in prefix', async () => {
         const longRole = 'Analisar o projeto atual e resumir suas principais funcionalidades com base na estrutura e nos arquivos relevantes.';
         const expectedTruncated = 'Analisar o projet...';
-
-        let subagentPromiseResolved = false;
-        const subagentPromise = new Promise<void>(resolve => {
-            setTimeout(() => {
-                subagentPromiseResolved = true;
-                resolve();
-            }, 50);
-        });
-
-        // Register a mock subagent for the parent with an extremely long role
-        vi.spyOn(subagentManager, 'getActiveSubagentsForParent').mockImplementation(() => {
-            if (!subagentPromiseResolved) {
-                return [{
-                    id: 'subagent-mock-long-1',
-                    type: 'self',
-                    role: longRole,
-                    status: 'running',
-                    promise: subagentPromise,
-                    parentId: 'parent'
-                }];
-            }
-            return [];
-        });
 
         // Mock state for subagent Prefix logging
         vi.spyOn(subagentManager, 'getSubagentState').mockReturnValue({
@@ -803,18 +774,11 @@ describe('DeveloperAgent', () => {
             conversation_id: 'conv-subagent-long-role',
         });
 
-        const mockSpinnerInstance = tui.spinner();
-
-        // Run as a subagent (taskId is defined) so we can also check the subagent prefix behavior
+        // Run as a subagent (taskId is defined) so we can check the subagent prefix behavior
         const result = await interactiveDeveloperAgent({
             taskId: 'subagent-mock-long-1',
             taskInstruction: 'Do something',
         });
-
-        // Verify the spinner was called with the truncated name
-        expect(mockSpinnerInstance.start).toHaveBeenCalledWith(
-            expect.stringContaining(`🦈 Waiting for subagent(s) [${expectedTruncated}]`)
-        );
 
         // Verify the prefix log used the truncated name (check if tui.log.success was called with truncated prefix)
         expect(tui.log.success).toHaveBeenCalledWith(

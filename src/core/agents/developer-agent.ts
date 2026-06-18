@@ -145,19 +145,6 @@ Your goal is to address the user's request:
             return { success: false, summary: 'Subagent terminated by manager.' };
         }
 
-        // Wait for any active subagents spawned by this agent to finish
-        const currentId = options.taskId || 'parent';
-        const myActiveSubagents = subagentManager.getActiveSubagentsForParent(currentId);
-        if (myActiveSubagents.length > 0) {
-            const promises = myActiveSubagents.map(s => s.promise).filter(Boolean);
-            if (promises.length > 0) {
-                const names = myActiveSubagents.map(s => formatRoleForUI(s.role)).join(', ');
-                spinner.start(`🦈 Waiting for subagent(s) [${names}]`);
-                await Promise.all(promises);
-                spinner.stop('All subagents finished');
-            }
-        }
-
         // Retrieve incoming mailbox messages for this subagent or parent
         const recipientId = options.taskId || 'parent';
         const mailboxMessages = subagentManager.retrieveMessages(recipientId);
@@ -228,6 +215,14 @@ Your goal is to address the user's request:
                 log.error(`❌ Agent reported task failure: ${failureReason}`);
                 
                 if (options.taskId) {
+                    if (process.env.SHARK_PARENT_ID) {
+                        const parentId = process.env.SHARK_PARENT_ID;
+                        const role = process.env.SHARK_SUBAGENT_ROLE || 'Subagent';
+                        subagentManager.sendMessage(
+                            parentId,
+                            `[Subagent Notification] Subagent ${role} (${options.taskId}) has finished with status: FAILED. Summary: ${failureReason}`
+                        );
+                    }
                     return { success: false, summary: failureReason };
                 }
 
@@ -537,11 +532,28 @@ Your goal is to address the user's request:
 
         } catch (e: any) {
             log.error(e.message);
+            if (options.taskId && process.env.SHARK_PARENT_ID) {
+                const parentId = process.env.SHARK_PARENT_ID;
+                const role = process.env.SHARK_SUBAGENT_ROLE || 'Subagent';
+                subagentManager.sendMessage(
+                    parentId,
+                    `[Subagent Notification] Subagent ${role} (${options.taskId}) has finished with status: FAILED. Summary: Error: ${e.message}`
+                );
+            }
             keepGoing = false;
             return { success: false, summary: `Error: ${e.message}` };
         }
     }
 
+    const finalResult = { success: true, summary: finalSummary || "Task completed without summary." };
+    if (options.taskId && process.env.SHARK_PARENT_ID) {
+        const parentId = process.env.SHARK_PARENT_ID;
+        const role = process.env.SHARK_SUBAGENT_ROLE || 'Subagent';
+        subagentManager.sendMessage(
+            parentId,
+            `[Subagent Notification] Subagent ${role} (${options.taskId}) has finished with status: COMPLETED. Summary: ${finalResult.summary}`
+        );
+    }
     log.success('✅ Task Scope Completed');
-    return { success: true, summary: finalSummary || "Task completed without summary." };
+    return finalResult;
 }
