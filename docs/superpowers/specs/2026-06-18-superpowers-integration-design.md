@@ -157,4 +157,18 @@ export const superCommandAction = async () => {
         process.exit(1);
     }
 };
+
+---
+
+## 5. Interactive Slash Command `/skills`
+
+To provide a seamless terminal experience, the Shark CLI chat loop will support the `/skills` shortcut.
+
+### Behavior
+1.  **Intercept Input**: In the interactive chat prompt, if the user inputs `/skills` exactly, the CLI intercepts the message before sending it to the LLM.
+2.  **Display Select Menu**: The CLI calls `tui.select` displaying all indexed skills and their descriptions.
+3.  **Activate & Resume**:
+    *   Once selected, the CLI calls the `SkillManager` to load the chosen skill.
+    *   The CLI prints a success confirmation: `✔ Skill '<skill_name>' activated successfully!`
+    *   The prompt opens again to allow the user to type their message, which will be processed under the newly loaded skill instructions.
 ```
