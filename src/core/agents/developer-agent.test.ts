@@ -52,6 +52,7 @@ vi.mock('../../ui/tui.js', () => {
             isCancel: vi.fn(),
             confirm: vi.fn(),
             text: vi.fn(),
+            select: vi.fn(),
         },
     };
 });
@@ -497,6 +498,52 @@ describe('DeveloperAgent', () => {
         expect(getActiveSpy).toHaveBeenCalled();
 
         expect(result).toEqual({ success: true, summary: 'Finished testing subagent actions' });
+    });
+
+    it('should support /skills interactive command and activate selection', async () => {
+        vi.mocked(tui.text)
+            .mockResolvedValueOnce('/skills')
+            .mockResolvedValueOnce('my actual task');
+
+        vi.mocked(tui.select).mockResolvedValueOnce('brainstorming');
+        vi.mocked(tui.isCancel).mockReturnValue(false);
+
+        vi.spyOn(skillManager, 'activateSkill').mockResolvedValue('Brainstorm prompt');
+
+        const expectedResponse = {
+            actions: [],
+            message: 'TASK_COMPLETED: Done task',
+            conversation_id: 'conv-id',
+        };
+        vi.mocked(mockProvider.streamChat).mockResolvedValue(expectedResponse);
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'skills-cmd-task',
+        });
+
+        expect(tui.select).toHaveBeenCalledWith({
+            message: 'Selecione a Skill do Superpowers para ativar:',
+            options: [
+                { value: 'brainstorming', label: '🧠 brainstorming' },
+                { value: 'test-driven-development', label: '🧪 test-driven-development' },
+                { value: 'systematic-debugging', label: '🔍 systematic-debugging' }
+            ]
+        });
+
+        expect(skillManager.activateSkill).toHaveBeenCalledWith('brainstorming');
+        expect(tui.log.success).toHaveBeenCalledWith(expect.stringContaining("Skill 'brainstorming' ativada com sucesso!"));
+
+        expect(tui.text).toHaveBeenNthCalledWith(2, {
+            message: 'O que você gostaria que o Shark Dev fizesse?',
+            placeholder: 'digite a instrução da tarefa...'
+        });
+
+        expect(mockProvider.streamChat).toHaveBeenCalledWith(
+            expect.stringContaining('my actual task'),
+            expect.any(Object)
+        );
+
+        expect(result).toEqual({ success: true, summary: 'Done task' });
     });
 });
 

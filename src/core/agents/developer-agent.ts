@@ -28,12 +28,31 @@ export async function interactiveDeveloperAgent(options: {
     
     let currentTask = options.taskInstruction;
     if (!currentTask) {
-        const userTask = await tui.text({
+        let userTask = await tui.text({
             message: 'O que você gostaria que o Shark Dev fizesse?',
-            placeholder: 'ex: crie uma API REST simples ou me explique como funciona a estrutura do projeto'
+            placeholder: 'ex: crie uma API REST simples ou digite /skills para ativar diretrizes'
         });
+        if (userTask === '/skills') {
+            const selectedSkill = await tui.select({
+                message: 'Selecione a Skill do Superpowers para ativar:',
+                options: [
+                    { value: 'brainstorming', label: '🧠 brainstorming' },
+                    { value: 'test-driven-development', label: '🧪 test-driven-development' },
+                    { value: 'systematic-debugging', label: '🔍 systematic-debugging' }
+                ]
+            });
+            if (!tui.isCancel(selectedSkill)) {
+                await skillManager.activateSkill(selectedSkill as string);
+                tui.log.success(`✔ Skill '${selectedSkill}' ativada com sucesso!`);
+            }
+            // Ask again
+            userTask = await tui.text({
+                message: 'O que você gostaria que o Shark Dev fizesse?',
+                placeholder: 'digite a instrução da tarefa...'
+            });
+        }
         if (tui.isCancel(userTask) || !userTask) {
-            return { success: false, summary: 'Task execution cancelled by user.' };
+            return { success: false, summary: 'Task execution cancelled.' };
         }
         currentTask = userTask as string;
     }
