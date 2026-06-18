@@ -120,4 +120,33 @@ describe('SkillManager', () => {
         skillManager.reset();
         expect(skillManager.getSystemInstructionExtension()).toBe('');
     });
+
+    describe('listAvailableSkills', () => {
+        it('returns a sorted list of skills from both global and local directories', async () => {
+            const skills = await skillManager.listAvailableSkills();
+            expect(skills).toContain('test-global');
+            expect(skills).toContain('test-local');
+            expect(skills).toContain('test-override');
+            // Verify sorted order
+            const sorted = [...skills].sort();
+            expect(skills).toEqual(sorted);
+        });
+
+        it('deduplicates skills present in both global and local directories', async () => {
+            const skills = await skillManager.listAvailableSkills();
+            const occurrences = skills.filter(s => s === 'test-override').length;
+            expect(occurrences).toBe(1);
+        });
+
+        it('returns an empty array when no skill directories exist', async () => {
+            // Point cwd and home to a directory with no skills
+            const emptyDir = path.join(tempDir, 'empty');
+            await fs.mkdir(emptyDir, { recursive: true });
+            vi.spyOn(process, 'cwd').mockReturnValue(emptyDir);
+            vi.mocked(os.homedir).mockReturnValue(emptyDir);
+
+            const skills = await skillManager.listAvailableSkills();
+            expect(skills).toEqual([]);
+        });
+    });
 });

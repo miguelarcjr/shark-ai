@@ -570,6 +570,7 @@ Modify `src/core/agents/developer-agent.ts` input prompt handler:
             });
         }
         if (tui.isCancel(userTask) || !userTask) {
+        t
             return { success: false, summary: 'Task execution cancelled.' };
         }
         currentTask = userTask as string;

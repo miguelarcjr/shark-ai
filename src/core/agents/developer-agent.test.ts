@@ -508,6 +508,7 @@ describe('DeveloperAgent', () => {
         vi.mocked(tui.select).mockResolvedValueOnce('brainstorming');
         vi.mocked(tui.isCancel).mockReturnValue(false);
 
+        vi.spyOn(skillManager, 'listAvailableSkills').mockResolvedValue(['brainstorming', 'systematic-debugging', 'test-driven-development']);
         vi.spyOn(skillManager, 'activateSkill').mockResolvedValue('Brainstorm prompt');
 
         const expectedResponse = {
@@ -521,12 +522,14 @@ describe('DeveloperAgent', () => {
             taskId: 'skills-cmd-task',
         });
 
+        expect(skillManager.listAvailableSkills).toHaveBeenCalled();
+
         expect(tui.select).toHaveBeenCalledWith({
             message: 'Selecione a Skill do Superpowers para ativar:',
             options: [
-                { value: 'brainstorming', label: '🧠 brainstorming' },
-                { value: 'test-driven-development', label: '🧪 test-driven-development' },
-                { value: 'systematic-debugging', label: '🔍 systematic-debugging' }
+                { value: 'brainstorming', label: 'brainstorming' },
+                { value: 'systematic-debugging', label: 'systematic-debugging' },
+                { value: 'test-driven-development', label: 'test-driven-development' },
             ]
         });
 

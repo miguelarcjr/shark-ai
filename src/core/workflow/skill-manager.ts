@@ -50,6 +50,37 @@ export class SkillManager {
         return extension;
     }
 
+    async listAvailableSkills(): Promise<string[]> {
+        const globalSkillsDir = path.join(os.homedir(), '.shark', 'skills');
+        const localSkillsDir = path.join(process.cwd(), '.agents', 'skills');
+
+        const skillNames = new Set<string>();
+
+        const readDir = async (dir: string) => {
+            try {
+                const entries = await fs.readdir(dir, { withFileTypes: true });
+                for (const entry of entries) {
+                    if (entry.isDirectory()) {
+                        const skillMdPath = path.join(dir, entry.name, 'SKILL.md');
+                        try {
+                            await fs.access(skillMdPath);
+                            skillNames.add(entry.name);
+                        } catch {
+                            // No SKILL.md — not a valid skill directory
+                        }
+                    }
+                }
+            } catch {
+                // Directory doesn't exist — silently skip
+            }
+        };
+
+        await readDir(globalSkillsDir);
+        await readDir(localSkillsDir);
+
+        return Array.from(skillNames).sort();
+    }
+
     reset() {
         this.activeSkills.clear();
         this.skillPrompts.clear();

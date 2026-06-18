@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import crypto from 'node:crypto';
 
 interface SubagentState {
@@ -114,8 +112,7 @@ export class SubagentManager {
 
                     const result = await interactiveDeveloperAgent({
                         taskId: id,
-                        taskInstruction: sub.Prompt,
-                        context: customContext,
+                        taskInstruction: customContext + '\n\n' + sub.Prompt,
                         auto: true
                     });
 

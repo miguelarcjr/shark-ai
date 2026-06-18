@@ -33,17 +33,19 @@ export async function interactiveDeveloperAgent(options: {
             placeholder: 'ex: crie uma API REST simples ou digite /skills para ativar diretrizes'
         });
         if (userTask === '/skills') {
-            const selectedSkill = await tui.select({
-                message: 'Selecione a Skill do Superpowers para ativar:',
-                options: [
-                    { value: 'brainstorming', label: '🧠 brainstorming' },
-                    { value: 'test-driven-development', label: '🧪 test-driven-development' },
-                    { value: 'systematic-debugging', label: '🔍 systematic-debugging' }
-                ]
-            });
-            if (!tui.isCancel(selectedSkill)) {
-                await skillManager.activateSkill(selectedSkill as string);
-                tui.log.success(`✔ Skill '${selectedSkill}' ativada com sucesso!`);
+            const availableSkills = await skillManager.listAvailableSkills();
+            const options = availableSkills.map(name => ({ value: name, label: name }));
+            if (options.length === 0) {
+                tui.log.warning('Nenhuma skill encontrada. Execute `shark super` para instalar as skills.');
+            } else {
+                const selectedSkill = await tui.select({
+                    message: 'Selecione a Skill do Superpowers para ativar:',
+                    options
+                });
+                if (!tui.isCancel(selectedSkill)) {
+                    await skillManager.activateSkill(selectedSkill as string);
+                    tui.log.success(`✔ Skill '${selectedSkill}' ativada com sucesso!`);
+                }
             }
             // Ask again
             userTask = await tui.text({
@@ -92,7 +94,6 @@ Your goal is to address the user's request:
   3. When you are confident the task is done, output a final response starting with "TASK_COMPLETED:" followed by a brief technical summary of what you did.
 `;
 
-    skillManager.reset();
     let nextPrompt = basePrompt + skillManager.getSystemInstructionExtension();
     let keepGoing = true;
     let finalSummary = "";

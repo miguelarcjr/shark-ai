@@ -92,15 +92,25 @@ export const tui = {
     },
 
     async select<Value>(opts: p.SelectOptions<any, Value>): Promise<Value> {
-        const result = await p.select(opts);
-        this.handleCancel(result);
-        return result as Value;
+        await this.acquireLock();
+        try {
+            const result = await p.select(opts);
+            this.handleCancel(result);
+            return result as Value;
+        } finally {
+            this.releaseLock();
+        }
     },
 
     async multiselect<Value>(opts: p.MultiSelectOptions<any, Value>): Promise<Value[]> {
-        const result = await p.multiselect(opts);
-        this.handleCancel(result);
-        return result as Value[];
+        await this.acquireLock();
+        try {
+            const result = await p.multiselect(opts);
+            this.handleCancel(result);
+            return result as Value[];
+        } finally {
+            this.releaseLock();
+        }
     },
 
     /**
