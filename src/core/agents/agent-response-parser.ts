@@ -7,6 +7,7 @@ export const AgentActionSchema = z.object({
         'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
         'list_structure', 'modify_ast', 'search_ast', 'run_command',
         'talk_with_user', 'use_mcp_tool',
+        'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
         'ast_list_structure',
         'ast_get_method',
         'ast_add_method', 'ast_modify_method', 'ast_remove_method',
@@ -56,6 +57,26 @@ export const AgentActionSchema = z.object({
     confirmed: z.boolean().nullable().optional(),
     start_anchor: z.string().nullable().optional(),
     end_anchor: z.string().nullable().optional(),
+
+    // Superpowers fields
+    skill_name: z.string().nullable().optional(),
+    Subagents: z.array(z.object({
+        TypeName: z.string(),
+        Role: z.string(),
+        Prompt: z.string()
+    })).nullable().optional(),
+    Recipient: z.string().nullable().optional(),
+    Message: z.string().nullable().optional(),
+    Action: z.enum(['list', 'kill', 'kill_all']).nullable().optional(),
+    ConversationIds: z.array(z.string()).nullable().optional(),
+
+    // define_subagent fields
+    name: z.string().nullable().optional(),
+    description: z.string().nullable().optional(),
+    system_prompt: z.string().nullable().optional(),
+    enable_write_tools: z.boolean().nullable().optional(),
+    enable_subagent_tools: z.boolean().nullable().optional(),
+    enable_mcp_tools: z.boolean().nullable().optional(),
 });
 
 export type AgentAction = z.infer<typeof AgentActionSchema>;
@@ -158,6 +179,19 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
     let normalizedAction: any = parsedObj.action;
     let normalizedActions: any[] = parsedObj.actions;
 
+    // Handle root-level action objects directly (fallback for less strict models)
+    if (!normalizedAction && (!normalizedActions || normalizedActions.length === 0) && parsedObj && typeof parsedObj === 'object' && typeof parsedObj.type === 'string') {
+        const validTypes = [
+            'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
+            'talk_with_user', 'use_mcp_tool', 'list_structure', 'modify_ast', 'search_ast', 'run_command',
+            'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents'
+        ];
+        if (validTypes.includes(parsedObj.type)) {
+            normalizedAction = parsedObj;
+            normalizedActions = [parsedObj];
+        }
+    }
+
     if (!normalizedAction && normalizedActions && normalizedActions.length > 0) {
         normalizedAction = normalizedActions[0];
     } else if (normalizedAction && (!normalizedActions || normalizedActions.length === 0)) {
@@ -177,10 +211,31 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
 
     // 4. Validate against Schema
     // We construct the final object to match our schema structure
+    let normalizedCommands: any[] = [];
+    if (Array.isArray(parsedObj.commands)) {
+        normalizedCommands = parsedObj.commands.map((cmd: any) => {
+            if (typeof cmd === 'string') {
+                return {
+                    command: cmd,
+                    description: `Execute ${cmd}`,
+                    critical: false
+                };
+            }
+            if (cmd && typeof cmd === 'object') {
+                return {
+                    command: cmd.command || '',
+                    description: cmd.description || `Execute ${cmd.command || ''}`,
+                    critical: cmd.critical === true
+                };
+            }
+            return null;
+        }).filter(Boolean);
+    }
+
     const result = {
         action: normalizedAction,
         actions: normalizedActions,
-        commands: parsedObj.commands || [],
+        commands: normalizedCommands,
         summary: parsedObj.summary || '',
         conversation_id,
         message: parsedObj.summary || 'Agent Action' // Backward compatibility

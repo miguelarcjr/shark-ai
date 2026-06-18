@@ -102,4 +102,99 @@ describe('AgentResponseParser', () => {
         expect(result.actions).toHaveLength(1);
         expect(result.actions[0]).toEqual(result.action);
     });
+
+    describe('Superpowers actions', () => {
+        it('parses activate_skill action correctly', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: 'activate_skill',
+                    skill_name: 'brainstorming'
+                },
+                summary: 'Activating skill'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('activate_skill');
+            expect((parsed.action as any).skill_name).toBe('brainstorming');
+        });
+
+        it('parses define_subagent action correctly', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: 'define_subagent',
+                    name: 'code_reviewer',
+                    description: 'Reviews TypeScript code',
+                    system_prompt: 'You are a reviewer...',
+                    enable_write_tools: false,
+                    enable_subagent_tools: false
+                },
+                summary: 'Defining subagent'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('define_subagent');
+            expect((parsed.action as any).name).toBe('code_reviewer');
+            expect((parsed.action as any).enable_write_tools).toBe(false);
+        });
+
+        it('parses invoke_subagent action correctly', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: 'invoke_subagent',
+                    Subagents: [
+                        {
+                            TypeName: 'self',
+                            Role: 'Code Implementer',
+                            Prompt: 'Implement the task...'
+                        }
+                    ]
+                },
+                summary: 'Invoking subagent'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('invoke_subagent');
+            expect((parsed.action as any).Subagents).toHaveLength(1);
+            expect((parsed.action as any).Subagents[0].TypeName).toBe('self');
+        });
+
+        it('parses send_message action correctly', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: 'send_message',
+                    Recipient: 'conversation-id-abc',
+                    Message: 'I have completed the code review.'
+                },
+                summary: 'Sending message'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('send_message');
+            expect((parsed.action as any).Recipient).toBe('conversation-id-abc');
+            expect((parsed.action as any).Message).toBe('I have completed the code review.');
+        });
+
+        it('parses manage_subagents action correctly', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: 'manage_subagents',
+                    Action: 'kill',
+                    ConversationIds: ['conversation-id-abc']
+                },
+                summary: 'Managing subagents'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('manage_subagents');
+            expect((parsed.action as any).Action).toBe('kill');
+            expect((parsed.action as any).ConversationIds).toEqual(['conversation-id-abc']);
+        });
+
+        it('normalizes commands arrays containing strings', () => {
+            const raw = JSON.stringify({
+                action: { type: 'talk_with_user', content: 'test' },
+                commands: ['npm run test'],
+                summary: 'Running test'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.commands).toHaveLength(1);
+            expect(parsed.commands?.[0].command).toBe('npm run test');
+            expect(parsed.commands?.[0].critical).toBe(false);
+        });
+    });
 });
