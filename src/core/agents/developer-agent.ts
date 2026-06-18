@@ -5,7 +5,8 @@ import { colors } from '../../ui/colors.js';
 import { AnchorStateManager } from '../workflow/anchor-state-manager.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { handleRunCommand } from './agent-tools.js';
+import { handleRunCommand, handleListFiles, handleSearchFile, handleSearchCode } from './agent-tools.js';
+import { skillManager } from '../workflow/skill-manager.js';
 
 const AGENT_TYPE = 'developer_agent';
 
@@ -23,7 +24,18 @@ export async function interactiveDeveloperAgent(options: {
 } = {}): Promise<DevelopmentResult> {
     const isAuto = options.auto === true || process.argv.includes('--auto');
     const projectRoot = process.cwd();
-    const currentTask = options.taskInstruction || "Analyze the project and fix pending issues.";
+    
+    let currentTask = options.taskInstruction;
+    if (!currentTask) {
+        const userTask = await tui.text({
+            message: 'O que você gostaria que o Shark Dev fizesse?',
+            placeholder: 'ex: crie uma API REST simples ou me explique como funciona a estrutura do projeto'
+        });
+        if (tui.isCancel(userTask) || !userTask) {
+            return { success: false, summary: 'Task execution cancelled by user.' };
+        }
+        currentTask = userTask as string;
+    }
 
     // Load context if available
     let contextContent = '';
@@ -52,13 +64,16 @@ export async function interactiveDeveloperAgent(options: {
 You are a highly skilled Developer Agent.
 👉 **CURRENT TASK**: "${currentTask}"
 
-Your goal is to COMPLETE this specific task and then STOP.
-1. Implement the necessary changes.
-2. Verify (compile/test).
-3. **MANDATORY**: When you are confident the task is done, output a final message starting with "TASK_COMPLETED:" followed by a brief technical summary of what you did.
+Your goal is to address the user's request:
+- If the request is a question, a request for explanation, or a discussion, answer the user using the 'talk_with_user' action. You can search the codebase or read files first to answer accurately. Once the explanation/discussion is complete, output a final response starting with "TASK_COMPLETED:" followed by a brief summary.
+- If the request is to implement changes, debug, or write code:
+  1. Implement the necessary changes.
+  2. Verify (compile/test).
+  3. When you are confident the task is done, output a final response starting with "TASK_COMPLETED:" followed by a brief technical summary of what you did.
 `;
 
-    let nextPrompt = basePrompt;
+    skillManager.reset();
+    let nextPrompt = basePrompt + skillManager.getSystemInstructionExtension();
     let keepGoing = true;
     let finalSummary = "";
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
@@ -110,7 +125,13 @@ Your goal is to COMPLETE this specific task and then STOP.
                     }
                     nextPrompt = userReply as string;
                 } else {
-                    nextPrompt = "Please continue.";
+                    tui.log.warning('No action or message returned by the agent.');
+                    const userReply = await tui.text({ message: 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:' });
+                    if (tui.isCancel(userReply)) {
+                        keepGoing = false;
+                        break;
+                    }
+                    nextPrompt = userReply as string;
                 }
                 continue;
             }
@@ -215,6 +236,51 @@ Your goal is to COMPLETE this specific task and then STOP.
                     resultMsg = `[Action run_command(${cmd}) User Denied]`;
                 }
             }
+            else if (action.type === 'list_files') {
+                const dirPath = action.path || '.';
+                tui.log.info(`📂 Scanning: ${colors.dim(dirPath)}`);
+                try {
+                    const result = handleListFiles(dirPath);
+                    resultMsg = `[Action list_files(${dirPath}) Success]:\n${result}`;
+                } catch (e: any) {
+                    resultMsg = `[Action list_files(${dirPath}) Failed]: ${e.message}`;
+                }
+            }
+            else if (action.type === 'search_file') {
+                const pattern = action.path || '';
+                tui.log.info(`🔍 Searching files: ${colors.dim(pattern)}`);
+                try {
+                    const result = handleSearchFile(pattern);
+                    resultMsg = `[Action search_file(${pattern}) Success]:\n${result}`;
+                } catch (e: any) {
+                    resultMsg = `[Action search_file(${pattern}) Failed]: ${e.message}`;
+                }
+            }
+            else if (action.type === 'search_code') {
+                const glob = action.path || 'src/**/*';
+                const query = action.query || '';
+                const isRegex = action.is_regex === true;
+                tui.log.info(`🔎 Search code: ${colors.dim(`"${query}" in ${glob}`)}`);
+                try {
+                    const result = handleSearchCode(glob, query, isRegex);
+                    resultMsg = `[Action search_code("${query}" in "${glob}") Success]:\n${result}`;
+                } catch (e: any) {
+                    resultMsg = `[Action search_code("${query}" in "${glob}") Failed]: ${e.message}`;
+                }
+            }
+            else if (action.type === 'use_mcp_tool') {
+                resultMsg = `[Action use_mcp_tool Failed]: MCP tools are not configured/available in this agent.`;
+            }
+            else if (action.type === 'activate_skill') {
+                const name = action.skill_name || '';
+                tui.log.info(`⚡ Activating skill: ${colors.bold(name)}`);
+                try {
+                    await skillManager.activateSkill(name);
+                    resultMsg = `[System]: Skill '${name}' activated successfully.`;
+                } catch (e: any) {
+                    resultMsg = `[System]: Failed to activate skill '${name}': ${e.message}`;
+                }
+            }
             else if (action.type === 'talk_with_user') {
                 tui.log.info(colors.primary('🤖 Shark Dev:'));
                 console.log(action.content);
@@ -229,7 +295,7 @@ Your goal is to COMPLETE this specific task and then STOP.
                 resultMsg = `[Unsupported action type: ${action.type}]`;
             }
 
-            nextPrompt = resultMsg;
+            nextPrompt = resultMsg + skillManager.getSystemInstructionExtension();
 
         } catch (e: any) {
             tui.log.error(e.message);
