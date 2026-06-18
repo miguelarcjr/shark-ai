@@ -712,7 +712,7 @@ describe('DeveloperAgent', () => {
         expect(result).toEqual({ success: true, summary: 'Recovered successfully' });
     });
 
-    it('should NOT block and wait for active subagents, allowing the loop to continue immediately', async () => {
+    it('should NOT block and wait for active subagents during the loop, allowing it to continue immediately', async () => {
         let subagentPromiseResolved = false;
         const subagentPromise = new Promise<void>(resolve => {
             setTimeout(() => {
@@ -737,11 +737,15 @@ describe('DeveloperAgent', () => {
             return [];
         });
 
-        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
-            action: null,
-            actions: [],
-            message: 'TASK_COMPLETED: Done immediately',
-            conversation_id: 'conv-subagent-wait-1',
+        let resolvedDuringStreamChat = false;
+        vi.mocked(mockProvider.streamChat).mockImplementation(async () => {
+            resolvedDuringStreamChat = subagentPromiseResolved;
+            return {
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: Done immediately',
+                conversation_id: 'conv-subagent-wait-1',
+            };
         });
 
         // Run the agent with a taskInstruction so it doesn't prompt for task at start
@@ -749,8 +753,8 @@ describe('DeveloperAgent', () => {
             taskInstruction: 'Invoke and do not wait',
         });
 
-        // Verify it did NOT wait (i.e. subagentPromiseResolved is still false)
-        expect(subagentPromiseResolved).toBe(false);
+        // Verify it did NOT wait during streamChat execution
+        expect(resolvedDuringStreamChat).toBe(false);
 
         expect(result).toEqual({ success: true, summary: 'Done immediately' });
     });

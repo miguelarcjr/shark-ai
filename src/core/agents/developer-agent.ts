@@ -554,6 +554,19 @@ Your goal is to address the user's request:
             `[Subagent Notification] Subagent ${role} (${options.taskId}) has finished with status: COMPLETED. Summary: ${finalResult.summary}`
         );
     }
+    // Wait for any remaining active subagents spawned by this agent to finish before returning
+    const currentId = options.taskId || 'parent';
+    const myActiveSubagents = subagentManager.getActiveSubagentsForParent(currentId);
+    if (myActiveSubagents.length > 0) {
+        const promises = myActiveSubagents.map(s => s.promise).filter(Boolean);
+        if (promises.length > 0) {
+            const names = myActiveSubagents.map(s => formatRoleForUI(s.role)).join(', ');
+            spinner.start(`🦈 Waiting for active subagent(s) [${names}] to finish...`);
+            await Promise.all(promises);
+            spinner.stop('All subagents finished');
+        }
+    }
+
     log.success('✅ Task Scope Completed');
     return finalResult;
 }

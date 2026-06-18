@@ -95,6 +95,29 @@ export class SubagentManager {
         return messages;
     }
 
+    peekMessages(id: string): string[] {
+        const mailboxDir = path.resolve(process.cwd(), '.shark', 'mailbox', id);
+        if (!fs.existsSync(mailboxDir)) {
+            return [];
+        }
+        const files = fs.readdirSync(mailboxDir);
+        files.sort();
+        const messages: string[] = [];
+        for (const file of files) {
+            const filePath = path.join(mailboxDir, file);
+            try {
+                const content = fs.readFileSync(filePath, 'utf-8');
+                const data = JSON.parse(content);
+                if (data && typeof data.message === 'string') {
+                    messages.push(data.message);
+                }
+            } catch (e) {
+                // Ignore read/parse errors
+            }
+        }
+        return messages;
+    }
+
     defineSubagentType(
         name: string,
         description: string,
@@ -244,7 +267,14 @@ export class SubagentManager {
                         }
                         tui.log.error(`Subagent ${sub.Role} (${id}) failed.`);
                     } else {
-                        tui.log.success(`Subagent ${sub.Role} (${id}) completed successfully.`);
+                        // Print the subagent notification message to the parent console immediately
+                        const parentMsgs = this.peekMessages(parentId);
+                        const subagentMsg = parentMsgs.find(m => m.includes(`(${id})`));
+                        if (subagentMsg) {
+                            tui.log.message(`\n${subagentMsg}`);
+                        } else {
+                            tui.log.success(`Subagent ${sub.Role} (${id}) completed successfully.`);
+                        }
                     }
 
                 } catch (error) {
