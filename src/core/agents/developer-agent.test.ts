@@ -711,5 +711,54 @@ describe('DeveloperAgent', () => {
         expect(mockProvider.streamChat).toHaveBeenNthCalledWith(2, expect.stringContaining('[SYSTEM ERROR] invalid json'), expect.any(Object));
         expect(result).toEqual({ success: true, summary: 'Recovered successfully' });
     });
+
+    it('should block and wait for active subagents before checking mailbox', async () => {
+        let subagentPromiseResolved = false;
+        const subagentPromise = new Promise<void>(resolve => {
+            setTimeout(() => {
+                subagentPromiseResolved = true;
+                subagentManager.sendMessage('parent', 'Subagent result message');
+                resolve();
+            }, 50);
+        });
+
+        // Register a mock subagent for the parent
+        vi.spyOn(subagentManager, 'getActiveSubagentsForParent').mockImplementation((parentId) => {
+            if (parentId === 'parent' && !subagentPromiseResolved) {
+                return [{
+                    id: 'subagent-mock-1',
+                    type: 'self',
+                    role: 'Mock subagent',
+                    status: 'running',
+                    promise: subagentPromise,
+                    parentId: 'parent'
+                }];
+            }
+            return [];
+        });
+
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: null,
+            actions: [],
+            message: 'TASK_COMPLETED: Done with subagents',
+            conversation_id: 'conv-subagent-wait-1',
+        });
+
+        // Run the agent with a taskInstruction so it doesn't prompt for task at start
+        const result = await interactiveDeveloperAgent({
+            taskInstruction: 'Invoke and wait',
+        });
+
+        // Verify it waited (i.e. subagentPromiseResolved is now true)
+        expect(subagentPromiseResolved).toBe(true);
+
+        // Verify that streamChat was called with the mailbox content
+        expect(mockProvider.streamChat).toHaveBeenCalledWith(
+            expect.stringContaining('✉️ NEW MAILBOX MESSAGES:\n- Subagent result message'),
+            expect.any(Object)
+        );
+
+        expect(result).toEqual({ success: true, summary: 'Done with subagents' });
+    });
 });
 

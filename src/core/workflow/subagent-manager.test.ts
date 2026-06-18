@@ -65,6 +65,27 @@ describe('SubagentManager', () => {
         expect(subagentManager.getActiveSubagents()).toEqual([]);
     });
 
+    it('correctly tracks and filters active subagents by parentId', () => {
+        const id1 = 'parent1-child1';
+        const id2 = 'parent1-child2';
+        const id3 = 'parent2-child1';
+        
+        subagentManager.registerSubagent(id1, 'self', 'Tester 1', 'parent1');
+        subagentManager.registerSubagent(id2, 'self', 'Tester 2', 'parent1');
+        subagentManager.registerSubagent(id3, 'self', 'Tester 3', 'parent2');
+        
+        const activeParent1 = subagentManager.getActiveSubagentsForParent('parent1');
+        expect(activeParent1.length).toBe(2);
+        expect(activeParent1.some(s => s.id === id1)).toBe(true);
+        expect(activeParent1.some(s => s.id === id2)).toBe(true);
+        expect(activeParent1.some(s => s.id === id3)).toBe(false);
+        
+        subagentManager.terminateSubagent(id1);
+        const activeParent1PostTerminate = subagentManager.getActiveSubagentsForParent('parent1');
+        expect(activeParent1PostTerminate.length).toBe(1);
+        expect(activeParent1PostTerminate[0].id).toBe(id2);
+    });
+
     it('sends notification to parent mailbox on subagent completion', async () => {
         vi.mocked(interactiveDeveloperAgent).mockResolvedValue({ success: true, summary: 'Passed test checks' });
         const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Verify code' }];

@@ -139,6 +139,19 @@ Your goal is to address the user's request:
             return { success: false, summary: 'Subagent terminated by manager.' };
         }
 
+        // Wait for any active subagents spawned by this agent to finish
+        const currentId = options.taskId || 'parent';
+        const myActiveSubagents = subagentManager.getActiveSubagentsForParent(currentId);
+        if (myActiveSubagents.length > 0) {
+            const promises = myActiveSubagents.map(s => s.promise).filter(Boolean);
+            if (promises.length > 0) {
+                const names = myActiveSubagents.map(s => s.role).join(', ');
+                spinner.start(`🦈 Waiting for active subagent(s) [${names}] to finish...`);
+                await Promise.all(promises);
+                spinner.stop('All subagents finished');
+            }
+        }
+
         // Retrieve incoming mailbox messages for this subagent or parent
         const recipientId = options.taskId || 'parent';
         const mailboxMessages = subagentManager.retrieveMessages(recipientId);

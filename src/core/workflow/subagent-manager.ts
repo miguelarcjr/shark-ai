@@ -7,6 +7,7 @@ interface SubagentState {
     status: 'running' | 'completed' | 'failed';
     summary?: string;
     promise?: Promise<any>;
+    parentId?: string;
 }
 
 export interface CustomSubagentType {
@@ -23,8 +24,8 @@ export class SubagentManager {
     private mailbox = new Map<string, string[]>(); // targetId -> messages
     private customTypes = new Map<string, CustomSubagentType>();
 
-    registerSubagent(id: string, type: string, role: string) {
-        this.subagents.set(id, { id, type, role, status: 'running' });
+    registerSubagent(id: string, type: string, role: string, parentId?: string) {
+        this.subagents.set(id, { id, type, role, status: 'running', parentId });
     }
 
     terminateSubagent(id: string, success: boolean = true) {
@@ -88,6 +89,10 @@ export class SubagentManager {
         return Array.from(this.subagents.values()).filter(s => s.status === 'running');
     }
 
+    getActiveSubagentsForParent(parentId: string): SubagentState[] {
+        return Array.from(this.subagents.values()).filter(s => s.status === 'running' && s.parentId === parentId);
+    }
+
     killSubagent(id: string) {
         this.terminateSubagent(id, false);
     }
@@ -108,7 +113,7 @@ export class SubagentManager {
 
         for (const sub of subagents) {
             const id = `subagent-${crypto.randomUUID()}`;
-            this.registerSubagent(id, sub.TypeName, sub.Role);
+            this.registerSubagent(id, sub.TypeName, sub.Role, parentId);
 
             // Spawn the subagent execution in the background as a Promise
             const promise = (async () => {
