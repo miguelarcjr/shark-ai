@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { handleRunCommand, handleListFiles, handleSearchFile, handleSearchCode } from './agent-tools.js';
 import { skillManager } from '../workflow/skill-manager.js';
+import { subagentManager } from '../workflow/subagent-manager.js';
 
 const AGENT_TYPE = 'developer_agent';
 
@@ -82,6 +83,21 @@ Your goal is to address the user's request:
     const spinner = tui.spinner();
 
     while (keepGoing) {
+        // Check if this subagent has been terminated by parent (only if it is a registered subagent)
+        if (options.taskId && subagentManager.hasSubagent(options.taskId) && !subagentManager.isSubagentActive(options.taskId)) {
+            tui.log.warning(`Subagent ${options.taskId} was terminated.`);
+            return { success: false, summary: 'Subagent terminated by manager.' };
+        }
+
+        // Retrieve incoming mailbox messages for this subagent
+        if (options.taskId) {
+            const mailboxMessages = subagentManager.retrieveMessages(options.taskId);
+            if (mailboxMessages.length > 0) {
+                const mailboxContent = `\n\n✉️ NEW MAILBOX MESSAGES:\n${mailboxMessages.map(m => `- ${m}`).join('\n')}\n`;
+                nextPrompt += mailboxContent;
+            }
+        }
+
         try {
             spinner.start('🦈 Shark Dev working...');
 
@@ -290,6 +306,53 @@ Your goal is to address the user's request:
                     break;
                 }
                 resultMsg = `User Reply: ${userReply}`;
+            }
+            else if (action.type === 'define_subagent') {
+                const name = action.name || '';
+                const desc = action.description || '';
+                const sysPrompt = action.system_prompt || '';
+                const opts = {
+                    enableWriteTools: action.enable_write_tools ?? undefined,
+                    enableSubagentTools: action.enable_subagent_tools ?? undefined,
+                    enableMcpTools: action.enable_mcp_tools ?? undefined
+                };
+                tui.log.info(`🛠️ Defining subagent type: ${colors.bold(name)}`);
+                subagentManager.defineSubagentType(name, desc, sysPrompt, opts);
+                resultMsg = `[Action define_subagent Success]: Defined subagent type '${name}'`;
+            }
+            else if (action.type === 'invoke_subagent') {
+                const subagentsToInvoke = action.Subagents || [];
+                tui.log.info(`🚀 Invoking ${subagentsToInvoke.length} subagent(s)`);
+                const parentId = options.taskId || 'parent';
+                const invoked = await subagentManager.invokeSubagents(subagentsToInvoke, parentId);
+                resultMsg = `[Action invoke_subagent Success]: Invoked subagents:\n${invoked.map(s => `- ID: ${s.id}, Type: ${s.TypeName}, Role: ${s.Role}`).join('\n')}`;
+            }
+            else if (action.type === 'send_message') {
+                const recipient = action.Recipient || '';
+                const message = action.Message || '';
+                tui.log.info(`✉️ Sending message to ${colors.bold(recipient)}`);
+                subagentManager.sendMessage(recipient, message);
+                resultMsg = `[Action send_message Success]: Message sent to '${recipient}'`;
+            }
+            else if (action.type === 'manage_subagents') {
+                const subAction = action.Action || '';
+                const ids = action.ConversationIds || [];
+                tui.log.info(`⚙️ Managing subagents. Action: ${colors.bold(subAction)}`);
+
+                if (subAction === 'list') {
+                    const active = subagentManager.getActiveSubagents();
+                    resultMsg = `[Action manage_subagents Success]: Active subagents:\n${active.map(s => `- ID: ${s.id}, Type: ${s.type}, Role: ${s.role}`).join('\n')}`;
+                } else if (subAction === 'kill') {
+                    for (const id of ids) {
+                        subagentManager.killSubagent(id);
+                    }
+                    resultMsg = `[Action manage_subagents Success]: Terminated subagents: ${ids.join(', ')}`;
+                } else if (subAction === 'kill_all') {
+                    subagentManager.killAllSubagents();
+                    resultMsg = `[Action manage_subagents Success]: Terminated all active subagents`;
+                } else {
+                    resultMsg = `[Action manage_subagents Failed]: Unknown action '${subAction}'`;
+                }
             }
             else {
                 resultMsg = `[Unsupported action type: ${action.type}]`;

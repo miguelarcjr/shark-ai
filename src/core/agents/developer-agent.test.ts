@@ -7,6 +7,7 @@ import { AnchorStateManager } from '../workflow/anchor-state-manager.js';
 import { tui } from '../../ui/tui.js';
 import { handleRunCommand, handleListFiles, handleSearchFile, handleSearchCode } from './agent-tools.js';
 import { skillManager } from '../workflow/skill-manager.js';
+import { subagentManager } from '../workflow/subagent-manager.js';
 
 
 vi.mock('./agent-tools.js', () => ({
@@ -412,6 +413,90 @@ describe('DeveloperAgent', () => {
             expect.any(Object)
         );
         expect(result).toEqual({ success: true, summary: 'Done with skill' });
+    });
+
+    it('should handle define_subagent, invoke_subagent, send_message, and manage_subagents actions', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'define_subagent',
+                    name: 'test-writer',
+                    description: 'Writes test files',
+                    system_prompt: 'You write vitest files',
+                    enable_write_tools: true,
+                },
+                actions: [],
+                message: 'Defining a test writer',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'invoke_subagent',
+                    Subagents: [{
+                        TypeName: 'test-writer',
+                        Role: 'test code author',
+                        Prompt: 'Write a unit test for subagent manager',
+                    }],
+                },
+                actions: [],
+                message: 'Invoking test writer subagent',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'send_message',
+                    Recipient: 'subagent-abc',
+                    Message: 'Please proceed with writing tests',
+                },
+                actions: [],
+                message: 'Sending message to subagent',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'manage_subagents',
+                    Action: 'list',
+                },
+                actions: [],
+                message: 'Listing active subagents',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: Finished testing subagent actions',
+                conversation_id: 'conv-123',
+            });
+
+        // Spy on subagentManager methods
+        const defineSpy = vi.spyOn(subagentManager, 'defineSubagentType');
+        const invokeSpy = vi.spyOn(subagentManager, 'invokeSubagents').mockResolvedValue([{
+            id: 'subagent-abc',
+            TypeName: 'test-writer',
+            Role: 'test code author',
+        }]);
+        const sendSpy = vi.spyOn(subagentManager, 'sendMessage');
+        const getActiveSpy = vi.spyOn(subagentManager, 'getActiveSubagents');
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-flow-task',
+            taskInstruction: 'Test subagent management flow',
+        });
+
+        expect(defineSpy).toHaveBeenCalledWith('test-writer', 'Writes test files', 'You write vitest files', {
+            enableWriteTools: true,
+            enableSubagentTools: undefined,
+            enableMcpTools: undefined,
+        });
+        expect(invokeSpy).toHaveBeenCalledWith([{
+            TypeName: 'test-writer',
+            Role: 'test code author',
+            Prompt: 'Write a unit test for subagent manager',
+        }], 'subagent-flow-task');
+        expect(sendSpy).toHaveBeenCalledWith('subagent-abc', 'Please proceed with writing tests');
+        expect(getActiveSpy).toHaveBeenCalled();
+
+        expect(result).toEqual({ success: true, summary: 'Finished testing subagent actions' });
     });
 });
 
