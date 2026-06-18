@@ -548,5 +548,60 @@ describe('DeveloperAgent', () => {
 
         expect(result).toEqual({ success: true, summary: 'Done task' });
     });
+
+    it('should stay open and prompt the user again on task completion in interactive mode', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: First part done',
+                conversation_id: 'conv-interactive-1',
+            })
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: Second part done',
+                conversation_id: 'conv-interactive-1',
+            });
+
+        // First prompt user reply is "continue conversation", second is cancel to break the loop
+        vi.mocked(tui.text)
+            .mockResolvedValueOnce('continue conversation')
+            .mockResolvedValueOnce('cancel');
+        vi.mocked(tui.isCancel)
+            .mockReturnValueOnce(false)
+            .mockReturnValueOnce(true);
+
+        const result = await interactiveDeveloperAgent({}); // run in interactive mode
+
+        // Verify the user was prompted multiple times
+        expect(tui.text).toHaveBeenCalledTimes(2);
+        expect(result).toEqual({ success: true, summary: 'First part done' });
+    });
+
+    it('should retrieve mailbox messages for parent when taskId is undefined', async () => {
+        vi.spyOn(subagentManager, 'retrieveMessages').mockReturnValue(['Hello parent']);
+
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: Done',
+                conversation_id: 'conv-123',
+            });
+
+        // We run with taskInstruction so that we don't prompt for task instruction at start
+        await interactiveDeveloperAgent({
+            taskInstruction: 'Do something',
+        });
+
+        // Verify subagentManager.retrieveMessages was called with 'parent'
+        expect(subagentManager.retrieveMessages).toHaveBeenCalledWith('parent');
+        // Verify the streamChat was called with the mailbox content
+        expect(mockProvider.streamChat).toHaveBeenCalledWith(
+            expect.stringContaining('✉️ NEW MAILBOX MESSAGES:\n- Hello parent'),
+            expect.any(Object)
+        );
+    });
 });
 

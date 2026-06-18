@@ -134,13 +134,12 @@ Your goal is to address the user's request:
             return { success: false, summary: 'Subagent terminated by manager.' };
         }
 
-        // Retrieve incoming mailbox messages for this subagent
-        if (options.taskId) {
-            const mailboxMessages = subagentManager.retrieveMessages(options.taskId);
-            if (mailboxMessages.length > 0) {
-                const mailboxContent = `\n\n✉️ NEW MAILBOX MESSAGES:\n${mailboxMessages.map(m => `- ${m}`).join('\n')}\n`;
-                nextPrompt += mailboxContent;
-            }
+        // Retrieve incoming mailbox messages for this subagent or parent
+        const recipientId = options.taskId || 'parent';
+        const mailboxMessages = subagentManager.retrieveMessages(recipientId);
+        if (mailboxMessages.length > 0) {
+            const mailboxContent = `\n\n✉️ NEW MAILBOX MESSAGES:\n${mailboxMessages.map(m => `- ${m}`).join('\n')}\n`;
+            nextPrompt += mailboxContent;
         }
 
         try {
@@ -175,17 +174,47 @@ Your goal is to address the user's request:
             // Handle completion/failure messages
             if (response.message && response.message.includes('TASK_COMPLETED:')) {
                 finalSummary = response.message.split('TASK_COMPLETED:')[1].trim();
+                log.success(`✔ Task Completed: ${finalSummary}`);
+                
                 if (options.taskId) {
                     subagentManager.updateSubagentSummary(options.taskId, finalSummary);
+                    keepGoing = false;
+                    break;
                 }
-                keepGoing = false;
-                break;
+
+                if (!options.taskInstruction) {
+                    const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
+                    if (tui.isCancel(userReply)) {
+                        keepGoing = false;
+                        break;
+                    }
+                    nextPrompt = userReply;
+                    continue;
+                } else {
+                    keepGoing = false;
+                    break;
+                }
             }
 
             if (response.message && response.message.includes('TASK_FAILED:')) {
                 const failureReason = response.message.split('TASK_FAILED:')[1].trim();
                 log.error(`❌ Agent reported task failure: ${failureReason}`);
-                return { success: false, summary: failureReason };
+                
+                if (options.taskId) {
+                    keepGoing = false;
+                    break;
+                }
+
+                if (!options.taskInstruction) {
+                    const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
+                    if (tui.isCancel(userReply)) {
+                        return { success: false, summary: failureReason };
+                    }
+                    nextPrompt = userReply;
+                    continue;
+                } else {
+                    return { success: false, summary: failureReason };
+                }
             }
 
             const action = response.action;
