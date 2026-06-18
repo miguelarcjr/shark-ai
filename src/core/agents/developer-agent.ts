@@ -41,7 +41,7 @@ async function promptUser(message: string, initialValue?: string, placeholder?: 
 }
 
 function formatRoleForUI(role: string): string {
-    const limit = 35;
+    const limit = 20;
     if (role.length <= limit) return role;
     return role.substring(0, limit - 3) + '...';
 }
@@ -152,7 +152,7 @@ Your goal is to address the user's request:
             const promises = myActiveSubagents.map(s => s.promise).filter(Boolean);
             if (promises.length > 0) {
                 const names = myActiveSubagents.map(s => formatRoleForUI(s.role)).join(', ');
-                spinner.start(`🦈 Waiting for active subagent(s) [${names}] to finish...`);
+                spinner.start(`🦈 Waiting for subagent(s) [${names}]`);
                 await Promise.all(promises);
                 spinner.stop('All subagents finished');
             }

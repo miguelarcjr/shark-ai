@@ -763,7 +763,7 @@ describe('DeveloperAgent', () => {
 
     it('should truncate extremely long subagent role descriptions in spinner message and prefix', async () => {
         const longRole = 'Analisar o projeto atual e resumir suas principais funcionalidades com base na estrutura e nos arquivos relevantes.';
-        const expectedTruncated = 'Analisar o projeto atual e resum...';
+        const expectedTruncated = 'Analisar o projet...';
 
         let subagentPromiseResolved = false;
         const subagentPromise = new Promise<void>(resolve => {
@@ -813,7 +813,7 @@ describe('DeveloperAgent', () => {
 
         // Verify the spinner was called with the truncated name
         expect(mockSpinnerInstance.start).toHaveBeenCalledWith(
-            expect.stringContaining(`🦈 Waiting for active subagent(s) [${expectedTruncated}] to finish...`)
+            expect.stringContaining(`🦈 Waiting for subagent(s) [${expectedTruncated}]`)
         );
 
         // Verify the prefix log used the truncated name (check if tui.log.success was called with truncated prefix)
