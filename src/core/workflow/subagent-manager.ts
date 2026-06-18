@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fork } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { tui } from '../../ui/tui.js';
 
 interface SubagentState {
@@ -156,7 +157,9 @@ export class SubagentManager {
             const promise = (async () => {
                 try {
                     const projectRoot = process.cwd();
-                    const pathToSharkJs = path.resolve(projectRoot, 'dist/bin/shark.js');
+                    const __filename = fileURLToPath(import.meta.url);
+                    const __dirname = path.dirname(__filename);
+                    const pathToSharkJs = path.resolve(__dirname, '..', '..', 'bin', 'shark.js');
 
                     const customType = this.customTypes.get(sub.TypeName);
                     let customContext = `[Subagent Context] ID: ${id}, Parent ID: ${parentId}, Role: ${sub.Role}\n`;
