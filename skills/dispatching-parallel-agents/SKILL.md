@@ -167,6 +167,71 @@ Agent 3 → Fix tool-approval-race-conditions.test.ts
 3. **Independence** - Agents don't interfere with each other
 4. **Speed** - 3 problems solved in time of 1
 
+## Technical Tool Invocation Guide (How to Dispatch Subagents)
+
+To dispatch and manage subagents, you must use the following JSON action structures:
+
+### 1. Defining a Subagent (Optional)
+If your subagent needs a customized system prompt or restricted tool permissions, define it first using `define_subagent`:
+```json
+{
+  "action": {
+    "type": "define_subagent",
+    "name": "my-debugger",
+    "description": "Specialized race condition debugger",
+    "system_prompt": "Your system instructions here...",
+    "enable_write_tools": true,
+    "enable_subagent_tools": false,
+    "enable_mcp_tools": false
+  },
+  "summary": "Defining specialized debugger subagent type"
+}
+```
+
+### 2. Invoking Subagents (Dispatch)
+To spawn one or more subagents in the background, use `invoke_subagent`. Pass the tasks in the `Subagents` array. 
+- Use `"TypeName": "self"` to spawn a subagent with default capabilities.
+- Use a custom name (e.g. `"TypeName": "my-debugger"`) if you defined it earlier via `define_subagent`.
+```json
+{
+  "action": {
+    "type": "invoke_subagent",
+    "Subagents": [
+      {
+        "TypeName": "self",
+        "Role": "Debugger A",
+        "Prompt": "Fix test failures in: src/agents/agent-tool-abort.test.ts. Run tests and report back."
+      },
+      {
+        "TypeName": "self",
+        "Role": "Debugger B",
+        "Prompt": "Fix test failures in: src/agents/batch-completion-behavior.test.ts. Run tests and report back."
+      }
+    ]
+  },
+  "summary": "Dispatching two parallel Debugger subagents"
+}
+```
+
+### 3. Monitoring Subagents
+To list active subagents or terminate them, use `manage_subagents`:
+- To list: `{"action": {"type": "manage_subagents", "Action": "list"}}`
+- To terminate: `{"action": {"type": "manage_subagents", "Action": "kill", "ConversationIds": ["subagent-uuid-here"]}}`
+- To terminate all: `{"action": {"type": "manage_subagents", "Action": "kill_all"}}`
+
+### 4. Sending Messages
+To send context or answer questions for a subagent, use `send_message`:
+```json
+{
+  "action": {
+    "type": "send_message",
+    "Recipient": "subagent-uuid-here",
+    "Message": "Here is the stack trace from the failed run: [paste trace]"
+  },
+  "summary": "Sending stack trace details to debugger subagent"
+}
+```
+
 ## Verification
 
 After agents return:

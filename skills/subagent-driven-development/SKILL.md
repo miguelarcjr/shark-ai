@@ -401,6 +401,66 @@ Done!
 - Dispatch fix subagent with specific instructions
 - Don't try to fix manually (context pollution)
 
+## Technical Tool Invocation Guide (How to Dispatch Subagents)
+
+To dispatch and manage subagents, you must use the following JSON action structures:
+
+### 1. Defining a Subagent (Optional)
+If your subagent needs a customized system prompt or restricted tool permissions, define it first using `define_subagent`:
+```json
+{
+  "action": {
+    "type": "define_subagent",
+    "name": "my-reviewer",
+    "description": "Specialized code quality reviewer",
+    "system_prompt": "Your system instructions here...",
+    "enable_write_tools": false,
+    "enable_subagent_tools": false,
+    "enable_mcp_tools": false
+  },
+  "summary": "Defining specialized reviewer subagent type"
+}
+```
+
+### 2. Invoking Subagents (Dispatch)
+To spawn one or more subagents in the background, use `invoke_subagent`. Pass the tasks in the `Subagents` array. 
+- Use `"TypeName": "self"` to spawn a subagent with default capabilities.
+- Use a custom name (e.g. `"TypeName": "my-reviewer"`) if you defined it earlier via `define_subagent`.
+```json
+{
+  "action": {
+    "type": "invoke_subagent",
+    "Subagents": [
+      {
+        "TypeName": "self",
+        "Role": "Implementer",
+        "Prompt": "Implement the task described in: docs/briefs/task-1-brief.md. Run tests and report back."
+      }
+    ]
+  },
+  "summary": "Dispatching Implementer subagent for Task 1"
+}
+```
+
+### 3. Monitoring Subagents
+To list active subagents or terminate them, use `manage_subagents`:
+- To list: `{"action": {"type": "manage_subagents", "Action": "list"}}`
+- To terminate: `{"action": {"type": "manage_subagents", "Action": "kill", "ConversationIds": ["subagent-uuid-here"]}}`
+- To terminate all: `{"action": {"type": "manage_subagents", "Action": "kill_all"}}`
+
+### 4. Sending Messages
+To send context or answer questions for a subagent, use `send_message`:
+```json
+{
+  "action": {
+    "type": "send_message",
+    "Recipient": "subagent-uuid-here",
+    "Message": "Use user-level configuration path."
+  },
+  "summary": "Sending path configuration context to implementer subagent"
+}
+```
+
 ## Integration
 
 **Required workflow skills:**
