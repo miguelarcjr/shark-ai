@@ -87,7 +87,7 @@ npm install -g shark-ai
 
 **Requirements:**
 - Node.js >= 20.0.0
-- StackSpot AI Account (for authentication)
+- StackSpot AI Account (for authentication). See the [StackSpot Setup Guide](docs/stackspot-setup.md) to configure credentials and agents.
 
 ---
 
