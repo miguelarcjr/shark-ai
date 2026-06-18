@@ -227,6 +227,12 @@ Your goal is to address the user's request:
             const action = response.action;
 
             if (!action) {
+                if (isSubagent) {
+                    log.warning('No action returned by the subagent. Exiting loop.');
+                    keepGoing = false;
+                    break;
+                }
+
                 if (response.message) {
                     log.info(colors.primary('🤖 Shark Dev:'));
                     console.log(response.message);
@@ -398,19 +404,23 @@ Your goal is to address the user's request:
                 if (isSystemError) {
                     log.error(`⚠️ Detectado erro na resposta do Agente (truncado ou inválido).`);
                     log.info(colors.dim(action.content || ''));
-                    let approved = isAuto;
-                    if (!approved) {
-                        approved = await tui.confirm({ message: `Enviar notificação de erro para o agente tentar se recuperar automaticamente?` });
-                    }
-                    if (approved) {
+                    if (isSubagent) {
                         resultMsg = action.content || '';
                     } else {
-                        const userReply = await promptUser('Seu prompt alternativo para o agente:', undefined, undefined, subagentPrefix);
-                        if (tui.isCancel(userReply)) {
-                            keepGoing = false;
-                            break;
+                        let approved = isAuto;
+                        if (!approved) {
+                            approved = await tui.confirm({ message: `Enviar notificação de erro para o agente tentar se recuperar automaticamente?` });
                         }
-                        resultMsg = userReply;
+                        if (approved) {
+                            resultMsg = action.content || '';
+                        } else {
+                            const userReply = await promptUser('Seu prompt alternativo para o agente:', undefined, undefined, subagentPrefix);
+                            if (tui.isCancel(userReply)) {
+                                keepGoing = false;
+                                break;
+                            }
+                            resultMsg = userReply;
+                        }
                     }
                 } else {
                     const contentStr = action.content || '';

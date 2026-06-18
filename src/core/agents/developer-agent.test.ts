@@ -658,5 +658,58 @@ describe('DeveloperAgent', () => {
         expect(tui.text).not.toHaveBeenCalled();
         expect(result).toEqual({ success: true, summary: 'Final subagent result' });
     });
+
+    it('should log warning and exit loop if subagent receives empty action (no action)', async () => {
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: null,
+            actions: [],
+            message: 'Doing something, but no action',
+            conversation_id: 'conv-sub-empty-1',
+        });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-empty-task',
+            auto: true,
+        });
+
+        // Verify tui.text was never called
+        expect(tui.text).not.toHaveBeenCalled();
+        expect(result).toEqual({ success: true, summary: 'Task completed without summary.' });
+    });
+
+    it('should auto-approve error recovery without prompting if subagent receives talk_with_user with [SYSTEM ERROR]', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'talk_with_user',
+                    content: '[SYSTEM ERROR] invalid json',
+                },
+                actions: [],
+                message: 'System error',
+                conversation_id: 'conv-sub-error-1',
+            })
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'talk_with_user',
+                    content: 'TASK_COMPLETED: Recovered successfully',
+                },
+                actions: [],
+                message: 'Talk to user completion',
+                conversation_id: 'conv-sub-error-1',
+            });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-error-task',
+            auto: true,
+        });
+
+        // Verify tui.text/confirm were never called
+        expect(tui.text).not.toHaveBeenCalled();
+        expect(tui.confirm).not.toHaveBeenCalled();
+        
+        // The second streamChat should be called with the [SYSTEM ERROR] message automatically sent back to the agent
+        expect(mockProvider.streamChat).toHaveBeenNthCalledWith(2, expect.stringContaining('[SYSTEM ERROR] invalid json'), expect.any(Object));
+        expect(result).toEqual({ success: true, summary: 'Recovered successfully' });
+    });
 });
 
