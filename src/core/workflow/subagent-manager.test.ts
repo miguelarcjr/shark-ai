@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { subagentManager } from './subagent-manager.js';
+import { interactiveDeveloperAgent } from '../agents/developer-agent.js';
+
+vi.mock('../agents/developer-agent.js', () => ({
+    interactiveDeveloperAgent: vi.fn()
+}));
 
 describe('SubagentManager', () => {
     it('registers and manages subagent status', () => {
@@ -58,5 +63,39 @@ describe('SubagentManager', () => {
         subagentManager.killAllSubagents();
         expect(subagentManager.isSubagentActive(id2)).toBe(false);
         expect(subagentManager.getActiveSubagents()).toEqual([]);
+    });
+
+    it('sends notification to parent mailbox on subagent completion', async () => {
+        vi.mocked(interactiveDeveloperAgent).mockResolvedValue({ success: true, summary: 'Passed test checks' });
+        const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Verify code' }];
+        const parentId = 'parent-test';
+
+        await subagentManager.invokeSubagents(subagents, parentId);
+        
+        // Wait briefly for the background promise to resolve
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        const parentMsgs = subagentManager.retrieveMessages(parentId);
+        expect(parentMsgs.length).toBe(1);
+        expect(parentMsgs[0]).toContain('[Subagent Notification]');
+        expect(parentMsgs[0]).toContain('Tester');
+        expect(parentMsgs[0]).toContain('Passed test checks');
+    });
+
+    it('sends notification to parent mailbox on subagent failure', async () => {
+        vi.mocked(interactiveDeveloperAgent).mockRejectedValue(new Error('Simulated subagent failure'));
+        const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Verify code' }];
+        const parentId = 'parent-test';
+
+        await subagentManager.invokeSubagents(subagents, parentId);
+        
+        // Wait briefly for the background promise to resolve
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        const parentMsgs = subagentManager.retrieveMessages(parentId);
+        expect(parentMsgs.length).toBe(1);
+        expect(parentMsgs[0]).toContain('[Subagent Notification]');
+        expect(parentMsgs[0]).toContain('Tester');
+        expect(parentMsgs[0]).toContain('FAILED');
     });
 });

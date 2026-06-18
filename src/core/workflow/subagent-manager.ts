@@ -130,9 +130,21 @@ export class SubagentManager {
 
                     this.updateSubagentSummary(id, result.summary || 'Completed');
                     this.terminateSubagent(id, result.success);
+
+                    // Notify the parent agent of completion/failure
+                    const status = result.success ? 'COMPLETED' : 'FAILED';
+                    this.sendMessage(
+                        parentId,
+                        `[Subagent Notification] Subagent ${sub.Role} (${id}) has finished with status: ${status}. Summary: ${result.summary || 'No summary provided.'}`
+                    );
                 } catch (error) {
                     console.error(`Subagent ${id} failed:`, error);
                     this.terminateSubagent(id, false);
+                    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+                    this.sendMessage(
+                        parentId,
+                        `[Subagent Notification] Subagent ${sub.Role} (${id}) has finished with status: FAILED. Summary: Subagent execution failed: ${errorMsg}`
+                    );
                 }
             })();
 
