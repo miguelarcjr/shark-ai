@@ -119,7 +119,7 @@ Your goal is to address the user's request:
   3. When you are confident the task is done, output a final response starting with "TASK_COMPLETED:" followed by a brief technical summary of what you did.
 `;
 
-    let nextPrompt = basePrompt + skillManager.getSystemInstructionExtension();
+    let nextPrompt = basePrompt;
     let keepGoing = true;
     let finalSummary = "";
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
@@ -137,10 +137,13 @@ Your goal is to address the user's request:
         // Retrieve incoming mailbox messages for this subagent or parent
         const recipientId = options.taskId || 'parent';
         const mailboxMessages = subagentManager.retrieveMessages(recipientId);
+        let currentTurnPrompt = nextPrompt;
         if (mailboxMessages.length > 0) {
-            const mailboxContent = `\n\n✉️ NEW MAILBOX MESSAGES:\n${mailboxMessages.map(m => `- ${m}`).join('\n')}\n`;
-            nextPrompt += mailboxContent;
+            currentTurnPrompt += `\n\n✉️ NEW MAILBOX MESSAGES:\n${mailboxMessages.map(m => `- ${m}`).join('\n')}\n`;
         }
+
+        // Append skill extension to this turn's prompt
+        const promptToSend = currentTurnPrompt + skillManager.getSystemInstructionExtension();
 
         try {
             const activeSubagents = subagentManager.getActiveSubagents();
@@ -152,7 +155,7 @@ Your goal is to address the user's request:
 
             const existingConversationId = await conversationManager.getConversationId(conversationKey);
             const provider = ProviderResolver.getProvider('developer_agent');
-            const response = await provider.streamChat(nextPrompt, {
+            const response = await provider.streamChat(promptToSend, {
                 conversationId: existingConversationId,
                 agentType: 'developer_agent',
                 onChunk: () => {}
@@ -467,7 +470,7 @@ Your goal is to address the user's request:
             }
 
             FileLogger.log('TOOL_EXECUTION', `Action: ${action.type}`, { action, result: resultMsg });
-            nextPrompt = resultMsg + skillManager.getSystemInstructionExtension();
+            nextPrompt = resultMsg;
 
         } catch (e: any) {
             log.error(e.message);
