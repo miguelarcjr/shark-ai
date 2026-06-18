@@ -17,20 +17,48 @@ export class StackSpotProvider implements AIProvider {
     }
 
     private getAgentId(): string {
-        if (this.agentId) {
-            return this.agentId;
+        const config = ConfigManager.getInstance().getConfig();
+        const configKeyMapping: Record<string, 'dev' | 'ba' | 'spec' | 'qa' | 'scan' | 'codeReview'> = {
+            'developer_agent': 'dev',
+            'business_analyst': 'ba',
+            'specification_agent': 'spec',
+            'qa_agent': 'qa',
+            'scan_agent': 'scan',
+            'code_review': 'codeReview'
+        };
+        const mappedKey = configKeyMapping[this.agentType];
+        if (mappedKey && config.agents?.[mappedKey]) {
+            return config.agents[mappedKey]!;
         }
 
         const envIdMapping: Record<string, string | undefined> = {
-            'business_analyst': process.env.STACKSPOT_BA_AGENT_ID || '01KEJ95G304TNNAKGH5XNEEBVD',
-            'developer_agent': process.env.STACKSPOT_DEV_AGENT_ID || '01KEQCGJ65YENRA4QBXVN1YFFX',
-            'qa_agent': process.env.STACKSPOT_QA_AGENT_ID || '01KEQFJZ3Q3JER11NH22HEZX9X',
-            'specification_agent': process.env.STACKSPOT_SPEC_AGENT_ID || '01KEPXTX37FTB4N672TZST4SGP',
-            'scan_agent': process.env.STACKSPOT_SCAN_AGENT_ID || '01KEQ9AHWB550J2244YBH3QATN',
-            'code_review': process.env.STACKSPOT_CODE_REVIEW_AGENT_ID || ''
+            'business_analyst': process.env.STACKSPOT_BA_AGENT_ID,
+            'developer_agent': process.env.STACKSPOT_DEV_AGENT_ID,
+            'qa_agent': process.env.STACKSPOT_QA_AGENT_ID,
+            'specification_agent': process.env.STACKSPOT_SPEC_AGENT_ID,
+            'scan_agent': process.env.STACKSPOT_SCAN_AGENT_ID,
+            'code_review': process.env.STACKSPOT_CODE_REVIEW_AGENT_ID
         };
 
-        const resolved = envIdMapping[this.agentType];
+        const envResolved = envIdMapping[this.agentType];
+        if (envResolved) {
+            return envResolved;
+        }
+
+        if (this.agentId && this.agentId !== '01KEQCGJ65YENRA4QBXVN1YFFX') {
+            return this.agentId;
+        }
+
+        const defaultIdMapping: Record<string, string> = {
+            'business_analyst': '01KEJ95G304TNNAKGH5XNEEBVD',
+            'developer_agent': '01KEQCGJ65YENRA4QBXVN1YFFX',
+            'qa_agent': '01KEQFJZ3Q3JER11NH22HEZX9X',
+            'specification_agent': '01KEPXTX37FTB4N672TZST4SGP',
+            'scan_agent': '01KEQ9AHWB550J2244YBH3QATN',
+            'code_review': ''
+        };
+
+        const resolved = defaultIdMapping[this.agentType];
         if (this.agentType === 'code_review') {
             if (!resolved) {
                 throw new Error("Agent ID for 'code_review' is not configured.");
