@@ -201,8 +201,7 @@ Your goal is to address the user's request:
                 log.error(`❌ Agent reported task failure: ${failureReason}`);
                 
                 if (options.taskId) {
-                    keepGoing = false;
-                    break;
+                    return { success: false, summary: failureReason };
                 }
 
                 if (!options.taskInstruction) {

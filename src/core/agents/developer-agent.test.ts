@@ -564,19 +564,53 @@ describe('DeveloperAgent', () => {
                 conversation_id: 'conv-interactive-1',
             });
 
-        // First prompt user reply is "continue conversation", second is cancel to break the loop
+        // 1st call: initial prompt, 2nd call: continue conversation, 3rd call: cancel to break the loop
         vi.mocked(tui.text)
+            .mockResolvedValueOnce('initial task')
             .mockResolvedValueOnce('continue conversation')
             .mockResolvedValueOnce('cancel');
         vi.mocked(tui.isCancel)
-            .mockReturnValueOnce(false)
-            .mockReturnValueOnce(true);
+            .mockReturnValueOnce(false) // for 'initial task'
+            .mockReturnValueOnce(false) // for 'continue conversation'
+            .mockReturnValueOnce(true);  // for 'cancel'
 
         const result = await interactiveDeveloperAgent({}); // run in interactive mode
 
         // Verify the user was prompted multiple times
-        expect(tui.text).toHaveBeenCalledTimes(2);
-        expect(result).toEqual({ success: true, summary: 'First part done' });
+        expect(tui.text).toHaveBeenCalledTimes(3);
+        expect(result).toEqual({ success: true, summary: 'Second part done' });
+    });
+
+    it('should stay open and prompt the user again on task failure in interactive mode', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_FAILED: First try failed',
+                conversation_id: 'conv-interactive-failed',
+            })
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_FAILED: Second try failed',
+                conversation_id: 'conv-interactive-failed',
+            });
+
+        // 1st call: initial prompt, 2nd call: retry instruction, 3rd call: cancel to break the loop
+        vi.mocked(tui.text)
+            .mockResolvedValueOnce('try task')
+            .mockResolvedValueOnce('retry instruction')
+            .mockResolvedValueOnce('cancel');
+        vi.mocked(tui.isCancel)
+            .mockReturnValueOnce(false) // for 'try task'
+            .mockReturnValueOnce(false) // for 'retry instruction'
+            .mockReturnValueOnce(true);  // for 'cancel'
+
+        const result = await interactiveDeveloperAgent({}); // run in interactive mode
+
+        // Verify the user was prompted multiple times
+        expect(tui.text).toHaveBeenCalledTimes(3);
+        expect(result).toEqual({ success: false, summary: 'Second try failed' });
     });
 
     it('should retrieve mailbox messages for parent when taskId is undefined', async () => {
