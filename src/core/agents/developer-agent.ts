@@ -8,6 +8,7 @@ import path from 'node:path';
 import { handleRunCommand, handleListFiles, handleSearchFile, handleSearchCode } from './agent-tools.js';
 import { skillManager } from '../workflow/skill-manager.js';
 import { subagentManager } from '../workflow/subagent-manager.js';
+import { FileLogger } from '../debug/file-logger.js';
 
 const AGENT_TYPE = 'developer_agent';
 
@@ -318,14 +319,34 @@ Your goal is to address the user's request:
                 }
             }
             else if (action.type === 'talk_with_user') {
-                tui.log.info(colors.primary('🤖 Shark Dev:'));
-                console.log(action.content);
-                const userReply = await tui.text({ message: 'Your answer:' });
-                if (tui.isCancel(userReply)) {
-                    keepGoing = false;
-                    break;
+                const isSystemError = action.content?.startsWith('[SYSTEM ERROR]');
+                if (isSystemError) {
+                    tui.log.error(`⚠️ Detectado erro na resposta do Agente (truncado ou inválido).`);
+                    tui.log.info(colors.dim(action.content || ''));
+                    let approved = isAuto;
+                    if (!approved) {
+                        approved = await tui.confirm({ message: `Enviar notificação de erro para o agente tentar se recuperar automaticamente?` });
+                    }
+                    if (approved) {
+                        resultMsg = action.content || '';
+                    } else {
+                        const userReply = await tui.text({ message: 'Seu prompt alternativo para o agente:' });
+                        if (tui.isCancel(userReply)) {
+                            keepGoing = false;
+                            break;
+                        }
+                        resultMsg = userReply as string;
+                    }
+                } else {
+                    tui.log.info(colors.primary('🤖 Shark Dev:'));
+                    console.log(action.content);
+                    const userReply = await tui.text({ message: 'Your answer:' });
+                    if (tui.isCancel(userReply)) {
+                        keepGoing = false;
+                        break;
+                    }
+                    resultMsg = `User Reply: ${userReply}`;
                 }
-                resultMsg = `User Reply: ${userReply}`;
             }
             else if (action.type === 'define_subagent') {
                 const name = action.name || '';
@@ -378,6 +399,7 @@ Your goal is to address the user's request:
                 resultMsg = `[Unsupported action type: ${action.type}]`;
             }
 
+            FileLogger.log('TOOL_EXECUTION', `Action: ${action.type}`, { action, result: resultMsg });
             nextPrompt = resultMsg + skillManager.getSystemInstructionExtension();
 
         } catch (e: any) {

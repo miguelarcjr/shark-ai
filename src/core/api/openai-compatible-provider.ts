@@ -3,6 +3,7 @@ import { AgentResponse, parseAgentResponse } from '../agents/agent-response-pars
 import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
 import { UNIFIED_SYSTEM_PROMPT } from './prompts.js';
 import crypto from 'node:crypto';
+import { FileLogger } from '../debug/file-logger.js';
 
 interface OpenAIConfig {
     baseURL: string;
@@ -95,6 +96,16 @@ export class OpenAICompatibleProvider implements AIProvider {
             headers['Authorization'] = `Bearer ${this.options.apiKey}`;
         }
 
+        const sanitizedHeaders = { ...headers };
+        if (sanitizedHeaders['Authorization']) {
+            sanitizedHeaders['Authorization'] = 'Bearer ***';
+        }
+        FileLogger.log('PROVIDER_REQUEST', 'Request payload sent to OpenAI Compatible API', {
+            baseURL: this.options.baseURL,
+            headers: sanitizedHeaders,
+            payload: requestPayload
+        });
+
         const res = await fetch(`${this.options.baseURL}/chat/completions`, {
             method: 'POST',
             headers,
@@ -174,6 +185,7 @@ export class OpenAICompatibleProvider implements AIProvider {
                 }
             }
 
+            FileLogger.log('PROVIDER_RESPONSE', 'Raw response from OpenAI Compatible API', { fullContent });
             const parsedResponse = parseAgentResponse(fullContent);
             parsedResponse.conversation_id = conversationId;
 

@@ -18,6 +18,20 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 **Save plans to:** `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
 - (User preferences for plan location override this default)
 
+## Incremental Writing for Large Plans
+
+If the plan document is expected to be large (exceeding 20,000 characters or containing more than 3-4 tasks with detailed code blocks), you **MUST NOT** write the entire document in a single `create_file` action. This will exceed output token limits and cause JSON truncation.
+
+Instead, you MUST follow this incremental workflow:
+1. **Create the Skeleton**: First, use `create_file` to write the plan containing only the Header, Goal, Architecture, Tech Stack, Global Constraints, and a placeholder for the tasks structure (e.g., empty tasks with headings `### Task 1: [Name]`).
+2. **Fill in Details (Strictly One Task Per Turn with Scratch Files)**: In subsequent turns, use `modify_file` with the anchor system to populate the exact files, interfaces, and steps for **exactly ONE task per tool call / turn**.
+   Para cada tarefa, você deve dividir o detalhamento do código assim:
+   * **Código de Teste:** O bloco de código do teste falho (`failing test`) DEVE ser escrito diretamente no arquivo do plano.
+   * **Código de Implementação:** Para evitar estouro de tokens, você **NÃO DEVE** colocar o código de implementação completo no plano. Em vez disso:
+     1. Crie um arquivo contendo a implementação de referência na pasta de rascunhos em `docs/superpowers/scratch/task-N-impl.<ext>` (onde `N` é o número da tarefa e `<ext>` é a extensão do arquivo).
+     2. No arquivo do plano, na etapa de implementação (Step 3), escreva apenas uma referência/link para o rascunho, por exemplo: `Consulte o código de implementação de referência em [docs/superpowers/scratch/task-N-impl.ts](file:///path/to/project/docs/superpowers/scratch/task-N-impl.ts)`.
+   Você está terminantemente proibido de detalhar múltiplas tarefas em um único turno.
+
 ## Scope Check
 
 If the spec covers multiple independent subsystems, it should have been broken into sub-project specs during brainstorming. If it wasn't, suggest breaking this into separate plans — one per subsystem. Each plan should produce working, testable software on its own.

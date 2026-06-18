@@ -6,6 +6,7 @@ import { tokenStorage } from '../auth/token-storage.js';
 import { getActiveRealm } from '../auth/get-active-realm.js';
 import { ConfigManager } from '../config-manager.js';
 import { UNIFIED_SYSTEM_PROMPT } from './prompts.js';
+import { FileLogger } from '../debug/file-logger.js';
 
 export class StackSpotProvider implements AIProvider {
     public agentId?: string;
@@ -93,6 +94,17 @@ export class StackSpotProvider implements AIProvider {
             'Content-Type': 'application/json',
         };
 
+        const sanitizedHeaders = { ...headers };
+        if (sanitizedHeaders['Authorization']) {
+            sanitizedHeaders['Authorization'] = 'Bearer ***';
+        }
+        FileLogger.log('PROVIDER_REQUEST', 'Request payload sent to StackSpot API', {
+            agentId: effectiveAgentId,
+            url: agentUrl,
+            headers: sanitizedHeaders,
+            payload: requestPayload
+        });
+
         let fullMessage = '';
         let rawResponse: any = {};
 
@@ -119,6 +131,7 @@ export class StackSpotProvider implements AIProvider {
             }
         );
 
+        FileLogger.log('PROVIDER_RESPONSE', 'Raw response from StackSpot API', { rawResponse });
         const parsedResponse = parseAgentResponse(rawResponse);
         if (options.onComplete) {
             options.onComplete(parsedResponse);

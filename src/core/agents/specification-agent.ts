@@ -196,12 +196,30 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                 let executionResults = "";
                 let waitingForUser = false;
                 let specUpdated = false;
+                let hasSystemError = false;
+                let systemErrorContent = "";
 
                 for (const action of lastResponse.actions) {
                     if (action.type === 'talk_with_user') {
-                        tui.log.info(colors.primary('🤖 Architect:'));
-                        console.log(action.content);
-                        waitingForUser = true;
+                        const isSystemError = action.content?.startsWith('[SYSTEM ERROR]');
+                        if (isSystemError) {
+                            tui.log.error(`⚠️ Detectado erro na resposta do Agente (truncado ou inválido).`);
+                            tui.log.info(colors.dim(action.content || ''));
+                            const approved = await tui.confirm({ message: `Enviar notificação de erro para o agente tentar se recuperar automaticamente?` });
+                            if (approved) {
+                                hasSystemError = true;
+                                systemErrorContent = action.content || '';
+                            } else {
+                                const userReply = await tui.text({ message: 'Seu prompt alternativo para o agente:' });
+                                if (tui.isCancel(userReply)) { keepGoing = false; return; }
+                                hasSystemError = true;
+                                systemErrorContent = userReply as string;
+                            }
+                        } else {
+                            tui.log.info(colors.primary('🤖 Architect:'));
+                            console.log(action.content);
+                            waitingForUser = true;
+                        }
                     }
 
                     else if (action.type === 'list_files') {
@@ -320,9 +338,16 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                 }
 
                 // Prepare Next Prompt
-                if (waitingForUser) {
+                if (executionResults) {
+                    FileLogger.log('TOOL_EXECUTION', 'Specification Agent Actions Output', { executionResults });
+                }
+
+                if (hasSystemError) {
+                    nextPrompt = systemErrorContent;
+                } else if (waitingForUser) {
                     const userReply = await tui.text({ message: 'Your answer', placeholder: 'Type your answer...' });
                     if (tui.isCancel(userReply)) { keepGoing = false; return; }
+                    FileLogger.log('USER_INPUT', 'User response to specification agent', { userReply });
                     nextPrompt = `${executionResults}\n\nUser Reply: ${userReply}`;
                 } else if (executionResults) {
                     const content = fs.existsSync(targetPath) ? fs.readFileSync(targetPath, 'utf-8') : '';
@@ -346,6 +371,7 @@ async function runSpecLoop(initialMessage: string, targetPath: string, overrideA
                         console.log(lastResponse.message);
                         const userReply = await tui.text({ message: 'Your answer:' });
                         if (tui.isCancel(userReply)) { keepGoing = false; break; }
+                        FileLogger.log('USER_INPUT', 'User response to specification agent (Message only)', { userReply });
                         nextPrompt = userReply as string;
                     } else {
                         keepGoing = false;

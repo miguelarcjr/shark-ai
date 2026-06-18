@@ -32,7 +32,7 @@ describe('superCommand', () => {
 
     it('is registered as a Commander Command with correct name and description', () => {
         expect(superCommand.name()).toBe('super');
-        expect(superCommand.description()).toBe('Install Superpowers skills globally');
+        expect(superCommand.description()).toBe('Install Superpowers skills globally or locally');
     });
 
     it('copies the internal skills to the global home directory', async () => {
@@ -51,6 +51,26 @@ describe('superCommand', () => {
         const content = await fs.readFile(targetPath, 'utf-8');
         expect(content).toContain('name: brainstorming');
 
+        consoleLogSpy.mockRestore();
+    });
+
+    it('copies the internal skills to the local project directory when local option is true', async () => {
+        const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+        const mockCwd = path.join(tempDir, 'project');
+        await fs.mkdir(mockCwd, { recursive: true });
+        const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(mockCwd);
+
+        await superCommandAction({ local: true });
+
+        expect(consoleLogSpy).toHaveBeenCalledWith(
+            expect.stringContaining('Superpowers skills installed successfully')
+        );
+
+        // Verify that local skills directory was created and contains brainstorming skill
+        const targetPath = path.join(mockCwd, '.agents', 'skills', 'brainstorming', 'SKILL.md');
+        await expect(fs.access(targetPath)).resolves.not.toThrow();
+
+        cwdSpy.mockRestore();
         consoleLogSpy.mockRestore();
     });
 });

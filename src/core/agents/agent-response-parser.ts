@@ -118,19 +118,45 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
             parsedObj = extractFirstJson(rawResponse);
         } catch (e) {
             FileLogger.log('PARSER', 'String Parse Failed', { error: (e as Error).message });
-            // Fallback: treat as simple message if not valid JSON
+            const errMsg = (e as Error).message;
+            const cleanRaw = rawResponse.trim();
+            const looksLikeJson = cleanRaw.startsWith('{') || cleanRaw.startsWith('[');
+            
+            if (!looksLikeJson) {
+                // Fallback: treat as simple message if not valid JSON and not trying to be JSON
+                return {
+                    action: {
+                        type: 'talk_with_user',
+                        content: rawResponse,
+                        path: ''
+                    },
+                    actions: [{
+                        type: 'talk_with_user',
+                        content: rawResponse,
+                        path: ''
+                    }],
+                    message: rawResponse
+                };
+            }
+
+            const isTruncated = errMsg.includes('Unterminated string') || errMsg.includes('Unexpected end of JSON input');
+            const charCount = rawResponse.length;
+            const safeLimit = Math.floor(charCount * 0.9);
+            const systemMsg = isTruncated
+                ? `[SYSTEM ERROR]: Sua resposta anterior foi cortada/truncada antes do final devido ao limite máximo de tokens de saída (output token limit) após atingir ${charCount} caracteres. O JSON ficou incompleto: ${errMsg}. Por favor, envie uma nova resposta com formato JSON completo e válido (não tente apenas completar o JSON anterior). Continue o trabalho lógico da tarefa de forma mais curta ou incremental (ex: criando apenas o esqueleto/estrutura básica ou escrevendo uma parte menor do arquivo de cada vez). Garanta que o tamanho total desta nova resposta JSON seja menor que ${safeLimit} caracteres para evitar novos cortes.`
+                : `[SYSTEM ERROR]: Falha ao parsear o JSON de resposta: ${errMsg}.`;
             return {
                 action: {
                     type: 'talk_with_user',
-                    content: rawResponse,
+                    content: systemMsg,
                     path: ''
                 },
                 actions: [{
                     type: 'talk_with_user',
-                    content: rawResponse,
+                    content: systemMsg,
                     path: ''
                 }],
-                message: rawResponse
+                message: systemMsg
             };
         }
     }
@@ -161,9 +187,34 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
                     FileLogger.log('PARSER', 'Inner JSON was primitive');
                 }
             } catch (e) {
-                // Not JSON, continue with rawResponse
-                parsedObj = rawResponse;
-                FileLogger.log('PARSER', 'Inner JSON Parse Error - treating as raw', { error: (e as Error).message });
+                FileLogger.log('PARSER', 'Inner JSON Parse Error', { error: (e as Error).message });
+                const errMsg = (e as Error).message;
+                const cleanContent = stringContent.trim();
+                const looksLikeJson = cleanContent.startsWith('{') || cleanContent.startsWith('[');
+                
+                if (looksLikeJson) {
+                    const isTruncated = errMsg.includes('Unterminated string') || errMsg.includes('Unexpected end of JSON input');
+                    const charCount = stringContent.length;
+                    const safeLimit = Math.floor(charCount * 0.9);
+                    const systemMsg = isTruncated
+                        ? `[SYSTEM ERROR]: Sua resposta anterior foi cortada/truncada antes do final devido ao limite máximo de tokens de saída (output token limit) após atingir ${charCount} caracteres. O JSON ficou incompleto: ${errMsg}. Por favor, envie uma nova resposta com formato JSON completo e válido (não tente apenas completar o JSON anterior). Continue o trabalho lógico da tarefa de forma mais curta ou incremental (ex: criando apenas o esqueleto/estrutura básica ou escrevendo uma parte menor do arquivo de cada vez). Garanta que o tamanho total desta nova resposta JSON seja menor que ${safeLimit} caracteres para evitar novos cortes.`
+                        : `[SYSTEM ERROR]: Falha ao parsear o JSON de resposta: ${errMsg}.`;
+                    parsedObj = {
+                        action: {
+                            type: 'talk_with_user',
+                            content: systemMsg,
+                            path: ''
+                        },
+                        actions: [{
+                            type: 'talk_with_user',
+                            content: systemMsg,
+                            path: ''
+                        }],
+                        summary: 'Parsing failed due to truncated JSON response'
+                    };
+                } else {
+                    parsedObj = rawResponse;
+                }
             }
         } else {
             parsedObj = rawResponse;
