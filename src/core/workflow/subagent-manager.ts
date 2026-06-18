@@ -159,7 +159,28 @@ export class SubagentManager {
                     const projectRoot = process.cwd();
                     const __filename = fileURLToPath(import.meta.url);
                     const __dirname = path.dirname(__filename);
-                    const pathToSharkJs = path.resolve(__dirname, '..', '..', 'bin', 'shark.js');
+
+                    // Find the package root of shark-ai containing package.json with name "shark-ai"
+                    let packageRoot = __dirname;
+                    while (true) {
+                        const pkgPath = path.join(packageRoot, 'package.json');
+                        if (fs.existsSync(pkgPath)) {
+                            try {
+                                const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
+                                if (pkg && pkg.name === 'shark-ai') {
+                                    break;
+                                }
+                            } catch (e) {
+                                // Ignore
+                            }
+                        }
+                        const parent = path.dirname(packageRoot);
+                        if (parent === packageRoot) {
+                            break;
+                        }
+                        packageRoot = parent;
+                    }
+                    const pathToSharkJs = path.resolve(packageRoot, 'dist', 'bin', 'shark.js');
 
                     const customType = this.customTypes.get(sub.TypeName);
                     let customContext = `[Subagent Context] ID: ${id}, Parent ID: ${parentId}, Role: ${sub.Role}\n`;
