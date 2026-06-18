@@ -760,5 +760,68 @@ describe('DeveloperAgent', () => {
 
         expect(result).toEqual({ success: true, summary: 'Done with subagents' });
     });
+
+    it('should truncate extremely long subagent role descriptions in spinner message and prefix', async () => {
+        const longRole = 'Analisar o projeto atual e resumir suas principais funcionalidades com base na estrutura e nos arquivos relevantes.';
+        const expectedTruncated = 'Analisar o projeto atual e resum...';
+
+        let subagentPromiseResolved = false;
+        const subagentPromise = new Promise<void>(resolve => {
+            setTimeout(() => {
+                subagentPromiseResolved = true;
+                resolve();
+            }, 50);
+        });
+
+        // Register a mock subagent for the parent with an extremely long role
+        vi.spyOn(subagentManager, 'getActiveSubagentsForParent').mockImplementation(() => {
+            if (!subagentPromiseResolved) {
+                return [{
+                    id: 'subagent-mock-long-1',
+                    type: 'self',
+                    role: longRole,
+                    status: 'running',
+                    promise: subagentPromise,
+                    parentId: 'parent'
+                }];
+            }
+            return [];
+        });
+
+        // Mock state for subagent Prefix logging
+        vi.spyOn(subagentManager, 'getSubagentState').mockReturnValue({
+            id: 'subagent-mock-long-1',
+            type: 'self',
+            role: longRole,
+            status: 'running'
+        });
+
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: null,
+            actions: [],
+            message: 'TASK_COMPLETED: Done with long roles',
+            conversation_id: 'conv-subagent-long-role',
+        });
+
+        const mockSpinnerInstance = tui.spinner();
+
+        // Run as a subagent (taskId is defined) so we can also check the subagent prefix behavior
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-mock-long-1',
+            taskInstruction: 'Do something',
+        });
+
+        // Verify the spinner was called with the truncated name
+        expect(mockSpinnerInstance.start).toHaveBeenCalledWith(
+            expect.stringContaining(`🦈 Waiting for active subagent(s) [${expectedTruncated}] to finish...`)
+        );
+
+        // Verify the prefix log used the truncated name (check if tui.log.success was called with truncated prefix)
+        expect(tui.log.success).toHaveBeenCalledWith(
+            expect.stringContaining(`[Subagent: ${expectedTruncated}]`)
+        );
+
+        expect(result).toEqual({ success: true, summary: 'Done with long roles' });
+    });
 });
 

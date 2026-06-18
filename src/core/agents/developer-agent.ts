@@ -40,6 +40,12 @@ async function promptUser(message: string, initialValue?: string, placeholder?: 
     return userReply as string;
 }
 
+function formatRoleForUI(role: string): string {
+    const limit = 35;
+    if (role.length <= limit) return role;
+    return role.substring(0, limit - 3) + '...';
+}
+
 export interface DevelopmentResult {
     success: boolean;
     summary: string;
@@ -77,7 +83,7 @@ export async function interactiveDeveloperAgent(options: {
     if (options.taskId) {
         const subState = subagentManager.getSubagentState(options.taskId);
         if (subState) {
-            subagentPrefix = `[Subagent: ${subState.role}] `;
+            subagentPrefix = `[Subagent: ${formatRoleForUI(subState.role)}] `;
         }
     }
 
@@ -145,7 +151,7 @@ Your goal is to address the user's request:
         if (myActiveSubagents.length > 0) {
             const promises = myActiveSubagents.map(s => s.promise).filter(Boolean);
             if (promises.length > 0) {
-                const names = myActiveSubagents.map(s => s.role).join(', ');
+                const names = myActiveSubagents.map(s => formatRoleForUI(s.role)).join(', ');
                 spinner.start(`🦈 Waiting for active subagent(s) [${names}] to finish...`);
                 await Promise.all(promises);
                 spinner.stop('All subagents finished');
