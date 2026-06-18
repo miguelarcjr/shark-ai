@@ -637,5 +637,26 @@ describe('DeveloperAgent', () => {
             expect.any(Object)
         );
     });
+
+    it('should complete and return summary without prompting if subagent receives talk_with_user', async () => {
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: {
+                type: 'talk_with_user',
+                content: 'TASK_COMPLETED: Final subagent result',
+            },
+            actions: [],
+            message: 'Talk to user',
+            conversation_id: 'conv-sub-talk-1',
+        });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-talk-task',
+            auto: true,
+        });
+
+        // Verify promptUser/tui.text was never called
+        expect(tui.text).not.toHaveBeenCalled();
+        expect(result).toEqual({ success: true, summary: 'Final subagent result' });
+    });
 });
 

@@ -53,19 +53,24 @@ export async function interactiveDeveloperAgent(options: {
     auto?: boolean
 } = {}): Promise<DevelopmentResult> {
     const isAuto = options.auto === true || process.argv.includes('--auto');
+    const isSubagent = !!options.taskId && (options.taskId.startsWith('subagent-') || subagentManager.hasSubagent(options.taskId));
     const projectRoot = process.cwd();
     
     let currentTask = options.taskInstruction;
     if (!currentTask) {
-        const userTask = await promptUser(
-            'O que você gostaria que o Shark Dev fizesse?',
-            undefined,
-            'ex: crie uma API REST simples ou digite /skills para ativar diretrizes'
-        );
-        if (tui.isCancel(userTask) || !userTask) {
-            return { success: false, summary: 'Task execution cancelled.' };
+        if (isSubagent) {
+            currentTask = 'Subagent Task';
+        } else {
+            const userTask = await promptUser(
+                'O que você gostaria que o Shark Dev fizesse?',
+                undefined,
+                'ex: crie uma API REST simples ou digite /skills para ativar diretrizes'
+            );
+            if (tui.isCancel(userTask) || !userTask) {
+                return { success: false, summary: 'Task execution cancelled.' };
+            }
+            currentTask = userTask;
         }
-        currentTask = userTask;
     }
 
     let subagentPrefix = '';
@@ -408,8 +413,37 @@ Your goal is to address the user's request:
                         resultMsg = userReply;
                     }
                 } else {
+                    const contentStr = action.content || '';
+                    const hasCompleted = contentStr.includes('TASK_COMPLETED:');
+                    
+                    if (isSubagent) {
+                        // Subagents cannot prompt the user. Treat talk_with_user as completion
+                        const summary = hasCompleted ? contentStr.split('TASK_COMPLETED:')[1].trim() : contentStr;
+                        subagentManager.updateSubagentSummary(options.taskId!, summary);
+                        finalSummary = summary;
+                        keepGoing = false;
+                        break;
+                    }
+
+                    if (hasCompleted) {
+                        finalSummary = contentStr.split('TASK_COMPLETED:')[1].trim();
+                        log.success(`✔ Task Completed: ${finalSummary}`);
+                        if (!options.taskInstruction) {
+                            const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
+                            if (tui.isCancel(userReply)) {
+                                keepGoing = false;
+                                break;
+                            }
+                            nextPrompt = userReply;
+                            continue;
+                        } else {
+                            keepGoing = false;
+                            break;
+                        }
+                    }
+
                     log.info(colors.primary('🤖 Shark Dev:'));
-                    console.log(action.content);
+                    console.log(contentStr);
                     const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
                     if (tui.isCancel(userReply)) {
                         keepGoing = false;
