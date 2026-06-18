@@ -18,6 +18,9 @@ export class SkillManager {
             return `Skill ${skillName} is already active.`;
         }
 
+        // Reset previous active skills to avoid collision/token waste
+        this.reset();
+
         const globalPath = path.join(os.homedir(), '.shark', 'skills', skillName, 'SKILL.md');
         const localPath = path.join(process.cwd(), '.agents', 'skills', skillName, 'SKILL.md');
 

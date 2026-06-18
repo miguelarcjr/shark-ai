@@ -12,6 +12,34 @@ import { FileLogger } from '../debug/file-logger.js';
 
 const AGENT_TYPE = 'developer_agent';
 
+async function promptUser(message: string, initialValue?: string, placeholder?: string, prefix: string = ''): Promise<string> {
+    let userReply = await tui.text({ message: `${prefix}${message}`, initialValue, placeholder });
+    
+    while (userReply === '/skills') {
+        const availableSkills = await skillManager.listAvailableSkills();
+        const options = availableSkills.map(name => ({ value: name, label: name }));
+        if (options.length === 0) {
+            tui.log.warning('Nenhuma skill encontrada. Execute `shark super` para instalar as skills.');
+        } else {
+            const selectedSkill = await tui.select({
+                message: 'Selecione a Skill do Superpowers para ativar:',
+                options
+            });
+            if (!tui.isCancel(selectedSkill)) {
+                await skillManager.activateSkill(selectedSkill as string);
+                tui.log.success(`✔ Skill '${selectedSkill}' ativada com sucesso!`);
+            }
+        }
+        userReply = await tui.text({ 
+            message: `${prefix}${message}`, 
+            initialValue, 
+            placeholder: 'digite a instrução da tarefa...' 
+        });
+    }
+    
+    return userReply as string;
+}
+
 export interface DevelopmentResult {
     success: boolean;
     summary: string;
@@ -29,36 +57,32 @@ export async function interactiveDeveloperAgent(options: {
     
     let currentTask = options.taskInstruction;
     if (!currentTask) {
-        let userTask = await tui.text({
-            message: 'O que você gostaria que o Shark Dev fizesse?',
-            placeholder: 'ex: crie uma API REST simples ou digite /skills para ativar diretrizes'
-        });
-        if (userTask === '/skills') {
-            const availableSkills = await skillManager.listAvailableSkills();
-            const options = availableSkills.map(name => ({ value: name, label: name }));
-            if (options.length === 0) {
-                tui.log.warning('Nenhuma skill encontrada. Execute `shark super` para instalar as skills.');
-            } else {
-                const selectedSkill = await tui.select({
-                    message: 'Selecione a Skill do Superpowers para ativar:',
-                    options
-                });
-                if (!tui.isCancel(selectedSkill)) {
-                    await skillManager.activateSkill(selectedSkill as string);
-                    tui.log.success(`✔ Skill '${selectedSkill}' ativada com sucesso!`);
-                }
-            }
-            // Ask again
-            userTask = await tui.text({
-                message: 'O que você gostaria que o Shark Dev fizesse?',
-                placeholder: 'digite a instrução da tarefa...'
-            });
-        }
+        const userTask = await promptUser(
+            'O que você gostaria que o Shark Dev fizesse?',
+            undefined,
+            'ex: crie uma API REST simples ou digite /skills para ativar diretrizes'
+        );
         if (tui.isCancel(userTask) || !userTask) {
             return { success: false, summary: 'Task execution cancelled.' };
         }
-        currentTask = userTask as string;
+        currentTask = userTask;
     }
+
+    let subagentPrefix = '';
+    if (options.taskId) {
+        const subState = subagentManager.getSubagentState(options.taskId);
+        if (subState) {
+            subagentPrefix = `[Subagent: ${subState.role}] `;
+        }
+    }
+
+    const log = {
+        info: (msg: string) => tui.log.info(`${subagentPrefix}${msg}`),
+        warning: (msg: string) => tui.log.warning(`${subagentPrefix}${msg}`),
+        error: (msg: string) => tui.log.error(`${subagentPrefix}${msg}`),
+        success: (msg: string) => tui.log.success(`${subagentPrefix}${msg}`),
+        message: (msg: string) => tui.log.message(`${subagentPrefix}${msg}`),
+    };
 
     // Load context if available
     let contextContent = '';
@@ -69,7 +93,7 @@ export async function interactiveDeveloperAgent(options: {
         try {
             contextContent = fs.readFileSync(specificContextPath, 'utf-8');
         } catch (e) {
-            tui.log.warning(`Failed to read context file: ${e}`);
+            log.warning(`Failed to read context file: ${e}`);
         }
     }
 
@@ -106,7 +130,7 @@ Your goal is to address the user's request:
     while (keepGoing) {
         // Check if this subagent has been terminated by parent (only if it is a registered subagent)
         if (options.taskId && subagentManager.hasSubagent(options.taskId) && !subagentManager.isSubagentActive(options.taskId)) {
-            tui.log.warning(`Subagent ${options.taskId} was terminated.`);
+            log.warning(`Subagent ${options.taskId} was terminated.`);
             return { success: false, summary: 'Subagent terminated by manager.' };
         }
 
@@ -120,7 +144,12 @@ Your goal is to address the user's request:
         }
 
         try {
-            spinner.start('🦈 Shark Dev working...');
+            const activeSubagents = subagentManager.getActiveSubagents();
+            const activeCount = activeSubagents.length;
+            const spinnerText = activeCount > 0
+                ? `🦈 Shark Dev working... (Active subagents: ${activeCount})`
+                : '🦈 Shark Dev working...';
+            spinner.start(spinnerText);
 
             const existingConversationId = await conversationManager.getConversationId(conversationKey);
             const provider = ProviderResolver.getProvider('developer_agent');
@@ -136,16 +165,26 @@ Your goal is to address the user's request:
 
             spinner.stop('Response received');
 
+            if (response.summary) {
+                if (options.taskId) {
+                    subagentManager.updateSubagentSummary(options.taskId, response.summary);
+                }
+                log.info(`📌 Status: ${response.summary}`);
+            }
+
             // Handle completion/failure messages
             if (response.message && response.message.includes('TASK_COMPLETED:')) {
                 finalSummary = response.message.split('TASK_COMPLETED:')[1].trim();
+                if (options.taskId) {
+                    subagentManager.updateSubagentSummary(options.taskId, finalSummary);
+                }
                 keepGoing = false;
                 break;
             }
 
             if (response.message && response.message.includes('TASK_FAILED:')) {
                 const failureReason = response.message.split('TASK_FAILED:')[1].trim();
-                tui.log.error(`❌ Agent reported task failure: ${failureReason}`);
+                log.error(`❌ Agent reported task failure: ${failureReason}`);
                 return { success: false, summary: failureReason };
             }
 
@@ -153,22 +192,22 @@ Your goal is to address the user's request:
 
             if (!action) {
                 if (response.message) {
-                    tui.log.info(colors.primary('🤖 Shark Dev:'));
+                    log.info(colors.primary('🤖 Shark Dev:'));
                     console.log(response.message);
-                    const userReply = await tui.text({ message: 'Your answer:' });
+                    const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
                     if (tui.isCancel(userReply)) {
                         keepGoing = false;
                         break;
                     }
-                    nextPrompt = userReply as string;
+                    nextPrompt = userReply;
                 } else {
-                    tui.log.warning('No action or message returned by the agent.');
-                    const userReply = await tui.text({ message: 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:' });
+                    log.warning('No action or message returned by the agent.');
+                    const userReply = await promptUser('Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', undefined, undefined, subagentPrefix);
                     if (tui.isCancel(userReply)) {
                         keepGoing = false;
                         break;
                     }
-                    nextPrompt = userReply as string;
+                    nextPrompt = userReply;
                 }
                 continue;
             }
@@ -177,7 +216,7 @@ Your goal is to address the user's request:
 
             if (action.type === 'read_file') {
                 const filePath = action.path || '';
-                tui.log.info(`📖 Reading (Anchored): ${colors.dim(filePath)}`);
+                log.info(`📖 Reading (Anchored): ${colors.dim(filePath)}`);
                 try {
                     const content = anchorManager.getAnchoredContent(filePath);
                     resultMsg = `[Action read_file(${filePath}) Success]:\n${content}`;
@@ -187,7 +226,7 @@ Your goal is to address the user's request:
             }
             else if (action.type === 'modify_file') {
                 const filePath = action.path || '';
-                tui.log.warning(`📝 Modify (Anchored): ${colors.bold(filePath)}`);
+                log.warning(`📝 Modify (Anchored): ${colors.bold(filePath)}`);
 
                 let approved = isAuto;
                 if (!approved) {
@@ -207,7 +246,7 @@ Your goal is to address the user's request:
             }
             else if (action.type === 'create_file') {
                 const filePath = action.path || '';
-                tui.log.warning(`📝 Create file: ${colors.bold(filePath)}`);
+                log.warning(`📝 Create file: ${colors.bold(filePath)}`);
 
                 let approved = isAuto;
                 if (!approved) {
@@ -232,7 +271,7 @@ Your goal is to address the user's request:
             }
             else if (action.type === 'delete_file') {
                 const filePath = action.path || '';
-                tui.log.warning(`🗑️ Delete file: ${colors.bold(filePath)}`);
+                log.warning(`🗑️ Delete file: ${colors.bold(filePath)}`);
 
                 let approved = isAuto;
                 if (!approved) {
@@ -255,7 +294,7 @@ Your goal is to address the user's request:
             }
             else if (action.type === 'run_command') {
                 const cmd = action.command || '';
-                tui.log.info(`💻 Executing: ${colors.dim(cmd)}`);
+                log.info(`💻 Executing: ${colors.dim(cmd)}`);
 
                 let approved = isAuto;
                 if (!approved) {
@@ -275,7 +314,7 @@ Your goal is to address the user's request:
             }
             else if (action.type === 'list_files') {
                 const dirPath = action.path || '.';
-                tui.log.info(`📂 Scanning: ${colors.dim(dirPath)}`);
+                log.info(`📂 Scanning: ${colors.dim(dirPath)}`);
                 try {
                     const result = handleListFiles(dirPath);
                     resultMsg = `[Action list_files(${dirPath}) Success]:\n${result}`;
@@ -285,7 +324,7 @@ Your goal is to address the user's request:
             }
             else if (action.type === 'search_file') {
                 const pattern = action.path || '';
-                tui.log.info(`🔍 Searching files: ${colors.dim(pattern)}`);
+                log.info(`🔍 Searching files: ${colors.dim(pattern)}`);
                 try {
                     const result = handleSearchFile(pattern);
                     resultMsg = `[Action search_file(${pattern}) Success]:\n${result}`;
@@ -297,7 +336,7 @@ Your goal is to address the user's request:
                 const glob = action.path || 'src/**/*';
                 const query = action.query || '';
                 const isRegex = action.is_regex === true;
-                tui.log.info(`🔎 Search code: ${colors.dim(`"${query}" in ${glob}`)}`);
+                log.info(`🔎 Search code: ${colors.dim(`"${query}" in ${glob}`)}`);
                 try {
                     const result = handleSearchCode(glob, query, isRegex);
                     resultMsg = `[Action search_code("${query}" in "${glob}") Success]:\n${result}`;
@@ -310,7 +349,7 @@ Your goal is to address the user's request:
             }
             else if (action.type === 'activate_skill') {
                 const name = action.skill_name || '';
-                tui.log.info(`⚡ Activating skill: ${colors.bold(name)}`);
+                log.info(`⚡ Activating skill: ${colors.bold(name)}`);
                 try {
                     await skillManager.activateSkill(name);
                     resultMsg = `[System]: Skill '${name}' activated successfully.`;
@@ -321,8 +360,8 @@ Your goal is to address the user's request:
             else if (action.type === 'talk_with_user') {
                 const isSystemError = action.content?.startsWith('[SYSTEM ERROR]');
                 if (isSystemError) {
-                    tui.log.error(`⚠️ Detectado erro na resposta do Agente (truncado ou inválido).`);
-                    tui.log.info(colors.dim(action.content || ''));
+                    log.error(`⚠️ Detectado erro na resposta do Agente (truncado ou inválido).`);
+                    log.info(colors.dim(action.content || ''));
                     let approved = isAuto;
                     if (!approved) {
                         approved = await tui.confirm({ message: `Enviar notificação de erro para o agente tentar se recuperar automaticamente?` });
@@ -330,17 +369,17 @@ Your goal is to address the user's request:
                     if (approved) {
                         resultMsg = action.content || '';
                     } else {
-                        const userReply = await tui.text({ message: 'Seu prompt alternativo para o agente:' });
+                        const userReply = await promptUser('Seu prompt alternativo para o agente:', undefined, undefined, subagentPrefix);
                         if (tui.isCancel(userReply)) {
                             keepGoing = false;
                             break;
                         }
-                        resultMsg = userReply as string;
+                        resultMsg = userReply;
                     }
                 } else {
-                    tui.log.info(colors.primary('🤖 Shark Dev:'));
+                    log.info(colors.primary('🤖 Shark Dev:'));
                     console.log(action.content);
-                    const userReply = await tui.text({ message: 'Your answer:' });
+                    const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
                     if (tui.isCancel(userReply)) {
                         keepGoing = false;
                         break;
@@ -357,13 +396,13 @@ Your goal is to address the user's request:
                     enableSubagentTools: action.enable_subagent_tools ?? undefined,
                     enableMcpTools: action.enable_mcp_tools ?? undefined
                 };
-                tui.log.info(`🛠️ Defining subagent type: ${colors.bold(name)}`);
+                log.info(`🛠️ Defining subagent type: ${colors.bold(name)}`);
                 subagentManager.defineSubagentType(name, desc, sysPrompt, opts);
                 resultMsg = `[Action define_subagent Success]: Defined subagent type '${name}'`;
             }
             else if (action.type === 'invoke_subagent') {
                 const subagentsToInvoke = action.Subagents || [];
-                tui.log.info(`🚀 Invoking ${subagentsToInvoke.length} subagent(s)`);
+                log.info(`🚀 Invoking ${subagentsToInvoke.length} subagent(s)`);
                 const parentId = options.taskId || 'parent';
                 const invoked = await subagentManager.invokeSubagents(subagentsToInvoke, parentId);
                 resultMsg = `[Action invoke_subagent Success]: Invoked subagents:\n${invoked.map(s => `- ID: ${s.id}, Type: ${s.TypeName}, Role: ${s.Role}`).join('\n')}`;
@@ -371,14 +410,14 @@ Your goal is to address the user's request:
             else if (action.type === 'send_message') {
                 const recipient = action.Recipient || '';
                 const message = action.Message || '';
-                tui.log.info(`✉️ Sending message to ${colors.bold(recipient)}`);
+                log.info(`✉️ Sending message to ${colors.bold(recipient)}`);
                 subagentManager.sendMessage(recipient, message);
                 resultMsg = `[Action send_message Success]: Message sent to '${recipient}'`;
             }
             else if (action.type === 'manage_subagents') {
                 const subAction = action.Action || '';
                 const ids = action.ConversationIds || [];
-                tui.log.info(`⚙️ Managing subagents. Action: ${colors.bold(subAction)}`);
+                log.info(`⚙️ Managing subagents. Action: ${colors.bold(subAction)}`);
 
                 if (subAction === 'list') {
                     const active = subagentManager.getActiveSubagents();
@@ -403,12 +442,12 @@ Your goal is to address the user's request:
             nextPrompt = resultMsg + skillManager.getSystemInstructionExtension();
 
         } catch (e: any) {
-            tui.log.error(e.message);
+            log.error(e.message);
             keepGoing = false;
             return { success: false, summary: `Error: ${e.message}` };
         }
     }
 
-    tui.log.success('✅ Task Scope Completed');
+    log.success('✅ Task Scope Completed');
     return { success: true, summary: finalSummary || "Task completed without summary." };
 }

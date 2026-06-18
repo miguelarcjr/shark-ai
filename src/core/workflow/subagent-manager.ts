@@ -5,6 +5,7 @@ interface SubagentState {
     type: string;
     role: string;
     status: 'running' | 'completed' | 'failed';
+    summary?: string;
     promise?: Promise<any>;
 }
 
@@ -39,6 +40,17 @@ export class SubagentManager {
 
     hasSubagent(id: string): boolean {
         return this.subagents.has(id);
+    }
+
+    getSubagentState(id: string): SubagentState | undefined {
+        return this.subagents.get(id);
+    }
+
+    updateSubagentSummary(id: string, summary: string) {
+        const state = this.subagents.get(id);
+        if (state) {
+            state.summary = summary;
+        }
     }
 
     sendMessage(recipient: string, message: string) {
@@ -116,6 +128,7 @@ export class SubagentManager {
                         auto: true
                     });
 
+                    this.updateSubagentSummary(id, result.summary || 'Completed');
                     this.terminateSubagent(id, result.success);
                 } catch (error) {
                     console.error(`Subagent ${id} failed:`, error);
