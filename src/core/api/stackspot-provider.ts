@@ -106,6 +106,7 @@ export class StackSpotProvider implements AIProvider {
             stackspot_knowledge: false,
             return_ks_in_response: true,
             deep_search_ks: false,
+            use_conversation: true,
             conversation_id: options.conversationId,
         };
 
