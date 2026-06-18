@@ -11,6 +11,7 @@ import { colors } from '../ui/colors.js';
 import { devCommand } from '../commands/dev.js';
 import { legacyCommand } from '../commands/legacy.js';
 import { exportSchemaCommand } from '../commands/export-schema.js';
+import { superCommand } from '../commands/super.js';
 
 const program = new Command();
 
@@ -24,6 +25,7 @@ program.addCommand(initCommand);
 program.addCommand(devCommand);
 program.addCommand(legacyCommand);
 program.addCommand(exportSchemaCommand);
+program.addCommand(superCommand);
 
 program
     .command('config')
