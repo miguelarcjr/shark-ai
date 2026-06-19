@@ -1,11 +1,11 @@
 export interface QueueMessage {
-    type: 'user' | 'subagent_notification';
+    type: 'user' | 'subagent_notification' | 'timeout';
     content: string;
     timestamp: number;
     metadata?: {
         subagentId?: string;
         role?: string;
-        status?: 'completed' | 'failed';
+        status?: 'completed' | 'failed' | 'cancelled';
     };
 }
 

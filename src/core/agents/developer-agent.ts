@@ -44,10 +44,12 @@ async function promptUser(message: string, initialValue?: string, placeholder?: 
 export async function waitForInputOrNotification(
     queue: MessageQueue,
     promptMessage: string = 'Your answer:',
-    subagentPrefix: string = ''
+    subagentPrefix: string = '',
+    timeoutMs?: number
 ): Promise<QueueMessage> {
     let cancelled = false;
     let resolvePromptPromise: ((value: QueueMessage) => void) | null = null;
+    let timerId: any = null;
 
     const promptPromise = new Promise<QueueMessage>((resolve) => {
         resolvePromptPromise = resolve;
@@ -68,9 +70,26 @@ export async function waitForInputOrNotification(
     runPrompt();
 
     const queuePromise = queue.next();
-    const winner = await Promise.race([promptPromise, queuePromise]);
 
-    if (winner.type === 'subagent_notification') {
+    let timeoutPromise = new Promise<QueueMessage>((resolve) => {
+        if (timeoutMs !== undefined && timeoutMs !== null) {
+            timerId = setTimeout(() => {
+                resolve({
+                    type: 'timeout',
+                    content: 'Wait timeout expired.',
+                    timestamp: Date.now()
+                });
+            }, timeoutMs);
+        }
+    });
+
+    const winner = await Promise.race([promptPromise, queuePromise, timeoutPromise]);
+
+    if (timerId) {
+        clearTimeout(timerId);
+    }
+
+    if (winner.type === 'subagent_notification' || winner.type === 'timeout') {
         cancelled = true;
         process.stdin.emit('data', '\r');
         await new Promise(r => setTimeout(r, 50));
@@ -614,6 +633,30 @@ Your goal is to address the user's request:
                     resultMsg = `[Action manage_subagents Success]: Terminated all active subagents`;
                 } else {
                     resultMsg = `[Action manage_subagents Failed]: Unknown action '${subAction}'`;
+                }
+            }
+            else if (action.type === 'wait') {
+                const durationSeconds = action.duration_seconds || 0;
+                const durationMs = durationSeconds > 0 ? durationSeconds * 1000 : undefined;
+                log.info(`⏳ Waiting for updates (Timeout: ${durationSeconds || 'infinite'}s)...`);
+                
+                let nextMsg: QueueMessage;
+                if (!messageQueue.isEmpty()) {
+                    nextMsg = await messageQueue.next();
+                } else {
+                    nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, durationMs);
+                }
+
+                if (nextMsg.type === 'timeout') {
+                    resultMsg = `[System]: Wait duration of ${durationSeconds} seconds expired. No notifications received.`;
+                } else if (nextMsg.type === 'user') {
+                    if (tui.isCancel(nextMsg.content)) {
+                        keepGoing = false;
+                        break;
+                    }
+                    resultMsg = `User Reply: ${nextMsg.content}`;
+                } else {
+                    resultMsg = nextMsg.content;
                 }
             }
             else {

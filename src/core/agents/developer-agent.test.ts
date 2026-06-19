@@ -820,5 +820,54 @@ describe('DeveloperAgent', () => {
         expect(result.content).toBe('Task completed successfully');
         expect(promptResolved).toBe(false); // Verified prompt was bypassed/aborted
     });
+
+    it('handles wait action and resolves on timeout', async () => {
+        const queue = new MessageQueue();
+        // Mock promptUser to resolve slowly so timeout wins
+        const promptPromise = new Promise<string>(() => {}); // never resolves
+        vi.mocked(tui.text).mockImplementation(() => promptPromise);
+
+        const start = Date.now();
+        const result = await waitForInputOrNotification(queue, 'Your answer:', '', 100); // 100ms timeout
+        const duration = Date.now() - start;
+        expect(result.type).toBe('timeout');
+        expect(duration).toBeGreaterThanOrEqual(95);
+    });
+
+    it('should handle wait action in main loop and resume on timeout', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'wait',
+                    duration_seconds: 0.05,
+                },
+                actions: [],
+                message: 'Waiting for updates',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: Wait finished',
+                conversation_id: 'conv-123',
+            });
+
+        // Mock promptUser to resolve slowly so timeout wins
+        const promptPromise = new Promise<string>(() => {}); // never resolves
+        vi.mocked(tui.text).mockImplementation(() => promptPromise);
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'wait-loop-task',
+            taskInstruction: 'Wait and complete',
+        });
+
+        // The second streamChat should be called with the timeout message
+        expect(mockProvider.streamChat).toHaveBeenNthCalledWith(
+            2,
+            expect.stringContaining('[System]: Wait duration of 0.05 seconds expired. No notifications received.'),
+            expect.any(Object)
+        );
+        expect(result).toEqual({ success: true, summary: 'Wait finished' });
+    });
 });
 
