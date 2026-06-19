@@ -37,6 +37,9 @@ export class SubagentManager {
     terminateSubagent(id: string, success: boolean = true, isCancelled: boolean = false) {
         const state = this.subagents.get(id);
         if (state) {
+            if (state.status === 'cancelled') {
+                return;
+            }
             if (isCancelled) {
                 state.status = 'cancelled';
             } else {
@@ -287,12 +290,15 @@ export class SubagentManager {
 
                     logStream.end();
 
+                    const isCancelled = this.subagents.get(id)?.status === 'cancelled';
                     const success = exitCode === 0;
                     this.terminateSubagent(id, success);
-                    this.updateSubagentSummary(id, success ? 'Completed' : 'Failed');
-
-                    // If it failed, ensure there is a failure message in the mailbox if child didn't write it
-                    if (!success) {
+                    
+                    if (isCancelled) {
+                        this.updateSubagentSummary(id, 'Terminated by parent agent.');
+                        tui.log.message(`\nSubagent ${sub.Role} (${id}) cancelled.`);
+                    } else if (!success) {
+                        this.updateSubagentSummary(id, 'Failed');
                         const fallbackMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) has finished with status: FAILED. Summary: Subagent process exited with code ${exitCode}`;
                         const mailboxDir = path.resolve(projectRoot, '.shark', 'mailbox', parentId);
                         const hasMessages = fs.existsSync(mailboxDir) && fs.readdirSync(mailboxDir).length > 0;
@@ -301,6 +307,7 @@ export class SubagentManager {
                         }
                         tui.log.error(`Subagent ${sub.Role} (${id}) failed.`);
                     } else {
+                        this.updateSubagentSummary(id, 'Completed');
                         // Print the subagent notification message to the parent console immediately
                         const parentMsgs = this.peekMessages(parentId);
                         const subagentMsg = parentMsgs.find(m => m.includes(`(${id})`));
@@ -313,7 +320,11 @@ export class SubagentManager {
 
                     if (parentQueue) {
                         let summaryContent = "Tarefa concluída sem resumo.";
-                        if (success) {
+                        let statusVal: 'completed' | 'failed' | 'cancelled' = success ? 'completed' : 'failed';
+                        if (isCancelled) {
+                            summaryContent = 'Terminated by parent agent.';
+                            statusVal = 'cancelled';
+                        } else if (success) {
                             const parentMsgs = this.peekMessages(parentId);
                             const subagentMsg = parentMsgs.find(m => m.includes(`(${id})`));
                             if (subagentMsg) {
@@ -329,7 +340,7 @@ export class SubagentManager {
                             metadata: {
                                 subagentId: id,
                                 role: sub.Role,
-                                status: success ? 'completed' : 'failed'
+                                status: statusVal
                             }
                         });
                     }

@@ -257,4 +257,34 @@ describe('SubagentManager', () => {
         const invalidId = '../../some-evil-path';
         expect(() => subagentManager.getSubagentLogs(invalidId)).toThrow('Invalid subagent ID format');
     });
+
+    it('retains cancelled status and summary on exit when cancelled early', async () => {
+        const queue = new MessageQueue();
+        const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Test prompt' }];
+        const parentId = 'parent-1';
+        
+        const invoked = await subagentManager.invokeSubagents(subagents, parentId, queue);
+        const subId = invoked[0].id;
+        
+        // Immediately terminate as cancelled before child exits
+        subagentManager.killSubagent(subId);
+        
+        // Wait for the exit handler promise to run
+        await new Promise(resolve => setTimeout(resolve, 50));
+        
+        const state = subagentManager.getSubagentState(subId);
+        expect(state?.status).toBe('cancelled');
+        expect(state?.summary).toBe('Terminated by parent agent.');
+        
+        // Retrieve queue messages
+        const msgs: any[] = [];
+        while (!queue.isEmpty()) {
+            msgs.push(await queue.next());
+        }
+        
+        const subNotification = msgs.find(m => m.type === 'subagent_notification');
+        expect(subNotification).toBeDefined();
+        expect(subNotification.metadata?.status).toBe('cancelled');
+        expect(subNotification.content).toBe('Terminated by parent agent.');
+    });
 });

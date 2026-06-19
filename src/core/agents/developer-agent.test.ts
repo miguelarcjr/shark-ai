@@ -1021,13 +1021,70 @@ describe('DeveloperAgent', () => {
         // Verify the signal handler logic
         expect(sigIntHandler).toBeDefined();
         expect(sigTermHandler).toBeDefined();
-        expect(sigIntHandler).toBe(sigTermHandler);
 
-        // Execute signal handler
+        // Execute signal handler SIGINT
         sigIntHandler!();
 
         expect(killSpy).toHaveBeenCalledWith('sub-active-cleanup-sig');
-        expect(exitSpy).toHaveBeenCalledWith(0);
+        expect(exitSpy).toHaveBeenCalledWith(130);
+
+        killSpy.mockClear();
+        exitSpy.mockClear();
+
+        // Execute signal handler SIGTERM
+        sigTermHandler!();
+
+        expect(killSpy).toHaveBeenCalledWith('sub-active-cleanup-sig');
+        expect(exitSpy).toHaveBeenCalledWith(143);
+    });
+
+    it('does not create or register a timeout timer when timeoutMs is undefined or null', async () => {
+        const setTimerSpy = vi.spyOn(global, 'setTimeout');
+        const queue = new MessageQueue();
+        queue.push({
+            type: 'subagent_notification',
+            content: 'Ready',
+            timestamp: Date.now()
+        });
+
+        await waitForInputOrNotification(queue, 'Your answer:', '', undefined);
+        const timeoutCalls = setTimerSpy.mock.calls.filter(call => call[1] !== 50);
+        expect(timeoutCalls.length).toBe(0);
+        
+        setTimerSpy.mockRestore();
+    });
+
+    it('should only write ANSI escape sequences to stdout when it is a TTY', async () => {
+        const writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+        const originalIsTTY = process.stdout.isTTY;
+
+        // Mock a MessageQueue with a subagent_notification ready
+        const queue = new MessageQueue();
+        queue.push({
+            type: 'subagent_notification',
+            content: 'Ready',
+            timestamp: Date.now()
+        });
+
+        // 1. Test when isTTY is false
+        process.stdout.isTTY = false;
+        await waitForInputOrNotification(queue, 'Your answer:');
+        expect(writeSpy).not.toHaveBeenCalledWith(expect.stringContaining('\x1b[1A'));
+
+        // 2. Test when isTTY is true
+        process.stdout.isTTY = true;
+        const queue2 = new MessageQueue();
+        queue2.push({
+            type: 'subagent_notification',
+            content: 'Ready2',
+            timestamp: Date.now()
+        });
+        await waitForInputOrNotification(queue2, 'Your answer:');
+        expect(writeSpy).toHaveBeenCalledWith('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
+
+        // Restore
+        process.stdout.isTTY = originalIsTTY;
+        writeSpy.mockRestore();
     });
 });
 

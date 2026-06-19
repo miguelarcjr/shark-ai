@@ -71,8 +71,10 @@ export async function waitForInputOrNotification(
 
     const queuePromise = queue.next();
 
-    let timeoutPromise = new Promise<QueueMessage>((resolve) => {
-        if (timeoutMs !== undefined && timeoutMs !== null) {
+    const promises: Promise<QueueMessage>[] = [promptPromise, queuePromise];
+
+    if (timeoutMs !== undefined && timeoutMs !== null) {
+        const timeoutPromise = new Promise<QueueMessage>((resolve) => {
             timerId = setTimeout(() => {
                 resolve({
                     type: 'timeout',
@@ -80,10 +82,11 @@ export async function waitForInputOrNotification(
                     timestamp: Date.now()
                 });
             }, timeoutMs);
-        }
-    });
+        });
+        promises.push(timeoutPromise);
+    }
 
-    const winner = await Promise.race([promptPromise, queuePromise, timeoutPromise]);
+    const winner = await Promise.race(promises);
 
     if (timerId) {
         clearTimeout(timerId);
@@ -93,7 +96,9 @@ export async function waitForInputOrNotification(
         cancelled = true;
         process.stdin.emit('data', '\r');
         await new Promise(r => setTimeout(r, 50));
-        process.stdout.write('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
+        if (process.stdout.isTTY) {
+            process.stdout.write('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
+        }
     }
 
     return winner;
@@ -199,7 +204,7 @@ Your goal is to address the user's request:
 
     const spinner = tui.spinner();
 
-    const handleCleanupSignal = () => {
+    const handleCleanupSignal = (exitCode: number) => {
         const currentId = options.taskId || 'parent';
         const active = subagentManager.getActiveSubagentsForParent(currentId);
         if (active.length > 0) {
@@ -207,10 +212,13 @@ Your goal is to address the user's request:
                 subagentManager.killSubagent(sub.id);
             }
         }
-        process.exit(0);
+        process.exit(exitCode);
     };
-    process.on('SIGINT', handleCleanupSignal);
-    process.on('SIGTERM', handleCleanupSignal);
+    const sigIntHandler = () => handleCleanupSignal(130);
+    const sigTermHandler = () => handleCleanupSignal(143);
+
+    process.on('SIGINT', sigIntHandler);
+    process.on('SIGTERM', sigTermHandler);
 
     try {
         while (keepGoing) {
@@ -734,8 +742,8 @@ Your goal is to address the user's request:
         log.success('✅ Task Scope Completed');
         return finalResult;
     } finally {
-        process.off('SIGINT', handleCleanupSignal);
-        process.off('SIGTERM', handleCleanupSignal);
+        process.off('SIGINT', sigIntHandler);
+        process.off('SIGTERM', sigTermHandler);
 
         // Auto terminate active subagents created by this parent to prevent leaks on exit
         const currentId = options.taskId || 'parent';
