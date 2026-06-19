@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { interactiveDeveloperAgent } from './developer-agent.js';
+import { interactiveDeveloperAgent, waitForInputOrNotification } from './developer-agent.js';
+import { MessageQueue } from '../workflow/message-queue.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
 import { AIProvider } from '../api/provider.interface.js';
@@ -493,7 +494,7 @@ describe('DeveloperAgent', () => {
             TypeName: 'test-writer',
             Role: 'test code author',
             Prompt: 'Write a unit test for subagent manager',
-        }], 'subagent-flow-task');
+        }], 'subagent-flow-task', expect.any(MessageQueue));
         expect(sendSpy).toHaveBeenCalledWith('subagent-abc', 'Please proceed with writing tests');
         expect(getActiveSpy).toHaveBeenCalled();
 
@@ -790,6 +791,34 @@ describe('DeveloperAgent', () => {
         );
 
         expect(result).toEqual({ success: true, summary: 'Done with long roles' });
+    });
+
+    it('wakes up from prompt when a subagent completion event is queued', async () => {
+        const queue = new MessageQueue();
+        
+        // Mock promptUser to resolve slowly
+        let promptResolved = false;
+        const promptPromise = (async () => {
+            await new Promise(r => setTimeout(r, 2000));
+            promptResolved = true;
+            return 'user input';
+        })();
+        vi.mocked(tui.text).mockImplementation(() => promptPromise);
+        
+        // Push subagent completion event in 100ms
+        setTimeout(() => {
+            queue.push({
+                type: 'subagent_notification',
+                content: 'Task completed successfully',
+                timestamp: Date.now(),
+                metadata: { subagentId: 'sub-1', role: 'Tester', status: 'completed' }
+            });
+        }, 100);
+
+        const result = await waitForInputOrNotification(queue);
+        expect(result.type).toBe('subagent_notification');
+        expect(result.content).toBe('Task completed successfully');
+        expect(promptResolved).toBe(false); // Verified prompt was bypassed/aborted
     });
 });
 

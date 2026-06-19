@@ -9,6 +9,7 @@ import { handleRunCommand, handleListFiles, handleSearchFile, handleSearchCode }
 import { skillManager } from '../workflow/skill-manager.js';
 import { subagentManager } from '../workflow/subagent-manager.js';
 import { FileLogger } from '../debug/file-logger.js';
+import { MessageQueue, QueueMessage } from '../workflow/message-queue.js';
 
 const AGENT_TYPE = 'developer_agent';
 
@@ -40,6 +41,46 @@ async function promptUser(message: string, initialValue?: string, placeholder?: 
     return userReply as string;
 }
 
+export async function waitForInputOrNotification(
+    queue: MessageQueue,
+    promptMessage: string = 'Your answer:',
+    subagentPrefix: string = ''
+): Promise<QueueMessage> {
+    let cancelled = false;
+    let resolvePromptPromise: ((value: QueueMessage) => void) | null = null;
+
+    const promptPromise = new Promise<QueueMessage>((resolve) => {
+        resolvePromptPromise = resolve;
+    });
+
+    const runPrompt = async () => {
+        try {
+            const userReply = await promptUser(promptMessage, undefined, undefined, subagentPrefix);
+            if (!cancelled && resolvePromptPromise) {
+                resolvePromptPromise({
+                    type: 'user',
+                    content: userReply,
+                    timestamp: Date.now()
+                });
+            }
+        } catch (e) {}
+    };
+    runPrompt();
+
+    const queuePromise = queue.next();
+    const winner = await Promise.race([promptPromise, queuePromise]);
+
+    if (winner.type === 'subagent_notification') {
+        cancelled = true;
+        process.stdin.emit('data', '\r');
+        await new Promise(r => setTimeout(r, 50));
+        process.stdout.write('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
+    }
+
+    return winner;
+}
+
+
 function formatRoleForUI(role: string): string {
     const limit = 20;
     if (role.length <= limit) return role;
@@ -61,6 +102,7 @@ export async function interactiveDeveloperAgent(options: {
     const isAuto = options.auto === true || process.argv.includes('--auto');
     const isSubagent = !!options.taskId && (options.taskId.startsWith('subagent-') || subagentManager.hasSubagent(options.taskId));
     const projectRoot = process.cwd();
+    const messageQueue = new MessageQueue();
     
     let currentTask = options.taskInstruction;
     if (!currentTask) {
@@ -197,12 +239,19 @@ Your goal is to address the user's request:
                 }
 
                 if (!options.taskInstruction) {
-                    const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
-                    if (tui.isCancel(userReply)) {
-                        keepGoing = false;
-                        break;
+                    let nextMsg: QueueMessage;
+                    if (!messageQueue.isEmpty()) {
+                        nextMsg = await messageQueue.next();
+                    } else {
+                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
                     }
-                    nextPrompt = userReply;
+                    if (nextMsg.type === 'user') {
+                        if (tui.isCancel(nextMsg.content)) {
+                            keepGoing = false;
+                            break;
+                        }
+                    }
+                    nextPrompt = nextMsg.content;
                     continue;
                 } else {
                     keepGoing = false;
@@ -227,11 +276,18 @@ Your goal is to address the user's request:
                 }
 
                 if (!options.taskInstruction) {
-                    const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
-                    if (tui.isCancel(userReply)) {
-                        return { success: false, summary: failureReason };
+                    let nextMsg: QueueMessage;
+                    if (!messageQueue.isEmpty()) {
+                        nextMsg = await messageQueue.next();
+                    } else {
+                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
                     }
-                    nextPrompt = userReply;
+                    if (nextMsg.type === 'user') {
+                        if (tui.isCancel(nextMsg.content)) {
+                            return { success: false, summary: failureReason };
+                        }
+                    }
+                    nextPrompt = nextMsg.content;
                     continue;
                 } else {
                     return { success: false, summary: failureReason };
@@ -250,20 +306,34 @@ Your goal is to address the user's request:
                 if (response.message) {
                     log.info(colors.primary('🤖 Shark Dev:'));
                     console.log(response.message);
-                    const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
-                    if (tui.isCancel(userReply)) {
-                        keepGoing = false;
-                        break;
+                    let nextMsg: QueueMessage;
+                    if (!messageQueue.isEmpty()) {
+                        nextMsg = await messageQueue.next();
+                    } else {
+                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
                     }
-                    nextPrompt = userReply;
+                    if (nextMsg.type === 'user') {
+                        if (tui.isCancel(nextMsg.content)) {
+                            keepGoing = false;
+                            break;
+                        }
+                    }
+                    nextPrompt = nextMsg.content;
                 } else {
                     log.warning('No action or message returned by the agent.');
-                    const userReply = await promptUser('Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', undefined, undefined, subagentPrefix);
-                    if (tui.isCancel(userReply)) {
-                        keepGoing = false;
-                        break;
+                    let nextMsg: QueueMessage;
+                    if (!messageQueue.isEmpty()) {
+                        nextMsg = await messageQueue.next();
+                    } else {
+                        nextMsg = await waitForInputOrNotification(messageQueue, 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', subagentPrefix);
                     }
-                    nextPrompt = userReply;
+                    if (nextMsg.type === 'user') {
+                        if (tui.isCancel(nextMsg.content)) {
+                            keepGoing = false;
+                            break;
+                        }
+                    }
+                    nextPrompt = nextMsg.content;
                 }
                 continue;
             }
@@ -428,12 +498,19 @@ Your goal is to address the user's request:
                         if (approved) {
                             resultMsg = action.content || '';
                         } else {
-                            const userReply = await promptUser('Seu prompt alternativo para o agente:', undefined, undefined, subagentPrefix);
-                            if (tui.isCancel(userReply)) {
-                                keepGoing = false;
-                                break;
+                            let nextMsg: QueueMessage;
+                            if (!messageQueue.isEmpty()) {
+                                nextMsg = await messageQueue.next();
+                            } else {
+                                nextMsg = await waitForInputOrNotification(messageQueue, 'Seu prompt alternativo para o agente:', subagentPrefix);
                             }
-                            resultMsg = userReply;
+                            if (nextMsg.type === 'user') {
+                                if (tui.isCancel(nextMsg.content)) {
+                                    keepGoing = false;
+                                    break;
+                                }
+                            }
+                            resultMsg = nextMsg.content;
                         }
                     }
                 } else {
@@ -453,12 +530,19 @@ Your goal is to address the user's request:
                         finalSummary = contentStr.split('TASK_COMPLETED:')[1].trim();
                         log.success(`✔ Task Completed: ${finalSummary}`);
                         if (!options.taskInstruction) {
-                            const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
-                            if (tui.isCancel(userReply)) {
-                                keepGoing = false;
-                                break;
+                            let nextMsg: QueueMessage;
+                            if (!messageQueue.isEmpty()) {
+                                nextMsg = await messageQueue.next();
+                            } else {
+                                nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
                             }
-                            nextPrompt = userReply;
+                            if (nextMsg.type === 'user') {
+                                if (tui.isCancel(nextMsg.content)) {
+                                    keepGoing = false;
+                                    break;
+                                }
+                            }
+                            nextPrompt = nextMsg.content;
                             continue;
                         } else {
                             keepGoing = false;
@@ -468,12 +552,21 @@ Your goal is to address the user's request:
 
                     log.info(colors.primary('🤖 Shark Dev:'));
                     console.log(contentStr);
-                    const userReply = await promptUser('Your answer:', undefined, undefined, subagentPrefix);
-                    if (tui.isCancel(userReply)) {
-                        keepGoing = false;
-                        break;
+                    let nextMsg: QueueMessage;
+                    if (!messageQueue.isEmpty()) {
+                        nextMsg = await messageQueue.next();
+                    } else {
+                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
                     }
-                    resultMsg = `User Reply: ${userReply}`;
+                    if (nextMsg.type === 'user') {
+                        if (tui.isCancel(nextMsg.content)) {
+                            keepGoing = false;
+                            break;
+                        }
+                        resultMsg = `User Reply: ${nextMsg.content}`;
+                    } else {
+                        resultMsg = nextMsg.content;
+                    }
                 }
             }
             else if (action.type === 'define_subagent') {
@@ -493,7 +586,7 @@ Your goal is to address the user's request:
                 const subagentsToInvoke = action.Subagents || [];
                 log.info(`🚀 Invoking ${subagentsToInvoke.length} subagent(s)`);
                 const parentId = options.taskId || 'parent';
-                const invoked = await subagentManager.invokeSubagents(subagentsToInvoke, parentId);
+                const invoked = await subagentManager.invokeSubagents(subagentsToInvoke, parentId, messageQueue);
                 resultMsg = `[Action invoke_subagent Success]: Invoked subagents:\n${invoked.map(s => `- ID: ${s.id}, Type: ${s.TypeName}, Role: ${s.Role}`).join('\n')}`;
             }
             else if (action.type === 'send_message') {
