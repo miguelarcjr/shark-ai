@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tui } from '../../ui/tui.js';
+import { MessageQueue } from './message-queue.js';
 
 interface SubagentState {
     id: string;
@@ -168,7 +169,8 @@ export class SubagentManager {
 
     async invokeSubagents(
         subagents: Array<{ TypeName: string, Role: string, Prompt: string }>,
-        parentId: string
+        parentId: string,
+        parentQueue?: MessageQueue
     ): Promise<Array<{ id: string, TypeName: string, Role: string }>> {
         const invoked: Array<{ id: string, TypeName: string, Role: string }> = [];
 
@@ -277,6 +279,29 @@ export class SubagentManager {
                         }
                     }
 
+                    if (parentQueue) {
+                        let summaryContent = "Tarefa concluída sem resumo.";
+                        if (success) {
+                            const parentMsgs = this.peekMessages(parentId);
+                            const subagentMsg = parentMsgs.find(m => m.includes(`(${id})`));
+                            if (subagentMsg) {
+                                summaryContent = subagentMsg;
+                            }
+                        } else {
+                            summaryContent = `Subagente falhou com código de saída ${exitCode}`;
+                        }
+                        parentQueue.push({
+                            type: 'subagent_notification',
+                            content: summaryContent,
+                            timestamp: Date.now(),
+                            metadata: {
+                                subagentId: id,
+                                role: sub.Role,
+                                status: success ? 'completed' : 'failed'
+                            }
+                        });
+                    }
+
                 } catch (error) {
                     console.error(`Subagent ${id} failed to spawn:`, error);
                     this.terminateSubagent(id, false);
@@ -286,6 +311,18 @@ export class SubagentManager {
                         `[Subagent Notification] Subagent ${sub.Role} (${id}) has finished with status: FAILED. Summary: Subagent spawn failed: ${errorMsg}`
                     );
                     tui.log.error(`Subagent ${sub.Role} (${id}) failed to spawn.`);
+                    if (parentQueue) {
+                        parentQueue.push({
+                            type: 'subagent_notification',
+                            content: `Subagente falhou ao iniciar: ${errorMsg}`,
+                            timestamp: Date.now(),
+                            metadata: {
+                                subagentId: id,
+                                role: sub.Role,
+                                status: 'failed'
+                            }
+                        });
+                    }
                 }
             })();
 

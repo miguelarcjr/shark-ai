@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
+import { MessageQueue } from './message-queue.js';
 
 vi.mock('../agents/developer-agent.js', () => ({
     interactiveDeveloperAgent: vi.fn()
@@ -191,5 +192,19 @@ describe('SubagentManager', () => {
         const retrieved = subagentManager.retrieveMessages(subagentId);
         expect(retrieved).toEqual(['Test FS Message']);
         expect(fs.existsSync(path.join(mailboxDir, files[0]))).toBe(false);
+    });
+
+    it('pushes completion event to parent queue when subagent exits', async () => {
+        const queue = new MessageQueue();
+        const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Test prompt' }];
+        const parentId = 'parent-1';
+        
+        await subagentManager.invokeSubagents(subagents, parentId, queue);
+        
+        const nextMsg = await queue.next();
+        expect(nextMsg.type).toBe('subagent_notification');
+        expect(nextMsg.metadata?.role).toBe('Tester');
+        expect(nextMsg.metadata?.status).toBe('completed');
+        expect(nextMsg.content).toContain('Passed test checks');
     });
 });
