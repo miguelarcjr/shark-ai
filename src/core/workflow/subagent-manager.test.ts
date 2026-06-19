@@ -231,4 +231,9 @@ describe('SubagentManager', () => {
         expect(logs).toContain("Line 2\nLine 3");
         fs.unlinkSync(logFile);
     });
+
+    it('throws an error if subagent ID format is invalid', () => {
+        const invalidId = '../../some-evil-path';
+        expect(() => subagentManager.getSubagentLogs(invalidId)).toThrow('Invalid subagent ID format');
+    });
 });

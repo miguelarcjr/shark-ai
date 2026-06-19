@@ -142,6 +142,9 @@ export class SubagentManager {
     }
 
     getSubagentLogs(id: string, maxLines: number = 50): string {
+        if (!/^[a-zA-Z0-9-]+$/.test(id)) {
+            throw new Error('Invalid subagent ID format');
+        }
         const projectRoot = process.cwd();
         const logFile = path.resolve(projectRoot, '_sharkrc', 'history', `subagent-${id}-console.log`);
         if (!fs.existsSync(logFile)) {
