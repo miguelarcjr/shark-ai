@@ -531,6 +531,38 @@ describe('DeveloperAgent', () => {
         expect(result).toEqual({ success: true, summary: 'Finished reading subagent logs' });
     });
 
+    it('should handle manage_subagents action with subAction read_logs and catch errors thrown by getSubagentLogs', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'manage_subagents',
+                    Action: 'read_logs',
+                    ConversationIds: ['subagent-invalid'],
+                },
+                actions: [],
+                message: 'Reading subagent logs',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: Finished reading subagent logs with error',
+                conversation_id: 'conv-123',
+            });
+
+        const getLogsSpy = vi.spyOn(subagentManager, 'getSubagentLogs').mockImplementation(() => {
+            throw new Error('Subagent with ID subagent-invalid not found');
+        });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-flow-task',
+            taskInstruction: 'Test subagent log reading flow with invalid subagent ID',
+        });
+
+        expect(getLogsSpy).toHaveBeenCalledWith('subagent-invalid');
+        expect(result).toEqual({ success: true, summary: 'Finished reading subagent logs with error' });
+    });
+
     it('should support /skills interactive command and activate selection', async () => {
         vi.mocked(tui.text)
             .mockResolvedValueOnce('/skills')

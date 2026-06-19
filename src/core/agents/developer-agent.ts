@@ -642,8 +642,12 @@ Your goal is to address the user's request:
                     if (!id) {
                         resultMsg = `[Action manage_subagents Failed]: No subagent ID provided in ConversationIds.`;
                     } else {
-                        const logs = subagentManager.getSubagentLogs(id);
-                        resultMsg = `[Action manage_subagents Success]: Last log lines for subagent ${id}:\n\`\`\`\n${logs}\n\`\`\``;
+                        try {
+                            const logs = subagentManager.getSubagentLogs(id);
+                            resultMsg = `[Action manage_subagents Success]: Last log lines for subagent ${id}:\n\`\`\`\n${logs}\n\`\`\``;
+                        } catch (e: any) {
+                            resultMsg = `[Action manage_subagents Failed]: ${e.message}`;
+                        }
                     }
                 } else if (subAction === 'kill') {
                     for (const id of ids) {
