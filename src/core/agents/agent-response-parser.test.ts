@@ -205,6 +205,20 @@ describe('AgentResponseParser', () => {
             expect((parsed.action as any).ConversationIds).toEqual(['conversation-id-abc']);
         });
 
+        it('parses wait action correctly', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: 'wait',
+                    duration_seconds: 60
+                },
+                summary: 'Waiting for updates'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('wait');
+            expect((parsed.action as any).duration_seconds).toBe(60);
+        });
+
+
         it('normalizes commands arrays containing strings', () => {
             const raw = JSON.stringify({
                 action: { type: 'talk_with_user', content: 'test' },

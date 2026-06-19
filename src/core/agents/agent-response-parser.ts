@@ -9,6 +9,7 @@ export const AgentActionSchema = z.object({
         'talk_with_user', 'use_mcp_tool',
         'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
         'complete_task',
+        'wait',
         'ast_list_structure',
         'ast_get_method',
         'ast_add_method', 'ast_modify_method', 'ast_remove_method',
@@ -61,6 +62,7 @@ export const AgentActionSchema = z.object({
 
     // Superpowers fields
     skill_name: z.string().nullable().optional(),
+    duration_seconds: z.number().nullable().optional(),
     Subagents: z.array(z.object({
         TypeName: z.string(),
         Role: z.string(),
