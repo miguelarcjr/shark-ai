@@ -243,7 +243,13 @@ export class SubagentManager {
                     const pathToSharkJs = path.resolve(packageRoot, 'dist', 'bin', 'shark.js');
 
                     const customType = this.customTypes.get(sub.TypeName);
-                    let customContext = `[Subagent Context] ID: ${id}, Parent ID: ${parentId}, Role: ${sub.Role}\n`;
+                    let customContext = `Você está executando em modo SUBAGENTE.\n`;
+                    customContext += `- Seu ID é: ${id}\n`;
+                    customContext += `- O ID do seu Agente Pai é: ${parentId}\n`;
+                    customContext += `- Você NÃO tem um terminal interativo com o usuário humano. Não use 'talk_with_user' para interagir.\n`;
+                    customContext += `- Para reportar progresso intermediário ou tirar dúvidas com seu pai, use a ação 'send_message' com Recipient='${parentId}'.\n`;
+                    customContext += `- Para concluir a tarefa e enviar o resultado detalhado em markdown, use obrigatoriamente a ação 'complete_task' com suas descobertas no campo 'content'.\n`;
+                    
                     if (customType) {
                         customContext += `Custom Prompt: ${customType.systemPrompt}\n`;
                     }

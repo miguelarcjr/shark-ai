@@ -287,4 +287,58 @@ describe('SubagentManager', () => {
         expect(subNotification.metadata?.status).toBe('cancelled');
         expect(subNotification.content).toBe('Terminated by parent agent.');
     });
+
+    it('should inject specialized subagent instructions into the instruction prompt', async () => {
+        const { fork } = await import('node:child_process');
+        const forkMock = vi.mocked(fork);
+        forkMock.mockClear();
+
+        const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Verify code' }];
+        const parentId = 'parent-test';
+
+        await subagentManager.invokeSubagents(subagents, parentId);
+
+        // Wait briefly for the background promise to resolve (or at least spawn)
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(forkMock).toHaveBeenCalled();
+        const args = forkMock.mock.calls[0][1];
+        const instructionArg = args[args.indexOf('-t') + 1];
+
+        expect(instructionArg).toContain('Você está executando em modo SUBAGENTE.');
+        expect(instructionArg).toContain('Seu ID é:');
+        expect(instructionArg).toContain('O ID do seu Agente Pai é: parent-test');
+        expect(instructionArg).toContain('Não use \'talk_with_user\' para interagir.');
+        expect(instructionArg).toContain('complete_task');
+        expect(instructionArg).toContain('Verify code');
+    });
+
+    it('should inject custom type system prompt into customContext', async () => {
+        const { fork } = await import('node:child_process');
+        const forkMock = vi.mocked(fork);
+        forkMock.mockClear();
+
+        const name = 'code-writer-custom';
+        const description = 'Writes code';
+        const systemPrompt = 'You are a code writer...';
+        subagentManager.defineSubagentType(name, description, systemPrompt, {
+            enableWriteTools: true,
+            enableSubagentTools: false
+        });
+
+        const subagents = [{ TypeName: name, Role: 'Writer', Prompt: 'Write this code' }];
+        const parentId = 'parent-test-custom';
+
+        await subagentManager.invokeSubagents(subagents, parentId);
+
+        await new Promise(resolve => setTimeout(resolve, 10));
+
+        expect(forkMock).toHaveBeenCalled();
+        const args = forkMock.mock.calls[0][1];
+        const instructionArg = args[args.indexOf('-t') + 1];
+
+        expect(instructionArg).toContain('Custom Prompt: You are a code writer...');
+        expect(instructionArg).toContain('Write this code');
+    });
 });
+
