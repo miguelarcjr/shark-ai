@@ -26,7 +26,7 @@ Seu objetivo é ajudar o usuário a analisar, especificar e implementar código 
 SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "talk_with_user" | "use_mcp_tool" | "activate_skill" | "define_subagent" | "invoke_subagent" | "send_message" | "manage_subagents",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "talk_with_user" | "use_mcp_tool" | "activate_skill" | "define_subagent" | "invoke_subagent" | "send_message" | "manage_subagents" | "wait",
     "path": "caminho/relativo/do/arquivo (opcional)",
     "content": "conteúdo do arquivo ou mensagem para o usuário (opcional)",
     "start_anchor": "âncora de início de substituição (modify_file apenas)",
@@ -36,6 +36,7 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
     "tool_name": "nome da ferramenta MCP (use_mcp_tool apenas)",
     "tool_args": "argumentos em string JSON para MCP (use_mcp_tool apenas)",
     "skill_name": "nome da habilidade a ativar (activate_skill apenas)",
+    "duration_seconds": "tempo máximo em segundos para aguardar atualizações (opcional, wait apenas)",
     "Subagents": [
       {
         "TypeName": "tipo do subagente",
@@ -82,7 +83,8 @@ export const AGENT_RESPONSE_JSON_SCHEMA = {
             "define_subagent",
             "invoke_subagent",
             "send_message",
-            "manage_subagents"
+            "manage_subagents",
+            "wait"
           ]
         },
         "path": { "type": ["string", "null"] },
@@ -94,6 +96,10 @@ export const AGENT_RESPONSE_JSON_SCHEMA = {
         "tool_name": { "type": ["string", "null"] },
         "tool_args": { "type": ["string", "null"] },
         "skill_name": { "type": ["string", "null"] },
+        "duration_seconds": {
+          "type": ["integer", "null"],
+          "description": "Tempo maximo em segundos para aguardar atualizacoes."
+        },
         "Subagents": {
           "type": ["array", "null"],
           "items": {

@@ -10,7 +10,7 @@ interface SubagentState {
     id: string;
     type: string;
     role: string;
-    status: 'running' | 'completed' | 'failed';
+    status: 'running' | 'completed' | 'failed' | 'cancelled';
     summary?: string;
     promise?: Promise<any>;
     parentId?: string;
@@ -34,10 +34,14 @@ export class SubagentManager {
         this.subagents.set(id, { id, type, role, status: 'running', parentId });
     }
 
-    terminateSubagent(id: string, success: boolean = true) {
+    terminateSubagent(id: string, success: boolean = true, isCancelled: boolean = false) {
         const state = this.subagents.get(id);
         if (state) {
-            state.status = success ? 'completed' : 'failed';
+            if (isCancelled) {
+                state.status = 'cancelled';
+            } else {
+                state.status = success ? 'completed' : 'failed';
+            }
         }
     }
 

@@ -207,4 +207,14 @@ describe('SubagentManager', () => {
         expect(nextMsg.metadata?.status).toBe('completed');
         expect(nextMsg.content).toContain('Passed test checks');
     });
+
+    it('supports cancelled status for terminated subagents', () => {
+        const id = 'cancelled-test-id';
+        subagentManager.registerSubagent(id, 'self', 'Tester');
+        expect(subagentManager.isSubagentActive(id)).toBe(true);
+        subagentManager.terminateSubagent(id, false, true); // new parameter or logic
+        const state = subagentManager.getSubagentState(id);
+        expect(state?.status).toBe('cancelled');
+        expect(subagentManager.isSubagentActive(id)).toBe(false);
+    });
 });
