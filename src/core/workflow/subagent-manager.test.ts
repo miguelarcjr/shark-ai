@@ -217,4 +217,18 @@ describe('SubagentManager', () => {
         expect(state?.status).toBe('cancelled');
         expect(subagentManager.isSubagentActive(id)).toBe(false);
     });
+
+    it('reads console logs of a subagent from the filesystem', () => {
+        const id = 'log-test-id';
+        const projectRoot = process.cwd();
+        const historyDir = path.resolve(projectRoot, '_sharkrc', 'history');
+        fs.mkdirSync(historyDir, { recursive: true });
+        const logFile = path.join(historyDir, `subagent-${id}-console.log`);
+        fs.writeFileSync(logFile, "Line 1\nLine 2\nLine 3\n", 'utf-8');
+
+        // Test reading
+        const logs = subagentManager.getSubagentLogs(id, 2);
+        expect(logs).toContain("Line 2\nLine 3");
+        fs.unlinkSync(logFile);
+    });
 });

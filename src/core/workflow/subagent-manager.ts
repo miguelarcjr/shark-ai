@@ -141,6 +141,25 @@ export class SubagentManager {
         return this.customTypes.get(name);
     }
 
+    getSubagentLogs(id: string, maxLines: number = 50): string {
+        const projectRoot = process.cwd();
+        const logFile = path.resolve(projectRoot, '_sharkrc', 'history', `subagent-${id}-console.log`);
+        if (!fs.existsSync(logFile)) {
+            return "No console logs found for this subagent.";
+        }
+        try {
+            let content = fs.readFileSync(logFile, 'utf-8');
+            if (content.endsWith('\n')) {
+                content = content.slice(0, -1);
+            }
+            const lines = content.split('\n');
+            const tail = lines.slice(-maxLines);
+            return tail.join('\n');
+        } catch (e: any) {
+            return `Failed to read subagent logs: ${e.message}`;
+        }
+    }
+
     getActiveSubagents(): SubagentState[] {
         return Array.from(this.subagents.values()).filter(s => s.status === 'running');
     }

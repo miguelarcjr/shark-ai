@@ -214,6 +214,20 @@ Your goal is to address the user's request:
             currentTurnPrompt += `\n\n✉️ NEW MAILBOX MESSAGES:\n${mailboxMessages.map(m => `- ${m}`).join('\n')}\n`;
         }
 
+        // Inject active subagent status panel
+        const myId = options.taskId || 'parent';
+        const allSubagents = subagentManager.getActiveSubagentsForParent(myId);
+        if (allSubagents.length > 0) {
+            let panel = `\n\n--- CURRENT ACTIVE SUBAGENTS ---\n`;
+            panel += `You have ${allSubagents.length} active subagent(s) running in the background:\n`;
+            for (const sub of allSubagents) {
+                panel += `- ID: ${sub.id} | Role: ${sub.role} | Status: ${sub.status}\n`;
+            }
+            panel += `Use the 'wait' action if you have no other work and are waiting for these subagents to complete.\n`;
+            panel += `--------------------------------\n`;
+            currentTurnPrompt += panel;
+        }
+
         // Append skill extension to this turn's prompt
         const promptToSend = currentTurnPrompt + skillManager.getSystemInstructionExtension();
 
@@ -623,6 +637,14 @@ Your goal is to address the user's request:
                 if (subAction === 'list') {
                     const active = subagentManager.getActiveSubagents();
                     resultMsg = `[Action manage_subagents Success]: Active subagents:\n${active.map(s => `- ID: ${s.id}, Type: ${s.type}, Role: ${s.role}`).join('\n')}`;
+                } else if (subAction === 'read_logs') {
+                    const id = ids[0];
+                    if (!id) {
+                        resultMsg = `[Action manage_subagents Failed]: No subagent ID provided in ConversationIds.`;
+                    } else {
+                        const logs = subagentManager.getSubagentLogs(id);
+                        resultMsg = `[Action manage_subagents Success]: Last log lines for subagent ${id}:\n\`\`\`\n${logs}\n\`\`\``;
+                    }
                 } else if (subAction === 'kill') {
                     for (const id of ids) {
                         subagentManager.killSubagent(id);
