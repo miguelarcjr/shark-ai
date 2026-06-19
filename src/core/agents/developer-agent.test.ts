@@ -965,5 +965,69 @@ describe('DeveloperAgent', () => {
 
         expect(killSpy).toHaveBeenCalledWith('sub-active-cleanup');
     });
+
+    it('registers and unregisters SIGINT and SIGTERM handlers, and cleans up subagents on signal', async () => {
+        const expectedResponse = {
+            actions: [],
+            message: 'TASK_COMPLETED: Done',
+            conversation_id: 'conv-id',
+        };
+        vi.mocked(mockProvider.streamChat).mockResolvedValue(expectedResponse);
+
+        const onSpy = vi.spyOn(process, 'on').mockImplementation(() => process);
+        const offSpy = vi.spyOn(process, 'off').mockImplementation(() => process);
+        const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+
+        // Mock active subagents for parent
+        const activeSub = {
+            id: 'sub-active-cleanup-sig',
+            type: 'self',
+            role: 'Tester',
+            status: 'running' as const,
+            parentId: 'parent-sig-id'
+        };
+        
+        vi.spyOn(subagentManager, 'getActiveSubagentsForParent').mockImplementation((parentId) => {
+            if (parentId === 'parent-sig-id') {
+                return [activeSub];
+            }
+            return [];
+        });
+
+        const killSpy = vi.spyOn(subagentManager, 'killSubagent').mockImplementation(() => {});
+
+        let sigIntHandler: Function | undefined;
+        let sigTermHandler: Function | undefined;
+
+        onSpy.mockImplementation((event, listener) => {
+            if (event === 'SIGINT') sigIntHandler = listener;
+            if (event === 'SIGTERM') sigTermHandler = listener;
+            return process;
+        });
+
+        await interactiveDeveloperAgent({
+            taskId: 'parent-sig-id',
+            taskInstruction: 'Do something',
+        });
+
+        // Verify registration
+        expect(onSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+        expect(onSpy).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+
+        // Verify unregistration
+        expect(offSpy).toHaveBeenCalledWith('SIGINT', expect.any(Function));
+        expect(offSpy).toHaveBeenCalledWith('SIGTERM', expect.any(Function));
+
+        // Verify the signal handler logic
+        expect(sigIntHandler).toBeDefined();
+        expect(sigTermHandler).toBeDefined();
+        expect(sigIntHandler).toBe(sigTermHandler);
+
+        // Execute signal handler
+        sigIntHandler!();
+
+        expect(killSpy).toHaveBeenCalledWith('sub-active-cleanup-sig');
+        expect(exitSpy).toHaveBeenCalledWith(0);
+    });
 });
 

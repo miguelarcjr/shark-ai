@@ -199,7 +199,7 @@ Your goal is to address the user's request:
 
     const spinner = tui.spinner();
 
-    const handleSigInt = () => {
+    const handleCleanupSignal = () => {
         const currentId = options.taskId || 'parent';
         const active = subagentManager.getActiveSubagentsForParent(currentId);
         if (active.length > 0) {
@@ -209,7 +209,8 @@ Your goal is to address the user's request:
         }
         process.exit(0);
     };
-    process.on('SIGINT', handleSigInt);
+    process.on('SIGINT', handleCleanupSignal);
+    process.on('SIGTERM', handleCleanupSignal);
 
     try {
         while (keepGoing) {
@@ -733,7 +734,8 @@ Your goal is to address the user's request:
         log.success('✅ Task Scope Completed');
         return finalResult;
     } finally {
-        process.off('SIGINT', handleSigInt);
+        process.off('SIGINT', handleCleanupSignal);
+        process.off('SIGTERM', handleCleanupSignal);
 
         // Auto terminate active subagents created by this parent to prevent leaks on exit
         const currentId = options.taskId || 'parent';
