@@ -11,12 +11,11 @@ export interface QueueMessage {
 
 export class MessageQueue {
     private queue: QueueMessage[] = [];
-    private pendingResolve: ((value: QueueMessage) => void) | null = null;
+    private pendingResolvers: ((value: QueueMessage) => void)[] = [];
 
     public push(message: QueueMessage): void {
-        if (this.pendingResolve) {
-            const resolve = this.pendingResolve;
-            this.pendingResolve = null;
+        if (this.pendingResolvers.length > 0) {
+            const resolve = this.pendingResolvers.shift()!;
             resolve(message);
         } else {
             this.queue.push(message);
@@ -28,7 +27,7 @@ export class MessageQueue {
             return this.queue.shift()!;
         }
         return new Promise<QueueMessage>((resolve) => {
-            this.pendingResolve = resolve;
+            this.pendingResolvers.push(resolve);
         });
     }
 

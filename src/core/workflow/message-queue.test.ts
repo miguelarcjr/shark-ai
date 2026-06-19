@@ -27,4 +27,19 @@ describe('MessageQueue', () => {
         await queue.next();
         expect(queue.isEmpty()).toBe(true);
     });
+
+    it('should support multiple concurrent readers', async () => {
+        const queue = new MessageQueue();
+        const p1 = queue.next();
+        const p2 = queue.next();
+        
+        queue.push({ type: 'user', content: 'first', timestamp: 1 });
+        queue.push({ type: 'user', content: 'second', timestamp: 2 });
+        
+        const r1 = await p1;
+        const r2 = await p2;
+        
+        expect(r1.content).toBe('first');
+        expect(r2.content).toBe('second');
+    });
 });
