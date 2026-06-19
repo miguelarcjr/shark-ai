@@ -8,6 +8,7 @@ export const AgentActionSchema = z.object({
         'list_structure', 'modify_ast', 'search_ast', 'run_command',
         'talk_with_user', 'use_mcp_tool',
         'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
+        'complete_task',
         'ast_list_structure',
         'ast_get_method',
         'ast_add_method', 'ast_modify_method', 'ast_remove_method',
@@ -120,6 +121,24 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
             FileLogger.log('PARSER', 'String Parse Failed', { error: (e as Error).message });
             const errMsg = (e as Error).message;
             const cleanRaw = rawResponse.trim();
+            
+            if (cleanRaw === '') {
+                const systemMsg = `[SYSTEM ERROR]: O modelo retornou uma resposta vazia. Por favor, tente novamente e forneça uma ação JSON válida.`;
+                return {
+                    action: {
+                        type: 'talk_with_user',
+                        content: systemMsg,
+                        path: ''
+                    },
+                    actions: [{
+                        type: 'talk_with_user',
+                        content: systemMsg,
+                        path: ''
+                    }],
+                    message: systemMsg
+                };
+            }
+
             const looksLikeJson = cleanRaw.startsWith('{') || cleanRaw.startsWith('[');
             
             if (!looksLikeJson) {
@@ -235,7 +254,8 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         const validTypes = [
             'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
             'talk_with_user', 'use_mcp_tool', 'list_structure', 'modify_ast', 'search_ast', 'run_command',
-            'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents'
+            'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
+            'complete_task'
         ];
         if (validTypes.includes(parsedObj.type)) {
             normalizedAction = parsedObj;

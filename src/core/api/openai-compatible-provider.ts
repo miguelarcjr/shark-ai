@@ -69,6 +69,7 @@ export class OpenAICompatibleProvider implements AIProvider {
                                   "invoke_subagent",
                                   "send_message",
                                   "manage_subagents",
+                                  "complete_task",
                                   "list_structure",
                                   "modify_ast",
                                   "search_ast",

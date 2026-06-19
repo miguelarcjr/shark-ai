@@ -103,6 +103,26 @@ describe('AgentResponseParser', () => {
         expect(result.actions[0]).toEqual(result.action);
     });
 
+    it('should parse complete_task action successfully', () => {
+        const raw = {
+            summary: 'Task finalized',
+            action: {
+                type: 'complete_task',
+                content: 'Here is the detailed project code design...',
+                summary: 'Completed project analysis.'
+            }
+        };
+        const result = parseAgentResponse(raw);
+        expect(result.action?.type).toBe('complete_task');
+        expect(result.action?.content).toBe('Here is the detailed project code design...');
+    });
+
+    it('should return system error on completely empty raw string', () => {
+        const result = parseAgentResponse('   ');
+        expect(result.action?.type).toBe('talk_with_user');
+        expect(result.action?.content).toContain('[SYSTEM ERROR]: O modelo retornou uma resposta vazia');
+    });
+
     describe('Superpowers actions', () => {
         it('parses activate_skill action correctly', () => {
             const raw = JSON.stringify({
