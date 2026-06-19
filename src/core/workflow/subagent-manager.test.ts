@@ -218,6 +218,27 @@ describe('SubagentManager', () => {
         expect(subagentManager.isSubagentActive(id)).toBe(false);
     });
 
+    it('sets status to cancelled and notifies mailbox when killSubagent is called', () => {
+        const id = 'kill-notify-id';
+        const parentId = 'parent-notify';
+        subagentManager.registerSubagent(id, 'self', 'Tester', parentId);
+
+        // Mock childProcess with kill
+        const mockChild = { kill: vi.fn() };
+        const state = subagentManager.getSubagentState(id);
+        if (state) {
+            state.childProcess = mockChild;
+        }
+
+        subagentManager.killSubagent(id);
+        expect(mockChild.kill).toHaveBeenCalledWith('SIGTERM');
+        expect(subagentManager.getSubagentState(id)?.status).toBe('cancelled');
+
+        const msgs = subagentManager.retrieveMessages(parentId);
+        expect(msgs[0]).toContain('status: CANCELLED');
+    });
+
+
     it('reads console logs of a subagent from the filesystem', () => {
         const id = 'log-test-id';
         const projectRoot = process.cwd();

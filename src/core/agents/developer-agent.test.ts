@@ -931,5 +931,39 @@ describe('DeveloperAgent', () => {
         );
         expect(result).toEqual({ success: true, summary: 'Wait finished' });
     });
+
+    it('terminates active subagents on exit (cleanup)', async () => {
+        const expectedResponse = {
+            actions: [],
+            message: 'TASK_COMPLETED: Done',
+            conversation_id: 'conv-id',
+        };
+        vi.mocked(mockProvider.streamChat).mockResolvedValue(expectedResponse);
+
+        // Mock active subagents for parent
+        const activeSub = {
+            id: 'sub-active-cleanup',
+            type: 'self',
+            role: 'Tester',
+            status: 'running' as const,
+            parentId: 'parent-cleanup-id'
+        };
+        
+        vi.spyOn(subagentManager, 'getActiveSubagentsForParent').mockImplementation((parentId) => {
+            if (parentId === 'parent-cleanup-id') {
+                return [activeSub];
+            }
+            return [];
+        });
+
+        const killSpy = vi.spyOn(subagentManager, 'killSubagent').mockImplementation(() => {});
+
+        await interactiveDeveloperAgent({
+            taskId: 'parent-cleanup-id',
+            taskInstruction: 'Do something',
+        });
+
+        expect(killSpy).toHaveBeenCalledWith('sub-active-cleanup');
+    });
 });
 

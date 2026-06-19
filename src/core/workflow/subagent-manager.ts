@@ -181,7 +181,13 @@ export class SubagentManager {
                     // Ignore
                 }
             }
-            this.terminateSubagent(id, false);
+            this.terminateSubagent(id, false, true); // true sets status to 'cancelled'
+            
+            // Send cancellation notification to parent mailbox
+            if (state.parentId) {
+                const cancelMsg = `[Subagent Notification] Subagent ${state.role} (${id}) has finished with status: CANCELLED. Summary: Terminated by parent agent.`;
+                this.sendMessage(state.parentId, cancelMsg);
+            }
         }
     }
 
