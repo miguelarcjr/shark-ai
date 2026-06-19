@@ -545,6 +545,8 @@ Your goal is to address the user's request:
                         log.info(colors.dim(action.content || ''));
                         if (isSubagent) {
                             resultMsg = action.content || '';
+                            nextPrompt = resultMsg;
+                            continue; // Retry loop
                         } else {
                             let approved = isAuto;
                             if (!approved) {
@@ -682,6 +684,25 @@ Your goal is to address the user's request:
                     } else {
                         resultMsg = `[Action manage_subagents Failed]: Unknown action '${subAction}'`;
                     }
+                }
+                else if (action.type === 'complete_task') {
+                    const detailedContent = action.content || '';
+                    const taskSummary = action.summary || 'Task completed successfully.';
+                    
+                    if (isSubagent) {
+                        subagentManager.updateSubagentSummary(options.taskId!, taskSummary);
+                        // Send the detailed markdown content to parent mailbox instead of just a 1-sentence summary
+                        if (process.env.SHARK_PARENT_ID) {
+                            subagentManager.sendMessage(
+                                process.env.SHARK_PARENT_ID,
+                                `[Subagent Notification] Subagent ${process.env.SHARK_SUBAGENT_ROLE || 'Subagent'} (${options.taskId}) completed.\nResult Details:\n${detailedContent}`
+                            );
+                        }
+                    }
+                    
+                    finalSummary = taskSummary;
+                    keepGoing = false;
+                    break;
                 }
                 else if (action.type === 'wait') {
                     const durationSeconds = action.duration_seconds || 0;

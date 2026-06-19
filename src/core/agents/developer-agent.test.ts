@@ -1086,5 +1086,77 @@ describe('DeveloperAgent', () => {
         process.stdout.isTTY = originalIsTTY;
         writeSpy.mockRestore();
     });
+
+    it('should retry automatically on system error if running in subagent/auto mode', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'talk_with_user',
+                    content: '[SYSTEM ERROR] failed to parse response',
+                },
+                actions: [],
+                message: 'Turn 1 error',
+                conversation_id: 'conv-retry-1',
+            })
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'talk_with_user',
+                    content: 'TASK_COMPLETED: Recovered successfully',
+                },
+                actions: [],
+                message: 'Turn 2 success',
+                conversation_id: 'conv-retry-1',
+            });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-retry-task',
+            auto: true,
+        });
+
+        expect(mockProvider.streamChat).toHaveBeenCalledTimes(2);
+        expect(mockProvider.streamChat).toHaveBeenNthCalledWith(
+            2,
+            expect.stringContaining('[SYSTEM ERROR] failed to parse response'),
+            expect.any(Object)
+        );
+        expect(result).toEqual({ success: true, summary: 'Recovered successfully' });
+    });
+
+    it('should complete task successfully when complete_task action is received', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'complete_task',
+                    content: 'Detailed result of task execution',
+                    summary: 'Task completed successfully.'
+                },
+                actions: [],
+                message: 'Subagent completing task',
+                conversation_id: 'conv-complete-1',
+            });
+
+        // Set parent ID to test subagent notification sending
+        process.env.SHARK_PARENT_ID = 'parent-agent-id';
+        process.env.SHARK_SUBAGENT_ROLE = 'Developer';
+
+        const sendMessageSpy = vi.spyOn(subagentManager, 'sendMessage').mockImplementation(() => {});
+        const updateSummarySpy = vi.spyOn(subagentManager, 'updateSubagentSummary').mockImplementation(() => {});
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-complete-task',
+            auto: true,
+        });
+
+        expect(result).toEqual({ success: true, summary: 'Task completed successfully.' });
+        expect(updateSummarySpy).toHaveBeenCalledWith('subagent-complete-task', 'Task completed successfully.');
+        expect(sendMessageSpy).toHaveBeenCalledWith(
+            'parent-agent-id',
+            expect.stringContaining('[Subagent Notification] Subagent Developer (subagent-complete-task) completed.\nResult Details:\nDetailed result of task execution')
+        );
+
+        // Clean up environment variables
+        delete process.env.SHARK_PARENT_ID;
+        delete process.env.SHARK_SUBAGENT_ROLE;
+    });
 });
 
