@@ -728,6 +728,14 @@ Your goal is to address the user's request:
                         resultMsg = nextMsg.content;
                     }
                 }
+                else if (action.type === 'notify_user') {
+                    const messageContent = action.content || '';
+                    if (messageContent) {
+                        log.info(colors.primary('🤖 Shark Dev:'));
+                        console.log(messageContent);
+                    }
+                    resultMsg = `[Action notify_user Success]: Notificação exibida com sucesso para o usuário.`;
+                }
                 else {
                     resultMsg = `[Unsupported action type: ${action.type}]`;
                 }

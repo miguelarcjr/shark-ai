@@ -1158,5 +1158,42 @@ describe('DeveloperAgent', () => {
         delete process.env.SHARK_PARENT_ID;
         delete process.env.SHARK_SUBAGENT_ROLE;
     });
+
+    it('should handle notify_user action without blocking or waiting for user input', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'notify_user',
+                    content: 'Background progress message'
+                },
+                actions: [],
+                message: 'Notification turn',
+                conversation_id: 'conv-notify-user'
+            })
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'complete_task',
+                    summary: 'Done after notification'
+                },
+                actions: [],
+                message: 'Done',
+                conversation_id: 'conv-notify-user'
+            });
+
+        const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+        const result = await interactiveDeveloperAgent({
+            taskInstruction: 'Notify and complete',
+            auto: true
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.summary).toBe('Done after notification');
+        expect(tui.log.info).toHaveBeenCalledWith(expect.stringContaining('🤖 Shark Dev:'));
+        expect(consoleSpy).toHaveBeenCalledWith('Background progress message');
+        expect(mockProvider.streamChat).toHaveBeenNthCalledWith(2, expect.stringContaining('[Action notify_user Success]: Notificação exibida com sucesso para o usuário.'), expect.any(Object));
+
+        consoleSpy.mockRestore();
+    });
 });
 
