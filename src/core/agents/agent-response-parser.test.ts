@@ -123,6 +123,19 @@ describe('AgentResponseParser', () => {
         expect(result.action?.content).toContain('[SYSTEM ERROR]: O modelo retornou uma resposta vazia');
     });
 
+    it('should parse and validate notify_user action', () => {
+        const raw = {
+            action: {
+                type: 'notify_user',
+                content: 'Everything is running smoothly.'
+            },
+            summary: 'Notifying user'
+        };
+        const result = parseAgentResponse(raw);
+        expect(result.action?.type).toBe('notify_user');
+        expect(result.action?.content).toBe('Everything is running smoothly.');
+    });
+
     describe('Superpowers actions', () => {
         it('parses activate_skill action correctly', () => {
             const raw = JSON.stringify({

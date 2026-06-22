@@ -26,7 +26,7 @@ Seu objetivo é ajudar o usuário a analisar, especificar e implementar código 
 SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "talk_with_user" | "use_mcp_tool" | "activate_skill" | "define_subagent" | "invoke_subagent" | "send_message" | "manage_subagents" | "complete_task" | "wait",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "talk_with_user" | "use_mcp_tool" | "activate_skill" | "define_subagent" | "invoke_subagent" | "send_message" | "manage_subagents" | "complete_task" | "wait" | "notify_user",
     "path": "caminho/relativo/do/arquivo (opcional)",
     "content": "conteúdo do arquivo ou mensagem para o usuário (opcional)",
     "start_anchor": "âncora de início de substituição (modify_file apenas)",
@@ -85,7 +85,8 @@ export const AGENT_RESPONSE_JSON_SCHEMA = {
             "send_message",
             "manage_subagents",
             "complete_task",
-            "wait"
+            "wait",
+            "notify_user"
           ]
         },
         "path": { "type": ["string", "null"] },

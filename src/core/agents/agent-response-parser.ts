@@ -10,6 +10,7 @@ export const AgentActionSchema = z.object({
         'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
         'complete_task',
         'wait',
+        'notify_user',
         'ast_list_structure',
         'ast_get_method',
         'ast_add_method', 'ast_modify_method', 'ast_remove_method',
@@ -257,7 +258,7 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
             'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
             'talk_with_user', 'use_mcp_tool', 'list_structure', 'modify_ast', 'search_ast', 'run_command',
             'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
-            'complete_task'
+            'complete_task', 'wait', 'notify_user'
         ];
         if (validTypes.includes(parsedObj.type)) {
             normalizedAction = parsedObj;
