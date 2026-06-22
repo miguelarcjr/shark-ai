@@ -84,6 +84,7 @@ describe('DeveloperAgent', () => {
         const result = await interactiveDeveloperAgent({
             taskId: 'test-task',
             taskInstruction: 'Refactor developer-agent',
+            auto: true,
         });
 
         // Verify provider retrieval
@@ -133,6 +134,7 @@ describe('DeveloperAgent', () => {
         const result = await interactiveDeveloperAgent({
             taskId: 'read-task',
             taskInstruction: 'Read test.ts file',
+            auto: true,
         });
 
         expect(mockGetAnchoredContent).toHaveBeenCalledWith('test.ts');
@@ -168,6 +170,8 @@ describe('DeveloperAgent', () => {
             });
 
         const mockConfirm = vi.mocked(tui.confirm).mockResolvedValue(true);
+        vi.mocked(tui.isCancel).mockReturnValueOnce(true);
+        vi.mocked(tui.text).mockResolvedValueOnce('cancel');
 
         const result = await interactiveDeveloperAgent({
             taskId: 'modify-task',
@@ -258,6 +262,8 @@ describe('DeveloperAgent', () => {
             });
 
         vi.mocked(tui.confirm).mockResolvedValue(true);
+        vi.mocked(tui.isCancel).mockReturnValueOnce(true);
+        vi.mocked(tui.text).mockResolvedValueOnce('cancel');
 
         const result = await interactiveDeveloperAgent({
             taskId: 'crud-task',
@@ -288,7 +294,12 @@ describe('DeveloperAgent', () => {
                 conversation_id: 'conv-123',
             });
 
-        vi.mocked(tui.text).mockResolvedValue('Just ignore them');
+        vi.mocked(tui.text)
+            .mockResolvedValueOnce('Just ignore them')
+            .mockResolvedValueOnce('cancel');
+        vi.mocked(tui.isCancel)
+            .mockReturnValueOnce(false)
+            .mockReturnValueOnce(true);
 
         const result = await interactiveDeveloperAgent({
             taskId: 'talk-task',
@@ -354,6 +365,7 @@ describe('DeveloperAgent', () => {
         const result = await interactiveDeveloperAgent({
             taskId: 'search-task',
             taskInstruction: 'Search and complete',
+            auto: true,
         });
 
         expect(handleListFiles).toHaveBeenCalledWith('src');
@@ -406,6 +418,7 @@ describe('DeveloperAgent', () => {
         const result = await interactiveDeveloperAgent({
             taskId: 'skill-task',
             taskInstruction: 'Activate a skill',
+            auto: true,
         });
 
         expect(skillManager.activateSkill).toHaveBeenCalledWith('my-skill');
@@ -483,6 +496,7 @@ describe('DeveloperAgent', () => {
         const result = await interactiveDeveloperAgent({
             taskId: 'subagent-flow-task',
             taskInstruction: 'Test subagent management flow',
+            auto: true,
         });
 
         expect(defineSpy).toHaveBeenCalledWith('test-writer', 'Writes test files', 'You write vitest files', {
@@ -525,6 +539,7 @@ describe('DeveloperAgent', () => {
         const result = await interactiveDeveloperAgent({
             taskId: 'subagent-flow-task',
             taskInstruction: 'Test subagent log reading flow',
+            auto: true,
         });
 
         expect(getLogsSpy).toHaveBeenCalledWith('subagent-abc');
@@ -557,6 +572,7 @@ describe('DeveloperAgent', () => {
         const result = await interactiveDeveloperAgent({
             taskId: 'subagent-flow-task',
             taskInstruction: 'Test subagent log reading flow with invalid subagent ID',
+            auto: true,
         });
 
         expect(getLogsSpy).toHaveBeenCalledWith('subagent-invalid');
@@ -566,10 +582,14 @@ describe('DeveloperAgent', () => {
     it('should support /skills interactive command and activate selection', async () => {
         vi.mocked(tui.text)
             .mockResolvedValueOnce('/skills')
-            .mockResolvedValueOnce('my actual task');
+            .mockResolvedValueOnce('my actual task')
+            .mockResolvedValueOnce('cancel');
 
         vi.mocked(tui.select).mockResolvedValueOnce('brainstorming');
-        vi.mocked(tui.isCancel).mockReturnValue(false);
+        vi.mocked(tui.isCancel)
+            .mockReturnValueOnce(false)
+            .mockReturnValueOnce(false)
+            .mockReturnValueOnce(true);
 
         vi.spyOn(skillManager, 'listAvailableSkills').mockResolvedValue(['brainstorming', 'systematic-debugging', 'test-driven-development']);
         vi.spyOn(skillManager, 'activateSkill').mockResolvedValue('Brainstorm prompt');
@@ -690,6 +710,7 @@ describe('DeveloperAgent', () => {
         // We run with taskInstruction so that we don't prompt for task instruction at start
         await interactiveDeveloperAgent({
             taskInstruction: 'Do something',
+            auto: true,
         });
 
         // Verify subagentManager.retrieveMessages was called with 'parent'
@@ -814,6 +835,7 @@ describe('DeveloperAgent', () => {
         // Run the agent with a taskInstruction so it doesn't prompt for task at start
         const result = await interactiveDeveloperAgent({
             taskInstruction: 'Invoke and do not wait',
+            auto: true,
         });
 
         // Verify it did NOT wait during streamChat execution
@@ -921,6 +943,7 @@ describe('DeveloperAgent', () => {
         const result = await interactiveDeveloperAgent({
             taskId: 'wait-loop-task',
             taskInstruction: 'Wait and complete',
+            auto: true,
         });
 
         // The second streamChat should be called with the timeout message
@@ -961,6 +984,7 @@ describe('DeveloperAgent', () => {
         await interactiveDeveloperAgent({
             taskId: 'parent-cleanup-id',
             taskInstruction: 'Do something',
+            auto: true,
         });
 
         expect(killSpy).toHaveBeenCalledWith('sub-active-cleanup');
@@ -1008,6 +1032,7 @@ describe('DeveloperAgent', () => {
         await interactiveDeveloperAgent({
             taskId: 'parent-sig-id',
             taskInstruction: 'Do something',
+            auto: true,
         });
 
         // Verify registration
@@ -1194,6 +1219,55 @@ describe('DeveloperAgent', () => {
         expect(mockProvider.streamChat).toHaveBeenNthCalledWith(2, expect.stringContaining('[Action notify_user Success]: Notificação exibida com sucesso para o usuário.'), expect.any(Object));
 
         consoleSpy.mockRestore();
+    });
+
+    it('should not exit on TASK_COMPLETED if parent has auto set to false', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'talk_with_user',
+                    content: 'Here is explanation\n\nTASK_COMPLETED: Done first part',
+                },
+                actions: [],
+                message: 'Here is explanation\n\nTASK_COMPLETED: Done first part',
+                conversation_id: 'conv-parent-completed-interactive',
+            });
+
+        vi.mocked(tui.isCancel).mockReturnValueOnce(true);
+        vi.mocked(tui.text).mockResolvedValueOnce('cancel');
+
+        const result = await interactiveDeveloperAgent({
+            taskInstruction: 'Do task with interactive continuation',
+            auto: false,
+        });
+
+        expect(tui.text).toHaveBeenCalledTimes(1);
+        expect(result).toEqual({ success: true, summary: 'Done first part' });
+    });
+
+    it('should not exit on complete_task action if parent has auto set to false', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'complete_task',
+                    summary: 'Finished successfully',
+                    content: 'Some details',
+                },
+                actions: [],
+                message: 'Completed via action',
+                conversation_id: 'conv-complete-action-interactive',
+            });
+
+        vi.mocked(tui.isCancel).mockReturnValueOnce(true);
+        vi.mocked(tui.text).mockResolvedValueOnce('cancel');
+
+        const result = await interactiveDeveloperAgent({
+            taskInstruction: 'Do task with complete_task action',
+            auto: false,
+        });
+
+        expect(tui.text).toHaveBeenCalledTimes(1);
+        expect(result).toEqual({ success: true, summary: 'Finished successfully' });
     });
 });
 

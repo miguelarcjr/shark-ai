@@ -189,11 +189,16 @@ You are a highly skilled Developer Agent.
 👉 **CURRENT TASK**: "${currentTask}"
 
 Your goal is to address the user's request:
-- If the request is a question, a request for explanation, or a discussion, answer the user using the 'talk_with_user' action. You can search the codebase or read files first to answer accurately. Once the explanation/discussion is complete, output a final response starting with "TASK_COMPLETED:" followed by a brief summary.
+- If the request is a question, a request for explanation, or a discussion, answer the user using the 'talk_with_user' action. You can search the codebase or read files first to answer accurately. Once the explanation/discussion is complete, execute the 'complete_task' action with a brief summary in the 'summary' field and the full explanation in the 'content' field.
 - If the request is to implement changes, debug, or write code:
   1. Implement the necessary changes.
   2. Verify (compile/test).
-  3. When you are confident the task is done, output a final response starting with "TASK_COMPLETED:" followed by a brief technical summary of what you did.
+  3. When you are confident the task is done, execute the 'complete_task' action with a brief technical summary of what you did in the 'summary' field and any additional details in the 'content' field.
+
+- Handling Subagent Notifications:
+  - When you receive notifications about subagent progress or completion in your mailbox, do NOT invoke the 'talk_with_user' action just to relay this information to the user if you still have other subagents running, or if you have further steps to execute yourself.
+  - Instead, process the subagent's output, update your task progress in the 'summary' field of your next action, and proceed with executing your next planned steps (or use the 'wait' action to continue waiting for other running subagents).
+  - Only use 'talk_with_user' if you genuinely require the user's input/decision to proceed, or when the entire task is ready for final discussion.
 `;
 
     let nextPrompt = basePrompt;
@@ -284,6 +289,12 @@ Your goal is to address the user's request:
 
                 // Handle completion/failure messages
                 if (response.message && response.message.includes('TASK_COMPLETED:')) {
+                    const mainContent = response.message.split('TASK_COMPLETED:')[0].trim();
+                    if (mainContent) {
+                        log.info(colors.primary('🤖 Shark Dev:'));
+                        console.log(mainContent);
+                    }
+
                     finalSummary = response.message.split('TASK_COMPLETED:')[1].trim();
                     log.success(`✔ Task Completed: ${finalSummary}`);
                     
@@ -293,7 +304,7 @@ Your goal is to address the user's request:
                         break;
                     }
 
-                    if (!options.taskInstruction) {
+                    if (!options.auto || activeSubagents.length > 0) {
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
@@ -315,6 +326,12 @@ Your goal is to address the user's request:
                 }
 
                 if (response.message && response.message.includes('TASK_FAILED:')) {
+                    const mainContent = response.message.split('TASK_FAILED:')[0].trim();
+                    if (mainContent) {
+                        log.info(colors.primary('🤖 Shark Dev:'));
+                        console.log(mainContent);
+                    }
+
                     const failureReason = response.message.split('TASK_FAILED:')[1].trim();
                     log.error(`❌ Agent reported task failure: ${failureReason}`);
                     
@@ -330,7 +347,7 @@ Your goal is to address the user's request:
                         return { success: false, summary: failureReason };
                     }
 
-                    if (!options.taskInstruction) {
+                    if (!options.auto || activeSubagents.length > 0) {
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
@@ -584,9 +601,16 @@ Your goal is to address the user's request:
                         }
 
                         if (hasCompleted) {
+                            // Print explanation content preceding TASK_COMPLETED
+                            const mainContent = contentStr.split('TASK_COMPLETED:')[0].trim();
+                            if (mainContent) {
+                                log.info(colors.primary('🤖 Shark Dev:'));
+                                console.log(mainContent);
+                            }
+
                             finalSummary = contentStr.split('TASK_COMPLETED:')[1].trim();
                             log.success(`✔ Task Completed: ${finalSummary}`);
-                            if (!options.taskInstruction) {
+                            if (!options.auto || activeSubagents.length > 0) {
                                 let nextMsg: QueueMessage;
                                 if (!messageQueue.isEmpty()) {
                                     nextMsg = await messageQueue.next();
@@ -698,11 +722,39 @@ Your goal is to address the user's request:
                                 `[Subagent Notification] Subagent ${process.env.SHARK_SUBAGENT_ROLE || 'Subagent'} (${options.taskId}) completed.\nResult Details:\n${detailedContent}`
                             );
                         }
+                        finalSummary = taskSummary;
+                        keepGoing = false;
+                        break;
+                    } else {
+                        if (detailedContent) {
+                            log.info(colors.primary('🤖 Shark Dev:'));
+                            console.log(detailedContent);
+                        }
+                        
+                        log.success(`✔ Task Completed: ${taskSummary}`);
+                        
+                        if (!options.auto || activeSubagents.length > 0) {
+                            let nextMsg: QueueMessage;
+                            if (!messageQueue.isEmpty()) {
+                                nextMsg = await messageQueue.next();
+                            } else {
+                                nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
+                            }
+                            if (nextMsg.type === 'user') {
+                                if (tui.isCancel(nextMsg.content)) {
+                                    finalSummary = taskSummary;
+                                    keepGoing = false;
+                                    break;
+                                }
+                            }
+                            nextPrompt = nextMsg.content;
+                            continue;
+                        } else {
+                            finalSummary = taskSummary;
+                            keepGoing = false;
+                            break;
+                        }
                     }
-                    
-                    finalSummary = taskSummary;
-                    keepGoing = false;
-                    break;
                 }
                 else if (action.type === 'wait') {
                     const durationSeconds = action.duration_seconds || 0;
