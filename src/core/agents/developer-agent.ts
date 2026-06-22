@@ -45,37 +45,45 @@ export async function waitForInputOrNotification(
     queue: MessageQueue,
     promptMessage: string = 'Your answer:',
     subagentPrefix: string = '',
-    timeoutMs?: number
+    timeoutMs?: number,
+    isAuto: boolean = false
 ): Promise<QueueMessage> {
     let cancelled = false;
     let resolvePromptPromise: ((value: QueueMessage) => void) | null = null;
     let timerId: any = null;
 
-    const promptPromise = new Promise<QueueMessage>((resolve) => {
-        resolvePromptPromise = resolve;
-    });
+    const promises: Promise<QueueMessage>[] = [];
 
-    const runPrompt = async () => {
-        try {
-            const userReply = await promptUser(promptMessage, undefined, undefined, subagentPrefix);
-            if (!cancelled && resolvePromptPromise) {
-                resolvePromptPromise({
-                    type: 'user',
-                    content: userReply,
-                    timestamp: Date.now()
-                });
-            }
-        } catch (e) {}
-    };
-    runPrompt();
+    if (!isAuto) {
+        const promptPromise = new Promise<QueueMessage>((resolve) => {
+            resolvePromptPromise = resolve;
+        });
+
+        const runPrompt = async () => {
+            try {
+                const userReply = await promptUser(promptMessage, undefined, undefined, subagentPrefix);
+                if (!cancelled && resolvePromptPromise) {
+                    resolvePromptPromise({
+                        type: 'user',
+                        content: userReply,
+                        timestamp: Date.now()
+                    });
+                }
+            } catch (e) {}
+        };
+        runPrompt();
+        promises.push(promptPromise);
+    }
 
     const queuePromise = queue.next();
-
-    const promises: Promise<QueueMessage>[] = [promptPromise, queuePromise];
+    promises.push(queuePromise);
 
     if (timeoutMs !== undefined && timeoutMs !== null) {
         const timeoutPromise = new Promise<QueueMessage>((resolve) => {
             timerId = setTimeout(() => {
+                if (resolvePromptPromise) {
+                    cancelled = true;
+                }
                 resolve({
                     type: 'timeout',
                     content: 'Wait timeout expired.',
@@ -94,10 +102,12 @@ export async function waitForInputOrNotification(
 
     if (winner.type === 'subagent_notification' || winner.type === 'timeout') {
         cancelled = true;
-        process.stdin.emit('data', '\r');
-        await new Promise(r => setTimeout(r, 50));
-        if (process.stdout.isTTY) {
-            process.stdout.write('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
+        if (!isAuto) {
+            process.stdin.emit('data', '\r');
+            await new Promise(r => setTimeout(r, 50));
+            if (process.stdout.isTTY) {
+                process.stdout.write('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
+            }
         }
     }
 
@@ -304,12 +314,12 @@ Your goal is to address the user's request:
                         break;
                     }
 
-                    if (!options.auto || activeSubagents.length > 0) {
+                    if (!options.auto || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -347,12 +357,12 @@ Your goal is to address the user's request:
                         return { success: false, summary: failureReason };
                     }
 
-                    if (!options.auto || activeSubagents.length > 0) {
+                    if (!options.auto || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -382,7 +392,7 @@ Your goal is to address the user's request:
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -397,7 +407,7 @@ Your goal is to address the user's request:
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', subagentPrefix);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', subagentPrefix, undefined, isAuto);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -576,7 +586,7 @@ Your goal is to address the user's request:
                                 if (!messageQueue.isEmpty()) {
                                     nextMsg = await messageQueue.next();
                                 } else {
-                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Seu prompt alternativo para o agente:', subagentPrefix);
+                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Seu prompt alternativo para o agente:', subagentPrefix, undefined, isAuto);
                                 }
                                 if (nextMsg.type === 'user') {
                                     if (tui.isCancel(nextMsg.content)) {
@@ -610,12 +620,12 @@ Your goal is to address the user's request:
 
                             finalSummary = contentStr.split('TASK_COMPLETED:')[1].trim();
                             log.success(`✔ Task Completed: ${finalSummary}`);
-                            if (!options.auto || activeSubagents.length > 0) {
+                            if (!options.auto || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                                 let nextMsg: QueueMessage;
                                 if (!messageQueue.isEmpty()) {
                                     nextMsg = await messageQueue.next();
                                 } else {
-                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
+                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
                                 }
                                 if (nextMsg.type === 'user') {
                                     if (tui.isCancel(nextMsg.content)) {
@@ -637,7 +647,7 @@ Your goal is to address the user's request:
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -733,12 +743,12 @@ Your goal is to address the user's request:
                         
                         log.success(`✔ Task Completed: ${taskSummary}`);
                         
-                        if (!options.auto || activeSubagents.length > 0) {
+                        if (!options.auto || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                             let nextMsg: QueueMessage;
                             if (!messageQueue.isEmpty()) {
                                 nextMsg = await messageQueue.next();
                             } else {
-                                nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix);
+                                nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
                             }
                             if (nextMsg.type === 'user') {
                                 if (tui.isCancel(nextMsg.content)) {
@@ -765,7 +775,7 @@ Your goal is to address the user's request:
                     if (!messageQueue.isEmpty()) {
                         nextMsg = await messageQueue.next();
                     } else {
-                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, durationMs);
+                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, durationMs, isAuto);
                     }
 
                     if (nextMsg.type === 'timeout') {

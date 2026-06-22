@@ -832,6 +832,13 @@ describe('DeveloperAgent', () => {
             };
         });
 
+        const nextSpy = vi.spyOn(MessageQueue.prototype, 'next').mockResolvedValue({
+            type: 'user',
+            content: 'cancel',
+            timestamp: Date.now()
+        });
+        vi.mocked(tui.isCancel).mockReturnValue(true);
+
         // Run the agent with a taskInstruction so it doesn't prompt for task at start
         const result = await interactiveDeveloperAgent({
             taskInstruction: 'Invoke and do not wait',
