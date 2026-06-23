@@ -29,6 +29,7 @@ export interface CustomSubagentType {
 export class SubagentManager {
     private subagents = new Map<string, SubagentState>();
     private customTypes = new Map<string, CustomSubagentType>();
+    private messageSeq = 0;
 
     registerSubagent(id: string, type: string, role: string, parentId?: string) {
         this.subagents.set(id, { id, type, role, status: 'running', parentId });
@@ -70,7 +71,8 @@ export class SubagentManager {
     sendMessage(recipient: string, message: string) {
         const mailboxDir = path.resolve(process.cwd(), '.shark', 'mailbox', recipient);
         fs.mkdirSync(mailboxDir, { recursive: true });
-        const filePath = path.join(mailboxDir, `${Date.now()}-${crypto.randomUUID()}.json`);
+        const seq = (this.messageSeq++).toString().padStart(6, '0');
+        const filePath = path.join(mailboxDir, `${Date.now()}-${seq}-${crypto.randomUUID()}.json`);
         fs.writeFileSync(filePath, JSON.stringify({ message }), 'utf-8');
     }
 

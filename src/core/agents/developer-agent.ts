@@ -310,6 +310,12 @@ Your goal is to address the user's request:
                     
                     if (options.taskId) {
                         subagentManager.updateSubagentSummary(options.taskId, finalSummary);
+                        if (process.env.SHARK_PARENT_ID) {
+                            subagentManager.sendMessage(
+                                process.env.SHARK_PARENT_ID,
+                                `[Subagent Notification] Subagent ${process.env.SHARK_SUBAGENT_ROLE || 'Subagent'} (${options.taskId}) completed.\nResult Details:\n${mainContent || finalSummary}`
+                            );
+                        }
                         keepGoing = false;
                         break;
                     }
@@ -605,6 +611,13 @@ Your goal is to address the user's request:
                             // Subagents cannot prompt the user. Treat talk_with_user as completion
                             const summary = hasCompleted ? contentStr.split('TASK_COMPLETED:')[1].trim() : contentStr;
                             subagentManager.updateSubagentSummary(options.taskId!, summary);
+                            if (process.env.SHARK_PARENT_ID) {
+                                const mainContent = hasCompleted ? contentStr.split('TASK_COMPLETED:')[0].trim() : contentStr;
+                                subagentManager.sendMessage(
+                                    process.env.SHARK_PARENT_ID,
+                                    `[Subagent Notification] Subagent ${process.env.SHARK_SUBAGENT_ROLE || 'Subagent'} (${options.taskId}) completed.\nResult Details:\n${mainContent}`
+                                );
+                            }
                             finalSummary = summary;
                             keepGoing = false;
                             break;

@@ -1191,6 +1191,73 @@ describe('DeveloperAgent', () => {
         delete process.env.SHARK_SUBAGENT_ROLE;
     });
 
+    it('should send notification to parent on talk_with_user when running as subagent', async () => {
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: {
+                type: 'talk_with_user',
+                content: 'Bom dia! Estou pronto.\n\nTASK_COMPLETED: Respondi ao cumprimento',
+            },
+            actions: [],
+            message: 'Talk to user',
+            conversation_id: 'conv-sub-talk-1',
+        });
+
+        // Set parent ID to test subagent notification sending
+        process.env.SHARK_PARENT_ID = 'parent-agent-id';
+        process.env.SHARK_SUBAGENT_ROLE = 'Developer';
+
+        const sendMessageSpy = vi.spyOn(subagentManager, 'sendMessage').mockImplementation(() => {});
+        const updateSummarySpy = vi.spyOn(subagentManager, 'updateSubagentSummary').mockImplementation(() => {});
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-talk-task',
+            auto: true,
+        });
+
+        expect(result).toEqual({ success: true, summary: 'Respondi ao cumprimento' });
+        expect(updateSummarySpy).toHaveBeenCalledWith('subagent-talk-task', 'Respondi ao cumprimento');
+        expect(sendMessageSpy).toHaveBeenCalledWith(
+            'parent-agent-id',
+            expect.stringContaining('[Subagent Notification] Subagent Developer (subagent-talk-task) completed.\nResult Details:\nBom dia! Estou pronto.')
+        );
+
+        // Clean up environment variables
+        delete process.env.SHARK_PARENT_ID;
+        delete process.env.SHARK_SUBAGENT_ROLE;
+    });
+
+    it('should send notification to parent on raw message TASK_COMPLETED when running as subagent', async () => {
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: null,
+            actions: [],
+            message: 'Doing raw task.\n\nTASK_COMPLETED: Done raw task',
+            conversation_id: 'conv-sub-raw-1',
+        });
+
+        // Set parent ID to test subagent notification sending
+        process.env.SHARK_PARENT_ID = 'parent-agent-id';
+        process.env.SHARK_SUBAGENT_ROLE = 'Developer';
+
+        const sendMessageSpy = vi.spyOn(subagentManager, 'sendMessage').mockImplementation(() => {});
+        const updateSummarySpy = vi.spyOn(subagentManager, 'updateSubagentSummary').mockImplementation(() => {});
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-raw-task',
+            auto: true,
+        });
+
+        expect(result).toEqual({ success: true, summary: 'Done raw task' });
+        expect(updateSummarySpy).toHaveBeenCalledWith('subagent-raw-task', 'Done raw task');
+        expect(sendMessageSpy).toHaveBeenCalledWith(
+            'parent-agent-id',
+            expect.stringContaining('[Subagent Notification] Subagent Developer (subagent-raw-task) completed.\nResult Details:\nDoing raw task.')
+        );
+
+        // Clean up environment variables
+        delete process.env.SHARK_PARENT_ID;
+        delete process.env.SHARK_SUBAGENT_ROLE;
+    });
+
     it('should handle notify_user action without blocking or waiting for user input', async () => {
         vi.mocked(mockProvider.streamChat)
             .mockResolvedValueOnce({
