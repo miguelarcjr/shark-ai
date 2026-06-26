@@ -2,7 +2,23 @@ import { z } from 'zod';
 import { FileLogger } from '../debug/file-logger.js';
 
 // Action Schema
-export const AgentActionSchema = z.object({
+export const AgentActionSchema = z.preprocess((val: any) => {
+    if (val && typeof val === 'object') {
+        // Trim type if it is a string
+        if (typeof val.type === 'string') {
+            val.type = val.type.trim();
+        }
+        // Trim Action if it is a string
+        if (typeof val.Action === 'string') {
+            val.Action = val.Action.trim();
+        }
+        // If action type is not manage_subagents, coerce Action to null
+        if (val.type !== 'manage_subagents' || val.Action === '') {
+            val.Action = null;
+        }
+    }
+    return val;
+}, z.object({
     type: z.enum([
         'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
         'list_structure', 'modify_ast', 'search_ast', 'run_command',
@@ -28,17 +44,17 @@ export const AgentActionSchema = z.object({
     command: z.string().nullable().optional(),
     tool_name: z.string().nullable().optional(),
     tool_args: z.string().nullable().optional(), // JSON string argument
-
+ 
     // search_code fields
     query: z.string().nullable().optional(),
     is_regex: z.boolean().nullable().optional(),
-
+ 
     // AST-Grep fields
     pattern: z.string().nullable().optional(),
     fix: z.string().nullable().optional(),
     language: z.string().nullable().optional(),
     file_path: z.string().nullable().optional(), // Alias for path in ast-grep actions
-
+ 
     // New AST Tool Specific Fields
     class_name: z.string().nullable().optional(),
     method_name: z.string().nullable().optional(),
@@ -55,12 +71,12 @@ export const AgentActionSchema = z.object({
     import_statement: z.string().nullable().optional(),
     module_path: z.string().nullable().optional(),
     new_body: z.string().nullable().optional(),
-
+ 
     // Preview confirmation
     confirmed: z.boolean().nullable().optional(),
     start_anchor: z.string().nullable().optional(),
     end_anchor: z.string().nullable().optional(),
-
+ 
     // Superpowers fields
     skill_name: z.string().nullable().optional(),
     duration_seconds: z.number().nullable().optional(),
@@ -73,7 +89,7 @@ export const AgentActionSchema = z.object({
     Message: z.string().nullable().optional(),
     Action: z.enum(['list', 'kill', 'kill_all']).nullable().optional(),
     ConversationIds: z.array(z.string()).nullable().optional(),
-
+ 
     // define_subagent fields
     name: z.string().nullable().optional(),
     description: z.string().nullable().optional(),
@@ -81,7 +97,7 @@ export const AgentActionSchema = z.object({
     enable_write_tools: z.boolean().nullable().optional(),
     enable_subagent_tools: z.boolean().nullable().optional(),
     enable_mcp_tools: z.boolean().nullable().optional(),
-});
+}));
 
 export type AgentAction = z.infer<typeof AgentActionSchema>;
 
