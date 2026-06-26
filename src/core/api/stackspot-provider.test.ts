@@ -43,6 +43,13 @@ describe('StackSpotProvider', () => {
             actions: [{ type: 'talk_with_user', content: raw?.message || '', path: '' }],
             conversation_id: raw?.conversation_id
         }));
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
+            stackspot: {
+                agentId: '01KEQCGJ65YENRA4QBXVN1YFFX'
+            },
+            agents: {},
+            agentVersions: {}
+        } as any);
     });
 
     it('should be instantiable and reference agentType', () => {

@@ -13,7 +13,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
             val.Action = val.Action.trim();
         }
         // If action type is not manage_subagents, coerce Action to null
-        if (val.type !== 'manage_subagents' || val.Action === '') {
+        if (val.Action !== undefined && (val.type !== 'manage_subagents' || val.Action === '')) {
             val.Action = null;
         }
     }

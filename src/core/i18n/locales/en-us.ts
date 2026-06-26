@@ -39,7 +39,13 @@ export const enUs: Locale = {
             intro: 'StackSpot Login',
             alreadyLoggedIn: 'You are already logged in',
             success: 'Successfully logged in!',
-            error: 'Login failed'
+            error: 'Login failed',
+            selectProvider: 'Select IA Provider:',
+            openaiIntro: 'OpenAI Compatible Configuration',
+            baseURLPrompt: 'Endpoint Base URL',
+            apiKeyPrompt: 'API Key',
+            modelPrompt: 'Model (e.g. llama3, openrouter/model)',
+            openaiSuccess: 'Configuration saved successfully!'
         },
         scan: {
             intro: '🕵️‍♂️  Scan Agent',

@@ -39,7 +39,13 @@ export const esEs: Locale = {
             intro: 'Login StackSpot',
             alreadyLoggedIn: 'Ya has iniciado sesión',
             success: '¡Inicio de sesión exitoso!',
-            error: 'Error de inicio de sesión'
+            error: 'Error de inicio de sesión',
+            selectProvider: 'Seleccione el proveedor de IA:',
+            openaiIntro: 'Configuración OpenAI Compatible',
+            baseURLPrompt: 'URL Base del Endpoint',
+            apiKeyPrompt: 'Clave de API (API Key)',
+            modelPrompt: 'Modelo (ej: llama3, openrouter/model)',
+            openaiSuccess: '¡Configuración guardada correctamente!'
         },
         scan: {
             intro: '🕵️‍♂️  Agente de Escaneo',

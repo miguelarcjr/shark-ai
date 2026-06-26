@@ -39,7 +39,13 @@ export const ptBr: Locale = {
             intro: 'Login StackSpot',
             alreadyLoggedIn: 'Você já está logado',
             success: 'Login realizado com sucesso!',
-            error: 'Falha no login'
+            error: 'Falha no login',
+            selectProvider: 'Selecione o provedor de IA:',
+            openaiIntro: 'Configuração OpenAI Compatible',
+            baseURLPrompt: 'URL Base do Endpoint',
+            apiKeyPrompt: 'Chave de API (API Key)',
+            modelPrompt: 'Modelo (ex: llama3, openrouter/model)',
+            openaiSuccess: 'Configuração salva com sucesso!'
         },
         scan: {
             intro: '🕵️‍♂️  Scan Agent',

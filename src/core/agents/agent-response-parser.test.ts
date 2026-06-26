@@ -218,6 +218,63 @@ describe('AgentResponseParser', () => {
             expect((parsed.action as any).ConversationIds).toEqual(['conversation-id-abc']);
         });
 
+        it('parses manage_subagents action with empty string Action as null', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: 'manage_subagents',
+                    Action: '',
+                    ConversationIds: ['conversation-id-abc']
+                },
+                summary: 'Managing subagents'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('manage_subagents');
+            expect((parsed.action as any).Action).toBeNull();
+        });
+
+        it('parses manage_subagents action with trailing space Action as trimmed value', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: 'manage_subagents',
+                    Action: 'list ',
+                    ConversationIds: ['conversation-id-abc']
+                },
+                summary: 'Managing subagents'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('manage_subagents');
+            expect((parsed.action as any).Action).toBe('list');
+        });
+
+        it('parses action with leading/trailing spaces in type as trimmed type', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: ' talk_with_user ',
+                    content: 'Hello'
+                },
+                summary: 'Greeting'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('talk_with_user');
+        });
+
+        it('coerces Action to null if type is not manage_subagents', () => {
+            const raw = JSON.stringify({
+                action: {
+                    type: 'invoke_subagent',
+                    Action: 'invoke_subagent',
+                    Recipient: 'subagent',
+                    Message: 'do work'
+                },
+                summary: 'Invoking subagent'
+            });
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.action?.type).toBe('invoke_subagent');
+            expect((parsed.action as any).Action).toBeNull();
+        });
+
+
+
         it('parses wait action correctly', () => {
             const raw = JSON.stringify({
                 action: {
