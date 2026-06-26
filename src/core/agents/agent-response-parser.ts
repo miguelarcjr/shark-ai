@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { FileLogger } from '../debug/file-logger.js';
+import { jsonrepair } from 'jsonrepair';
 
 // Action Schema
 export const AgentActionSchema = z.preprocess((val: any) => {
@@ -345,10 +346,32 @@ export function extractFirstJson(str: string): any {
     try {
         return JSON.parse(str);
     } catch (e) {
-        // If simple parse fails, try to find the first balanced object
+        // Helper to validate that repaired JSON matches expected schema structure (is object, not array, has agent keys)
+        const isValidStructure = (val: any) => {
+            return val && typeof val === 'object' && !Array.isArray(val) &&
+                ('action' in val || 'actions' in val || 'summary' in val || 'type' in val);
+        };
+
+        // Try jsonrepair on the whole string
+        try {
+            const repaired = JSON.parse(jsonrepair(str));
+            if (isValidStructure(repaired)) {
+                return repaired;
+            }
+        } catch {}
+
         const firstOpen = str.indexOf('{');
         if (firstOpen === -1) throw e;
 
+        // Try jsonrepair from firstOpen to end
+        try {
+            const repaired = JSON.parse(jsonrepair(str.substring(firstOpen)));
+            if (isValidStructure(repaired)) {
+                return repaired;
+            }
+        } catch {}
+
+        // Fallback to balanced brace matching
         let balance = 0;
         let inString = false;
         let escape = false;
@@ -381,8 +404,11 @@ export function extractFirstJson(str: string): any {
                         try {
                             return JSON.parse(potentialJson);
                         } catch (innerE) {
-                            // If this chunk failed, maybe our brace counting was off (e.g. comments?), throw original
-                            throw e;
+                            try {
+                                return JSON.parse(jsonrepair(potentialJson));
+                            } catch {
+                                throw e;
+                            }
                         }
                     }
                 }

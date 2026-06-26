@@ -273,6 +273,24 @@ describe('AgentResponseParser', () => {
             expect((parsed.action as any).Action).toBeNull();
         });
 
+        it('repairs and parses truncated json successfully', () => {
+            const raw = '{"summary": "Test", "action": {"type": "create_file", "path": "src/foo.ts", "content": "const a = 1;';
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.summary).toBe('Test');
+            expect(parsed.action?.type).toBe('create_file');
+            expect(parsed.action?.path).toBe('src/foo.ts');
+            expect(parsed.action?.content).toBe('const a = 1;');
+        });
+
+        it('repairs and parses truncated json with markdown prefix successfully', () => {
+            const raw = 'Here is response:\n```json\n{"summary": "Test", "action": {"type": "create_file", "path": "src/foo.ts", "content": "const a = 1;';
+            const parsed = parseAgentResponse(raw);
+            expect(parsed.summary).toBe('Test');
+            expect(parsed.action?.type).toBe('create_file');
+            expect(parsed.action?.path).toBe('src/foo.ts');
+            expect(parsed.action?.content).toBe('const a = 1;');
+        });
+
 
 
         it('parses wait action correctly', () => {
