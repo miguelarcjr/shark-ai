@@ -132,7 +132,10 @@ export const AGENT_RESPONSE_JSON_SCHEMA = {
       },
       "required": ["type"]
     },
-    "summary": { "type": "string" }
+    "summary": {
+      "type": "string",
+      "description": "Resumo de uma única frase muito curta e sucinta do que você realizou nesta rodada. Evite explicações longas."
+    }
   },
   "required": ["action"]
 };
