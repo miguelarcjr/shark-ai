@@ -237,7 +237,7 @@ Your goal is to address the user's request:
             if (existingConversationId) {
                 const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
                 const provider = ProviderResolver.getProvider('developer_agent');
-                const truncatedHistory = await memboxManager.compactHistory(rawHistory, provider, existingConversationId);
+                const truncatedHistory = await memboxManager.compactHistory(rawHistory, provider, existingConversationId, true);
                 await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
                 tui.log.success('✔ Memória compactada e truncada com sucesso!');
             } else {

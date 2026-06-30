@@ -145,8 +145,8 @@ export class MemboxManager {
         return prompt;
     }
 
-    public async compactHistory(rawMessages: any[], apiProvider: any, conversationId: string): Promise<any[]> {
-        if (rawMessages.length < 10) return rawMessages;
+    public async compactHistory(rawMessages: any[], apiProvider: any, conversationId: string, force: boolean = false): Promise<any[]> {
+        if (rawMessages.length < 10 && !force) return rawMessages;
 
         console.log(`[Membox] Iniciando compactação do histórico para: ${conversationId}`);
 
