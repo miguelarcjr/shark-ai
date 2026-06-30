@@ -12,6 +12,7 @@ import { devCommand } from '../commands/dev.js';
 import { exportSchemaCommand } from '../commands/export-schema.js';
 import { exportPromptCommand } from '../commands/export-prompt.js';
 import { superCommand } from '../commands/super.js';
+import { graphCommand } from '../commands/graph.js';
 
 const program = new Command();
 
@@ -26,6 +27,7 @@ program.addCommand(devCommand);
 program.addCommand(exportSchemaCommand);
 program.addCommand(exportPromptCommand);
 program.addCommand(superCommand);
+program.addCommand(graphCommand);
 
 program
     .command('config')
