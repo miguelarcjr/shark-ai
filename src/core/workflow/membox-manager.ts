@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import crypto from 'node:crypto';
 import { EmbeddingService } from './embedding-service.js';
+import { jsonrepair } from 'jsonrepair';
 
 export interface Membox {
     box_id: number;
@@ -214,14 +215,18 @@ export class MemboxManager {
     }
 
     private parseJSONSafely(text: string): any {
+        let cleaned = text.trim();
+        if (cleaned.startsWith('```')) {
+            cleaned = cleaned.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
+        }
         try {
-            let cleaned = text.trim();
-            if (cleaned.startsWith('```')) {
-                cleaned = cleaned.replace(/^```json\s*/i, '').replace(/```$/, '').trim();
-            }
             return JSON.parse(cleaned);
         } catch {
-            return null;
+            try {
+                return JSON.parse(jsonrepair(cleaned));
+            } catch {
+                return null;
+            }
         }
     }
 
@@ -503,17 +508,23 @@ export class MemboxManager {
         const eventEmbeddings = await Promise.all(events.map(e => this.embeddingService.getEmbedding(e)));
 
         for (const trace of traces) {
-            if (!trace.entries_text) continue;
-            const traceEmbedding = await this.embeddingService.getEmbedding(trace.entries_text);
-            
+            const traceEvents = trace.entries.flatMap(entry => entry.events);
+            if (traceEvents.length === 0) continue;
+
+            const traceEventEmbeddings = await Promise.all(traceEvents.map(te => this.embeddingService.getEmbedding(te)));
             let passesFilter = false;
+
             for (const evEmb of eventEmbeddings) {
-                const similarity = this.embeddingService.cosineSimilarity(evEmb, traceEmbedding);
-                if (similarity >= TRACE_SIMILARITY_THRESHOLD) {
-                    passesFilter = true;
-                    break;
+                for (const teEmb of traceEventEmbeddings) {
+                    const similarity = this.embeddingService.cosineSimilarity(evEmb, teEmb);
+                    if (similarity >= TRACE_SIMILARITY_THRESHOLD) {
+                        passesFilter = true;
+                        break;
+                    }
                 }
+                if (passesFilter) break;
             }
+
             if (passesFilter) {
                 candidateTraces.push(trace);
             }
@@ -588,18 +599,24 @@ export class MemboxManager {
         const eventEmbedding = await this.embeddingService.getEmbedding(event);
 
         for (const trace of traces) {
-            if (!trace.entries_text) continue;
+            const traceEvents = trace.entries.flatMap(entry => entry.events);
+            if (traceEvents.length === 0) continue;
 
-            const traceEmbedding = await this.embeddingService.getEmbedding(trace.entries_text);
-            const similarity = this.embeddingService.cosineSimilarity(eventEmbedding, traceEmbedding);
+            const traceEventEmbeddings = await Promise.all(traceEvents.map(te => this.embeddingService.getEmbedding(te)));
+            let bestSimilarity = -1;
 
-            if (similarity < TRACE_SIMILARITY_THRESHOLD) {
-                continue;
+            for (const teEmb of traceEventEmbeddings) {
+                const similarity = this.embeddingService.cosineSimilarity(eventEmbedding, teEmb);
+                if (similarity > bestSimilarity) {
+                    bestSimilarity = similarity;
+                }
             }
 
-            const traceEvents = trace.entries.flatMap(e => e.events).join('\n');
+            if (bestSimilarity < TRACE_SIMILARITY_THRESHOLD) {
+                continue;
+            }
             const filterPrompt = PROMPT_TRACE_LINKING
-                .replace('{traceEvents}', traceEvents)
+                .replace('{traceEvents}', traceEvents.join('\n'))
                 .replace('{newEvents}', event);
 
             const filterResRaw = await this.callHelperLLM(filterPrompt, apiProvider);
