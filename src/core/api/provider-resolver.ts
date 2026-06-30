@@ -4,7 +4,7 @@ import { OpenAICompatibleProvider } from './openai-compatible-provider.js';
 import { ConfigManager } from '../config-manager.js';
 
 export class ProviderResolver {
-    static getProvider(agentType: 'business_analyst' | 'developer_agent' | 'qa_agent' | 'specification_agent' | 'scan_agent' | 'code_review'): AIProvider {
+    static getProvider(agentType: 'developer_agent'): AIProvider {
         const config = ConfigManager.getInstance().getConfig() as any;
         
         if (config.provider === 'openai-compatible') {

@@ -9,7 +9,6 @@ import { configCommand } from '../commands/config.js';
 import { initCommand } from '../commands/init.js';
 import { colors } from '../ui/colors.js';
 import { devCommand } from '../commands/dev.js';
-import { legacyCommand } from '../commands/legacy.js';
 import { exportSchemaCommand } from '../commands/export-schema.js';
 import { exportPromptCommand } from '../commands/export-prompt.js';
 import { superCommand } from '../commands/super.js';
@@ -24,7 +23,6 @@ program
 program.addCommand(loginCommand);
 program.addCommand(initCommand);
 program.addCommand(devCommand);
-program.addCommand(legacyCommand);
 program.addCommand(exportSchemaCommand);
 program.addCommand(exportPromptCommand);
 program.addCommand(superCommand);

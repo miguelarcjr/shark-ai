@@ -61,7 +61,6 @@
         "access": "public"
     },
     "dependencies": {
-        "@ast-grep/cli": "^0.40.5",
         "@clack/prompts": "^0.7.0",
         "@modelcontextprotocol/sdk": "^1.25.2",
         "@types/diff": "^7.0.2",
@@ -74,7 +73,6 @@
         "marked-terminal": "^7.3.0",
         "picocolors": "^1.1.1",
         "string-width": "^8.1.0",
-        "ts-morph": "^21.0.1",
         "zod": "^3.25.76"
     },
     "devDependencies": {

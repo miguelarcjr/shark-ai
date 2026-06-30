@@ -18,29 +18,11 @@ export class StackSpotProvider implements AIProvider {
 
     private getAgentId(): string {
         const config = ConfigManager.getInstance().getConfig();
-        const configKeyMapping: Record<string, 'dev' | 'ba' | 'spec' | 'qa' | 'scan' | 'codeReview'> = {
-            'developer_agent': 'dev',
-            'business_analyst': 'ba',
-            'specification_agent': 'spec',
-            'qa_agent': 'qa',
-            'scan_agent': 'scan',
-            'code_review': 'codeReview'
-        };
-        const mappedKey = configKeyMapping[this.agentType];
-        if (mappedKey && config.agents?.[mappedKey]) {
-            return config.agents[mappedKey]!;
+        if (config.agents?.dev) {
+            return config.agents.dev;
         }
 
-        const envIdMapping: Record<string, string | undefined> = {
-            'business_analyst': process.env.STACKSPOT_BA_AGENT_ID,
-            'developer_agent': process.env.STACKSPOT_DEV_AGENT_ID,
-            'qa_agent': process.env.STACKSPOT_QA_AGENT_ID,
-            'specification_agent': process.env.STACKSPOT_SPEC_AGENT_ID,
-            'scan_agent': process.env.STACKSPOT_SCAN_AGENT_ID,
-            'code_review': process.env.STACKSPOT_CODE_REVIEW_AGENT_ID
-        };
-
-        const envResolved = envIdMapping[this.agentType];
+        const envResolved = process.env.STACKSPOT_DEV_AGENT_ID;
         if (envResolved) {
             return envResolved;
         }
@@ -49,37 +31,12 @@ export class StackSpotProvider implements AIProvider {
             return this.agentId;
         }
 
-        const defaultIdMapping: Record<string, string> = {
-            'business_analyst': '01KEJ95G304TNNAKGH5XNEEBVD',
-            'developer_agent': '01KEQCGJ65YENRA4QBXVN1YFFX',
-            'qa_agent': '01KEQFJZ3Q3JER11NH22HEZX9X',
-            'specification_agent': '01KEPXTX37FTB4N672TZST4SGP',
-            'scan_agent': '01KEQ9AHWB550J2244YBH3QATN',
-            'code_review': ''
-        };
-
-        const resolved = defaultIdMapping[this.agentType];
-        if (this.agentType === 'code_review') {
-            if (!resolved) {
-                throw new Error("Agent ID for 'code_review' is not configured.");
-            }
-            return resolved;
-        }
-
-        return resolved || '01KEQCGJ65YENRA4QBXVN1YFFX';
+        return '01KEQCGJ65YENRA4QBXVN1YFFX';
     }
 
     private getAgentVersion(): string | undefined {
         const config = ConfigManager.getInstance().getConfig();
-        const versionMapping: Record<string, string | undefined> = {
-            'business_analyst': config.agentVersions?.ba || process.env.STACKSPOT_BA_AGENT_VERSION,
-            'developer_agent': config.agentVersions?.dev || process.env.STACKSPOT_DEV_AGENT_VERSION,
-            'qa_agent': config.agentVersions?.qa || process.env.STACKSPOT_QA_AGENT_VERSION,
-            'specification_agent': config.agentVersions?.spec || process.env.STACKSPOT_SPEC_AGENT_VERSION,
-            'scan_agent': config.agentVersions?.scan || process.env.STACKSPOT_SCAN_AGENT_VERSION,
-            'code_review': config.agentVersions?.codeReview || process.env.STACKSPOT_CODE_REVIEW_AGENT_VERSION
-        };
-        return versionMapping[this.agentType];
+        return config.agentVersions?.dev || process.env.STACKSPOT_DEV_AGENT_VERSION;
     }
 
     async streamChat(prompt: string, options: ChatOptions): Promise<AgentResponse> {

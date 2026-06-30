@@ -4,7 +4,7 @@ export interface ChatOptions {
     onChunk?: (chunk: string) => void;
     onComplete?: (response: AgentResponse) => void;
     conversationId?: string;
-    agentType: 'business_analyst' | 'developer_agent' | 'qa_agent' | 'specification_agent' | 'scan_agent' | 'code_review';
+    agentType: 'developer_agent';
 }
 
 export interface AIProvider {

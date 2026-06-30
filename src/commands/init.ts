@@ -36,7 +36,7 @@ export const initAction = async () => {
         if (action === 'resume') {
             tui.log.success(`Resuming work on ${colors.primary(existingState.projectName)}...`);
             // Future: Route to specific agent based on stage
-            tui.outro(`To continue, run: "shark agent" (Context loaded)`);
+            tui.outro(`To continue, run: "shark dev" (Context loaded)`);
             return;
         }
 
@@ -100,7 +100,7 @@ export const initAction = async () => {
 
         tui.log.success(`Project ${colors.primary(projectName as string)} initialized successfully.`);
         tui.log.message(`Your Project ID: ${colors.dim(newState.projectId)}`);
-        tui.outro('Ready to start! Run "shark agent" to begin analyzing requirements.'); // Placeholder hint
+        tui.outro('Ready to start! Run "shark dev" to begin developing features.'); // Hint updated
     } catch (error: any) {
         spinner.stop('Initialization failed.', 1);
         tui.log.error(error.message);
