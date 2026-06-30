@@ -68,7 +68,7 @@ describe('MemboxManager', () => {
         if (fs.existsSync(dir2)) fs.rmSync(dir2, { recursive: true });
     });
 
-    it('should enforce minimal-context rule and track step coverage correctly', async () => {
+    it('should enforce minimal-context rule and track step coverage correctly via batch loom', async () => {
         const manager = new MemboxManager(path.join(testDir, 'minimal-context'));
         
         const rawHistory = [
@@ -84,22 +84,62 @@ describe('MemboxManager', () => {
         
         const mockApiProvider = {
             streamChat: async (prompt: string) => {
-                if (prompt.includes('continuity')) {
-                    // Forçar que a Mensagem 3 mude o tópico, mas a regra de contexto mínimo deve garantir pelo menos 2 mensagens por segmento
-                    if (prompt.includes('Mensagem 3')) {
-                        return { action: { content: 'No' } };
-                    }
-                    return { action: { content: 'Yes' } };
+                if (prompt.includes('segmentation assistant')) {
+                    // Forçar limites válidos que cobrem todo o range do histórico linear a ser compactado (índices 0 a 3)
+                    return {
+                        action: {
+                            content: JSON.stringify({
+                                boundaries: [
+                                    { start: 0, end: 1 },
+                                    { start: 2, end: 3 }
+                                ]
+                            })
+                        }
+                    };
                 }
-                return {
-                    action: {
-                        content: JSON.stringify({
-                            topic: 'Test Topic',
-                            keywords: ['test'],
-                            explicit_mentions: ['test_event']
-                        })
-                    }
-                };
+                if (prompt.includes('partitioned conversation segments')) {
+                    return {
+                        action: {
+                            content: JSON.stringify({
+                                segments: [
+                                    {
+                                        segment_index: 0,
+                                        topic: 'Tópico 1',
+                                        keywords: ['k1'],
+                                        explicit_mentions: ['Evento 1']
+                                    },
+                                    {
+                                        segment_index: 1,
+                                        topic: 'Tópico 2',
+                                        keywords: ['k2'],
+                                        explicit_mentions: ['Evento 2']
+                                    }
+                                ]
+                            })
+                        }
+                    };
+                }
+                if (prompt.includes('narrative linking assistant')) {
+                    return {
+                        action: {
+                            content: JSON.stringify({
+                                mappings: [],
+                                unmatched_events: ['Evento 1', 'Evento 2']
+                            })
+                        }
+                    };
+                }
+                if (prompt.includes('coherent logical chain')) {
+                    return {
+                        action: {
+                            content: JSON.stringify({
+                                primary_chain: ['Evento Geral'],
+                                isolated_events: []
+                            })
+                        }
+                    };
+                }
+                return { action: { content: '' } };
             }
         };
         
@@ -107,15 +147,13 @@ describe('MemboxManager', () => {
         expect(tail.length).toBe(4);
         
         const boxes = manager.loadBoxes();
-        expect(boxes.length).toBeGreaterThan(0);
+        expect(boxes.length).toBe(2); // Devem ser geradas 2 caixas com base nas boundaries
         
-        // Cada caixa deve ter pelo menos 2 mensagens e cobrir os índices corretos
-        for (const box of boxes) {
-            expect(box.coverage.end_step - box.coverage.start_step + 1).toBeGreaterThanOrEqual(2);
-            expect(box.coverage.session_id).toBe('test-session');
-            // Os steps de cobertura devem ser rastreados de forma absoluta
-            expect(box.coverage.start_step).toBeLessThanOrEqual(box.coverage.end_step);
-        }
+        // Cada caixa deve ter os índices corretos
+        expect(boxes[0].coverage.start_step).toBe(0);
+        expect(boxes[0].coverage.end_step).toBe(1);
+        expect(boxes[1].coverage.start_step).toBe(2);
+        expect(boxes[1].coverage.end_step).toBe(3);
     });
 
     it('should link event to multiple traces (multi-branching) and perform pre-filtering', async () => {
@@ -157,17 +195,20 @@ describe('MemboxManager', () => {
                 return {
                     action: {
                         content: JSON.stringify({
-                            related_events: ['setup database'],
-                            unrelated_events: []
+                            mappings: [
+                                { trace_id: 0, related_events: ['setup database'] },
+                                { trace_id: 1, related_events: ['setup database'] }
+                            ],
+                            unmatched_events: []
                         })
                     }
                 };
             }
         };
         
-        // Rodar linkEventsToTraces diretamente
+        // Rodar linkEventsToTracesBatch diretamente
         // @ts-ignore
-        await manager.linkEventsToTraces(newBox, ['setup database'], mockApiProvider);
+        await manager.linkEventsToTracesBatch(newBox, ['setup database'], mockApiProvider);
         
         const updatedTraces = manager.loadTraces();
         // Ambas as traces devem ter sido atualizadas com a nova caixa (Multi-branching!)

@@ -34,45 +34,183 @@ export interface Trace {
     entries_text: string;
 }
 
+// English Prompt Constants for better LLM conformance and formatting
+const PROMPT_BATCH_TOPIC_LOOM = `You are a topic segmentation assistant. Analyze the following list of messages and partition them into cohesive topic segments.
+Each message is numbered with an index.
+
+Messages:
+{messagesText}
+
+Respond ONLY with a JSON object containing a "boundaries" array. Each boundary must specify the "start" and "end" indices (inclusive) of a segment, like this:
+{
+  "boundaries": [
+    { "start": 0, "end": 1 },
+    { "start": 2, "end": 3 }
+  ]
+}
+
+Ensure all messages are covered and every segment has at least 2 messages (minimal context rule). Do NOT leave gaps between segments.`;
+
+const PROMPT_TOPIC_CONTINUITY = `You are a topic continuity analyzer. Determine if the current message (curr) continues the same topic as the reference messages (ref).
+
+Reference Messages (ref):
+{refText}
+
+Current Message (curr):
+{currText}
+
+Respond with "Yes" if it continues the same topic, or "No" if it is a different topic.`;
+
+const PROMPT_BATCH_METADATA_EXTRACTION = `For each of the following partitioned conversation segments, extract the main topic (topic), key keywords (keywords), and a list of explicit events, actions, or future plans (explicit_mentions).
+
+Segments:
+{segmentsText}
+
+Respond ONLY with a JSON object containing a "segments" array where each item corresponds to the segment index, like this:
+{
+  "segments": [
+    {
+      "segment_index": 0,
+      "topic": "Topic Name",
+      "keywords": ["kw1", "kw2"],
+      "explicit_mentions": ["event1", "event2"]
+    }
+  ]
+}`;
+
+const PROMPT_METADATA_EXTRACTION = `Analyze the dialogue below and extract the main topic (topic), key keywords (keywords), and a list of explicit events, actions, or future plans (explicit_mentions).
+
+Dialogue:
+{segmentText}
+
+Respond ONLY with a JSON object containing the keys: "topic", "keywords" (array of strings), and "explicit_mentions" (array of strings).`;
+
+const PROMPT_TOPIC_FALLBACK = `Based on the following dialogue, extract a single simple sentence summarizing the main topic.
+
+Dialogue:
+{segmentText}`;
+
+const PROMPT_KEYWORDS_FALLBACK = `Based on the following dialogue, extract up to 5 important keywords. Respond with a comma-separated list of keywords.
+
+Dialogue:
+{segmentText}`;
+
+const PROMPT_EVENTS_FALLBACK = `Based on the following dialogue, list the key explicit actions, decisions, or events. Respond with a simple list of events, one per line.
+
+Dialogue:
+{segmentText}`;
+
+const PROMPT_BATCH_TRACE_LINKING = `You are a narrative linking assistant. Map the following New Events to the matching Existing Traces.
+
+New Events:
+{newEventsText}
+
+Existing Traces:
+{tracesText}
+
+Respond ONLY with a JSON object in this format, detailing which events are related to which trace_id, and which events do not match any existing trace:
+{
+  "mappings": [
+    {
+      "trace_id": 0,
+      "related_events": ["event text from list"]
+    }
+  ],
+  "unmatched_events": ["event text from list that has no match"]
+}`;
+
+const PROMPT_TRACE_LINKING = `You are a narrative coherence analyzer. Identify if any of the New Events are directly related to the Existing Trace (same project, error, file, or topic).
+
+Existing Trace Events:
+{traceEvents}
+
+New Events:
+{newEvents}
+
+Respond ONLY with a JSON object in this format:
+{
+  "related_events": ["..."],
+  "unrelated_events": ["..."]
+}`;
+
+const PROMPT_TRACE_NARRATIVE = `Organize the events below into a coherent logical chain (primary_chain) and isolated events (isolated_events).
+
+Events:
+{events}
+
+Respond ONLY with a JSON object in this format:
+{
+  "primary_chain": ["..."],
+  "isolated_events": ["..."]
+}`;
+
 export class MemboxManager {
     private storageDir: string;
     private boxesPath: string;
     private tracesPath: string;
     private embeddingService: EmbeddingService;
+    private runId?: string;
 
-    constructor(storageDir: string = '.shark/membox') {
-        this.storageDir = storageDir;
-        this.boxesPath = path.join(storageDir, 'boxes.jsonl');
-        this.tracesPath = path.join(storageDir, 'traces.jsonl');
-        this.embeddingService = new EmbeddingService(storageDir);
+    // In-memory caches to optimize disk I/O
+    private boxesCache: Membox[] | null = null;
+    private tracesCache: Trace[] | null = null;
 
-        if (!fs.existsSync(storageDir)) {
-            fs.mkdirSync(storageDir, { recursive: true });
+    constructor(storageDirOrRunId?: string) {
+        let baseDir = '.shark/membox';
+        let runId: string | undefined = undefined;
+
+        if (storageDirOrRunId) {
+            if (storageDirOrRunId.includes('/') || storageDirOrRunId.includes('\\') || storageDirOrRunId.startsWith('.')) {
+                baseDir = storageDirOrRunId;
+            } else {
+                runId = storageDirOrRunId;
+            }
+        }
+
+        const targetDir = runId ? path.join('.shark/membox', runId) : baseDir;
+        this.storageDir = targetDir;
+        this.runId = runId;
+        this.boxesPath = path.join(targetDir, 'boxes.jsonl');
+        this.tracesPath = path.join(targetDir, 'traces.jsonl');
+        this.embeddingService = new EmbeddingService(targetDir);
+
+        if (!fs.existsSync(targetDir)) {
+            fs.mkdirSync(targetDir, { recursive: true });
         }
     }
 
     public saveBox(box: Membox) {
+        if (this.boxesCache) {
+            this.boxesCache.push(box);
+        }
         fs.appendFileSync(this.boxesPath, JSON.stringify(box) + '\n', 'utf8');
     }
 
     public saveTrace(trace: Trace) {
+        if (this.tracesCache) {
+            this.tracesCache.push(trace);
+        }
         fs.appendFileSync(this.tracesPath, JSON.stringify(trace) + '\n', 'utf8');
     }
 
     public loadBoxes(): Membox[] {
+        if (this.boxesCache) return this.boxesCache;
         if (!fs.existsSync(this.boxesPath)) return [];
         const content = fs.readFileSync(this.boxesPath, 'utf8');
-        return content.split('\n')
+        this.boxesCache = content.split('\n')
             .filter(line => line.trim())
             .map(line => JSON.parse(line));
+        return this.boxesCache;
     }
 
     public loadTraces(): Trace[] {
+        if (this.tracesCache) return this.tracesCache;
         if (!fs.existsSync(this.tracesPath)) return [];
         const content = fs.readFileSync(this.tracesPath, 'utf8');
-        return content.split('\n')
+        this.tracesCache = content.split('\n')
             .filter(line => line.trim())
             .map(line => JSON.parse(line));
+        return this.tracesCache;
     }
 
     private parseJSONSafely(text: string): any {
@@ -89,7 +227,7 @@ export class MemboxManager {
 
     private async callHelperLLM(prompt: string, apiProvider: any): Promise<string> {
         const response = await apiProvider.streamChat(
-            prompt + '\n\nIMPORTANTE: Você deve responder usando a action \'talk_with_user\'. Coloque o resultado (seja texto simples ou uma string JSON contendo o formato solicitado) estritamente dentro do campo \'content\' do JSON de resposta. Não use outras actions.',
+            prompt + '\n\nIMPORTANT: You MUST respond using the \'talk_with_user\' action. Put the result (either plain text or a JSON string matching the requested format) strictly inside the \'content\' field of the response JSON. Do NOT use other actions.',
             {
                 conversationId: `membox-helper-${crypto.randomUUID()}`,
                 agentType: 'developer_agent'
@@ -98,7 +236,7 @@ export class MemboxManager {
         return response.action?.content || '';
     }
 
-    public async retrieveContext(query: string, rawTail: any[]): Promise<string> {
+    public async retrieveContext(query: string, rawTail: any[], traceEventTopN: number = 5): Promise<string> {
         const boxes = this.loadBoxes();
         if (boxes.length === 0) return '';
 
@@ -112,12 +250,12 @@ export class MemboxManager {
             scoredBoxes.push({ box, score });
         }
 
-        // Ordenar caixas por score e selecionar usando estratégia híbrida
+        // Selecionar caixas usando estratégia híbrida
         let selectedBoxes: Membox[] = [];
         if (boxes.length <= 8) {
             selectedBoxes = [...boxes];
         } else {
-            // 1. Sempre incluir a Box 0 (kickoff/definição geral do projeto)
+            // 1. Sempre incluir a Box 0
             const box0 = boxes.find(b => b.box_id === 0);
             if (box0) selectedBoxes.push(box0);
 
@@ -141,16 +279,47 @@ export class MemboxManager {
 
         // Ordenar cronologicamente por box_id
         selectedBoxes.sort((a, b) => a.box_id - b.box_id);
-
-        // Buscar traces relevantes de eventos a partir dos eventos das caixas recuperadas
-        const traces = this.loadTraces();
-        const relevantTracesText: string[] = [];
         const topBoxIds = selectedBoxes.map(b => b.box_id);
 
+        // Event-level trace retrieval (Issues 5 & 6)
+        const traces = this.loadTraces();
+        
+        // Coletar todos os eventos individuais pertencentes às caixas selecionadas
+        const candidateEvents: { event: string; trace: Trace }[] = [];
         for (const trace of traces) {
             const hasSharedBox = trace.box_ids.some(id => topBoxIds.includes(id));
-            if (hasSharedBox && trace.entries_text) {
-                relevantTracesText.push(trace.entries_text);
+            if (hasSharedBox) {
+                for (const entry of trace.entries) {
+                    if (topBoxIds.includes(entry.box_id)) {
+                        for (const event of entry.events) {
+                            candidateEvents.push({ event, trace });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Rankear esses eventos com base na similaridade com a query
+        const scoredEvents: { event: string; trace: Trace; score: number }[] = [];
+        for (const candidate of candidateEvents) {
+            const eVec = await this.embeddingService.getEmbedding(candidate.event);
+            const score = this.embeddingService.cosineSimilarity(qVec, eVec);
+            scoredEvents.push({ ...candidate, score });
+        }
+
+        // Selecionar os top trace_event_topn eventos
+        scoredEvents.sort((a, b) => b.score - a.score);
+        const topEvents = scoredEvents.slice(0, traceEventTopN);
+
+        // Recuperar as traces correspondentes a esses eventos selecionados
+        const relevantTracesText: string[] = [];
+        const retrievedTraceIds = new Set<number>();
+        for (const entry of topEvents) {
+            if (!retrievedTraceIds.has(entry.trace.trace_id)) {
+                retrievedTraceIds.add(entry.trace.trace_id);
+                if (entry.trace.entries_text) {
+                    relevantTracesText.push(entry.trace.entries_text);
+                }
             }
         }
 
@@ -176,74 +345,134 @@ export class MemboxManager {
 
         console.log(`[Membox] Iniciando compactação do histórico para: ${conversationId}`);
 
-        // Separar as mensagens antigas para compactação (ex: as primeiras N-4 mensagens)
         const messagesToCompact = rawMessages.slice(0, -4);
         const rawTail = rawMessages.slice(-4);
 
-        // 1. Topic Loom: Segmentar mensagensToCompact em caixas
-        const segments: any[][] = [];
-        let currentSegment: any[] = [];
+        if (messagesToCompact.length === 0) return rawMessages;
 
-        for (let i = 0; i < messagesToCompact.length; i++) {
-            const msg = messagesToCompact[i];
-            if (currentSegment.length < 2) {
-                currentSegment.push(msg);
-                continue;
+        // 1. Batch Topic Loom: Fatiamento em lote (Batch segmentation)
+        const messagesText = messagesToCompact.map((m, idx) => `[${idx}] ${m.role}: ${m.content}`).join('\n');
+        const loomPrompt = PROMPT_BATCH_TOPIC_LOOM.replace('{messagesText}', messagesText);
+        
+        console.log('[Membox] Executando fatiamento de tópicos (Topic Loom) em lote...');
+        const loomResultRaw = await this.callHelperLLM(loomPrompt, apiProvider);
+        
+        let segments: { msg: any; index: number }[][] = [];
+        const parsedBoundaries = this.parseJSONSafely(loomResultRaw);
+
+        if (parsedBoundaries && Array.isArray(parsedBoundaries.boundaries) && parsedBoundaries.boundaries.length > 0) {
+            let valid = true;
+            for (const b of parsedBoundaries.boundaries) {
+                if (typeof b.start !== 'number' || typeof b.end !== 'number' || b.start > b.end || (b.end - b.start + 1) < 2) {
+                    valid = false;
+                    break;
+                }
             }
+            if (valid) {
+                for (const b of parsedBoundaries.boundaries) {
+                    const segmentSlice = messagesToCompact.slice(b.start, b.end + 1).map((msg, offset) => ({
+                        msg,
+                        index: b.start + offset
+                    }));
+                    if (segmentSlice.length > 0) {
+                        segments.push(segmentSlice);
+                    }
+                }
+            }
+        }
 
-            const refText = currentSegment.slice(-2).map(m => `${m.role}: ${m.content}`).join('\n');
-            const currText = `${msg.role}: ${msg.content}`;
+        // Fallback sequencial se o batch topic loom falhou
+        if (segments.length === 0) {
+            console.log('[Membox] Batch Topic Loom falhou ou retornou limites inválidos. Rodando fallback sequencial...');
+            let currentSegment: { msg: any; index: number }[] = [{ msg: messagesToCompact[0], index: 0 }];
 
-            const checkPrompt = `Você é um analisador de continuidade temática. Sua tarefa é determinar se a mensagem atual (curr) continua o mesmo tópico das mensagens anteriores (ref).
+            for (let i = 1; i < messagesToCompact.length; i++) {
+                const msg = messagesToCompact[i];
+                if (currentSegment.length < 2) {
+                    currentSegment.push({ msg, index: i });
+                    continue;
+                }
 
-Mensagens Anteriores (ref):
-${refText}
+                const refText = currentSegment.slice(-2).map(item => `${item.msg.role}: ${item.msg.content}`).join('\n');
+                const currText = `${msg.role}: ${msg.content}`;
 
-Mensagem Atual (curr):
-${currText}
+                const checkPrompt = PROMPT_TOPIC_CONTINUITY
+                    .replace('{refText}', refText)
+                    .replace('{currText}', currText);
 
-Responda 'Yes' se continuar o mesmo tópico, ou 'No' se for um assunto diferente.`;
+                const decision = await this.callHelperLLM(checkPrompt, apiProvider);
+                const isRelated = decision.trim().toLowerCase().includes('yes');
 
-            const decision = await this.callHelperLLM(checkPrompt, apiProvider);
-            if (decision.trim().toLowerCase().includes('yes')) {
-                currentSegment.push(msg);
-            } else {
+                if (isRelated) {
+                    currentSegment.push({ msg, index: i });
+                } else {
+                    segments.push(currentSegment);
+                    currentSegment = [{ msg, index: i }];
+                }
+            }
+            if (currentSegment.length > 0) {
                 segments.push(currentSegment);
-                currentSegment = [msg];
             }
         }
-        if (currentSegment.length > 0) {
-            segments.push(currentSegment);
-        }
 
-        // Carregar boxes existentes para atribuir ID sequencial
         const existingBoxes = this.loadBoxes();
         let boxIdCounter = existingBoxes.length > 0 ? Math.max(...existingBoxes.map(b => b.box_id)) + 1 : 0;
 
-        // 2. Extrair metadados e costurar traces para cada segmento/caixa
-        for (const segment of segments) {
-            const segmentText = segment.map(m => `${m.role}: ${m.content}`).join('\n');
-            const extractPrompt = `Analise o diálogo abaixo e extraia o tópico principal (topic), as palavras-chave (keywords) e a lista de fatos ou planos futuros explícitos (explicit_mentions).
+        // 2. Batch Metadata Extraction: Extração de metadados das caixas em lote
+        console.log('[Membox] Executando extração de metadados das caixas em lote...');
+        let segmentsText = '';
+        for (let idx = 0; idx < segments.length; idx++) {
+            const segment = segments[idx];
+            const text = segment.map(item => `${item.msg.role}: ${item.msg.content}`).join('\n');
+            segmentsText += `--- Segment ${idx} ---\n${text}\n\n`;
+        }
 
-Diálogo:
-${segmentText}
+        const extractPrompt = PROMPT_BATCH_METADATA_EXTRACTION.replace('{segmentsText}', segmentsText);
+        const extractResultRaw = await this.callHelperLLM(extractPrompt, apiProvider);
+        const parsedBatchMetadata = this.parseJSONSafely(extractResultRaw);
 
-Responda no formato JSON com as chaves: "topic", "keywords" (array), "explicit_mentions" (array).`;
+        // Processar caixas e rodar costura
+        for (let idx = 0; idx < segments.length; idx++) {
+            const segment = segments[idx];
+            const segmentText = segment.map(item => `${item.msg.role}: ${item.msg.content}`).join('\n');
 
-            const extractResultRaw = await this.callHelperLLM(extractPrompt, apiProvider);
-            const parsed = this.parseJSONSafely(extractResultRaw);
+            let topic: string | undefined = undefined;
+            let keywords: string[] | undefined = undefined;
+            let events: string[] | undefined = undefined;
 
-            const topic = parsed?.topic || 'Diálogo do desenvolvedor';
-            const keywords = parsed?.keywords || [];
-            const events = parsed?.explicit_mentions || [];
+            if (parsedBatchMetadata && Array.isArray(parsedBatchMetadata.segments)) {
+                const meta = parsedBatchMetadata.segments.find((s: any) => s.segment_index === idx);
+                if (meta) {
+                    topic = meta.topic;
+                    keywords = meta.keywords;
+                    events = meta.explicit_mentions;
+                }
+            }
+
+            // Fallback individual se o batch falhou
+            if (!topic) {
+                const topicPrompt = PROMPT_TOPIC_FALLBACK.replace('{segmentText}', segmentText);
+                const rawTopic = await this.callHelperLLM(topicPrompt, apiProvider);
+                topic = rawTopic.trim() || 'Developer Dialogue';
+            }
+            if (!keywords || !Array.isArray(keywords) || keywords.length === 0) {
+                const keywordsPrompt = PROMPT_KEYWORDS_FALLBACK.replace('{segmentText}', segmentText);
+                const rawKeywords = await this.callHelperLLM(keywordsPrompt, apiProvider);
+                keywords = rawKeywords.split(',').map(k => k.trim()).filter(Boolean);
+            }
+            if (!events || !Array.isArray(events)) {
+                const eventsPrompt = PROMPT_EVENTS_FALLBACK.replace('{segmentText}', segmentText);
+                const rawEvents = await this.callHelperLLM(eventsPrompt, apiProvider);
+                events = rawEvents.split('\n').map(e => e.trim().replace(/^-\s*/, '')).filter(Boolean);
+            }
 
             const newBox: Membox = {
                 box_id: boxIdCounter++,
                 start_time: new Date().toISOString(),
                 coverage: {
                     session_id: conversationId,
-                    start_step: 0,
-                    end_step: segment.length
+                    start_step: segment[0].index,
+                    end_step: segment[segment.length - 1].index
                 },
                 content_text: segmentText,
                 features: {
@@ -256,9 +485,8 @@ Responda no formato JSON com as chaves: "topic", "keywords" (array), "explicit_m
 
             this.saveBox(newBox);
 
-            // 3. Costurar Traces (Trace Weaver) se houver eventos
             if (events.length > 0) {
-                await this.linkEventsToTraces(newBox, events, apiProvider);
+                await this.linkEventsToTracesBatch(newBox, events, apiProvider);
             }
         }
 
@@ -266,32 +494,123 @@ Responda no formato JSON com as chaves: "topic", "keywords" (array), "explicit_m
         return rawTail;
     }
 
-    private async linkEventsToTraces(box: Membox, events: string[], apiProvider: any) {
+    private async linkEventsToTracesBatch(box: Membox, events: string[], apiProvider: any) {
         const traces = this.loadTraces();
-        let matched = false;
+        const TRACE_SIMILARITY_THRESHOLD = 0.5;
+
+        // Pre-filtering: identificar quais traces são candidatas
+        const candidateTraces: Trace[] = [];
+        const eventEmbeddings = await Promise.all(events.map(e => this.embeddingService.getEmbedding(e)));
 
         for (const trace of traces) {
+            if (!trace.entries_text) continue;
+            const traceEmbedding = await this.embeddingService.getEmbedding(trace.entries_text);
+            
+            let passesFilter = false;
+            for (const evEmb of eventEmbeddings) {
+                const similarity = this.embeddingService.cosineSimilarity(evEmb, traceEmbedding);
+                if (similarity >= TRACE_SIMILARITY_THRESHOLD) {
+                    passesFilter = true;
+                    break;
+                }
+            }
+            if (passesFilter) {
+                candidateTraces.push(trace);
+            }
+        }
+
+        // Se não houver traces candidatas, todos criam novas
+        if (candidateTraces.length === 0) {
+            for (const event of events) {
+                await this.createNewTrace(box, event, apiProvider, traces);
+            }
+            return;
+        }
+
+        // Executar vinculação em lote via LLM (Batch Trace Linking)
+        console.log('[Membox] Executando vinculação de eventos a traces (Trace Weaver) em lote...');
+        const newEventsText = events.map((e, idx) => `[E${idx}] ${e}`).join('\n');
+        const tracesText = candidateTraces.map(t => `[T${t.trace_id}] ${t.entries_text}`).join('\n');
+
+        const filterPrompt = PROMPT_BATCH_TRACE_LINKING
+            .replace('{newEventsText}', newEventsText)
+            .replace('{tracesText}', tracesText);
+
+        const filterResRaw = await this.callHelperLLM(filterPrompt, apiProvider);
+        const parsed = this.parseJSONSafely(filterResRaw);
+
+        // Fallback individual sequencial se o lote falhar
+        if (!parsed || (!Array.isArray(parsed.mappings) && !Array.isArray(parsed.unmatched_events))) {
+            console.log('[Membox] Batch Trace Linking falhou. Executando fallback individual...');
+            for (const event of events) {
+                await this.linkSingleEventToTraces(box, event, apiProvider, traces);
+            }
+            return;
+        }
+
+        const matchedEvents = new Set<string>();
+        if (Array.isArray(parsed.mappings)) {
+            for (const map of parsed.mappings) {
+                const trace = traces.find(t => t.trace_id === map.trace_id);
+                if (trace && Array.isArray(map.related_events) && map.related_events.length > 0) {
+                    if (!trace.box_ids.includes(box.box_id)) {
+                        trace.box_ids.push(box.box_id);
+                    }
+                    trace.entries.push({
+                        box_id: box.box_id,
+                        start_time: box.start_time,
+                        events: map.related_events,
+                        order: trace.entries.length
+                    });
+                    const texts = trace.entries.map(e => `${e.start_time}: ${e.events.join(', ')}`);
+                    trace.entries_text = texts.join(' -> ');
+                    this.updateTraceInFile(trace);
+                    for (const re of map.related_events) {
+                        matchedEvents.add(re);
+                    }
+                }
+            }
+        }
+
+        const unmatchedEvents = events.filter(e => {
+            const explicitlyUnmatched = Array.isArray(parsed.unmatched_events) && parsed.unmatched_events.includes(e);
+            return explicitlyUnmatched || !matchedEvents.has(e);
+        });
+
+        for (const event of unmatchedEvents) {
+            await this.createNewTrace(box, event, apiProvider, traces);
+        }
+    }
+
+    private async linkSingleEventToTraces(box: Membox, event: string, apiProvider: any, traces: Trace[]) {
+        const TRACE_SIMILARITY_THRESHOLD = 0.5;
+        let matchedAnyTrace = false;
+        const eventEmbedding = await this.embeddingService.getEmbedding(event);
+
+        for (const trace of traces) {
+            if (!trace.entries_text) continue;
+
+            const traceEmbedding = await this.embeddingService.getEmbedding(trace.entries_text);
+            const similarity = this.embeddingService.cosineSimilarity(eventEmbedding, traceEmbedding);
+
+            if (similarity < TRACE_SIMILARITY_THRESHOLD) {
+                continue;
+            }
+
             const traceEvents = trace.entries.flatMap(e => e.events).join('\n');
-            const filterPrompt = `Você é um analisador de coerência narrativa. Identifique se algum dos Novos Eventos abaixo está diretamente relacionado à Trace Existente (mesmo projeto, erro, arquivo ou assunto).
-
-Trace Existente:
-${traceEvents}
-
-Novos Eventos:
-${events.join('\n')}
-
-Responda em JSON contendo:
-{{
-  "related_events": ["..."],
-  "unrelated_events": ["..."]
-}}`;
+            const filterPrompt = PROMPT_TRACE_LINKING
+                .replace('{traceEvents}', traceEvents)
+                .replace('{newEvents}', event);
 
             const filterResRaw = await this.callHelperLLM(filterPrompt, apiProvider);
             const parsed = this.parseJSONSafely(filterResRaw);
             const related = parsed?.related_events || [];
 
             if (related.length > 0) {
-                trace.box_ids.push(box.box_id);
+                if (!trace.box_ids.includes(box.box_id)) {
+                    trace.box_ids.push(box.box_id);
+                }
+                
                 trace.entries.push({
                     box_id: box.box_id,
                     start_time: box.start_time,
@@ -299,49 +618,40 @@ Responda em JSON contendo:
                     order: trace.entries.length
                 });
 
-                // Atualizar entries_text
                 const texts = trace.entries.map(e => `${e.start_time}: ${e.events.join(', ')}`);
                 trace.entries_text = texts.join(' -> ');
-                
-                // Sobrescrever arquivo de traces com a nova versão atualizada
+
                 this.updateTraceInFile(trace);
-                matched = true;
-                break;
+                matchedAnyTrace = true;
             }
         }
 
-        if (!matched) {
-            // Criar uma nova trace para estes eventos
-            const initPrompt = `Organize os eventos abaixo em uma narrativa lógica coerente (primary_chain) e isolados (isolated_events).
-
-Eventos:
-${events.join('\n')}
-
-Responda em JSON:
-{{
-  "primary_chain": ["..."],
-  "isolated_events": ["..."]
-}}`;
-
-            const initResRaw = await this.callHelperLLM(initPrompt, apiProvider);
-            const parsed = this.parseJSONSafely(initResRaw);
-            const chain = parsed?.primary_chain || events;
-
-            const nextTraceId = traces.length;
-            const newTrace: Trace = {
-                trace_id: nextTraceId,
-                box_ids: [box.box_id],
-                entries: [{
-                    box_id: box.box_id,
-                    start_time: box.start_time,
-                    events: chain,
-                    order: 0
-                }],
-                entries_text: `${box.start_time}: ${chain.join(', ')}`
-            };
-
-            this.saveTrace(newTrace);
+        if (!matchedAnyTrace) {
+            await this.createNewTrace(box, event, apiProvider, traces);
         }
+    }
+
+    private async createNewTrace(box: Membox, event: string, apiProvider: any, traces: Trace[]) {
+        const initPrompt = PROMPT_TRACE_NARRATIVE.replace('{events}', event);
+        const initResRaw = await this.callHelperLLM(initPrompt, apiProvider);
+        const parsed = this.parseJSONSafely(initResRaw);
+        const chain = parsed?.primary_chain || [event];
+
+        const nextTraceId = traces.length;
+        const newTrace: Trace = {
+            trace_id: nextTraceId,
+            box_ids: [box.box_id],
+            entries: [{
+                box_id: box.box_id,
+                start_time: box.start_time,
+                events: chain,
+                order: 0
+            }],
+            entries_text: `${box.start_time}: ${chain.join(', ')}`
+        };
+
+        this.saveTrace(newTrace);
+        traces.push(newTrace);
     }
 
     private updateTraceInFile(updatedTrace: Trace) {
@@ -349,11 +659,8 @@ Responda em JSON:
         const index = traces.findIndex(t => t.trace_id === updatedTrace.trace_id);
         if (index !== -1) {
             traces[index] = updatedTrace;
-            // Reescrever o arquivo completo
-            fs.writeFileSync(this.tracesPath, '', 'utf8');
-            for (const t of traces) {
-                this.saveTrace(t);
-            }
+            this.tracesCache = traces;
+            fs.writeFileSync(this.tracesPath, traces.map(t => JSON.stringify(t)).join('\n') + '\n', 'utf8');
         }
     }
 }
