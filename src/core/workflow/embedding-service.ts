@@ -3,9 +3,22 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 
+import { fileURLToPath } from 'node:url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+let packageRoot = __dirname;
+while (packageRoot && packageRoot !== path.parse(packageRoot).root) {
+    if (fs.existsSync(path.join(packageRoot, 'package.json'))) {
+        break;
+    }
+    packageRoot = path.dirname(packageRoot);
+}
+
 // Configuração offline estrita
 env.allowRemoteModels = false;
-env.localModelPath = path.resolve(process.cwd(), 'src/resources/models/');
+env.localModelPath = path.resolve(packageRoot, 'src/resources/models/');
 
 export class EmbeddingService {
     private static extractor: any = null;
