@@ -3,6 +3,8 @@ import * as path from 'path';
 import crypto from 'node:crypto';
 import { EmbeddingService } from './embedding-service.js';
 import { jsonrepair } from 'jsonrepair';
+import * as http from 'node:http';
+import { HistoryManager } from './history-manager.js';
 
 export interface Membox {
     box_id: number;
@@ -26,6 +28,7 @@ export interface TraceEntry {
     start_time: string;
     events: string[];
     order: number;
+    similarity?: number;
 }
 
 export interface Trace {
@@ -145,6 +148,21 @@ Respond ONLY with a JSON object in this format:
   "isolated_events": ["..."]
 }`;
 
+const PROMPT_BATCH_TRACE_NARRATIVE = `You are a trace narrative builder. For each event listed, organize it into a coherent logical chain (primary_chain).
+
+Events:
+{eventsText}
+
+Respond ONLY with a JSON object in this format:
+{
+  "traces": [
+    {
+      "event_index": 0,
+      "primary_chain": ["..."]
+    }
+  ]
+}`;
+
 export class MemboxManager {
     private storageDir: string;
     private boxesPath: string;
@@ -174,6 +192,9 @@ export class MemboxManager {
         this.boxesPath = path.join(targetDir, 'boxes.jsonl');
         this.tracesPath = path.join(targetDir, 'traces.jsonl');
         this.embeddingService = new EmbeddingService(targetDir);
+
+        // Warm up the embedding service model asynchronously in background
+        EmbeddingService.warmup().catch(() => {});
 
         if (!fs.existsSync(targetDir)) {
             fs.mkdirSync(targetDir, { recursive: true });
@@ -231,13 +252,19 @@ export class MemboxManager {
     }
 
     private async callHelperLLM(prompt: string, apiProvider: any): Promise<string> {
+        const conversationId = `membox-helper-${crypto.randomUUID()}`;
         const response = await apiProvider.streamChat(
             prompt + '\n\nIMPORTANT: You MUST respond using the \'talk_with_user\' action. Put the result (either plain text or a JSON string matching the requested format) strictly inside the \'content\' field of the response JSON. Do NOT use other actions.',
             {
-                conversationId: `membox-helper-${crypto.randomUUID()}`,
+                conversationId,
                 agentType: 'developer_agent'
             }
         );
+        // try {
+        //     await HistoryManager.deleteHistory(conversationId);
+        // } catch {
+        //     // silent catch to ensure deletion failures do not crash execution
+        // }
         return response.action?.content || '';
     }
 
@@ -342,6 +369,33 @@ export class MemboxManager {
             prompt += `${box.content_text}\n\n`;
         }
 
+        // Notify graph visualizer (Active Glow) if active
+        try {
+            const serverConfigFile = path.join(this.storageDir, 'graph-server.json');
+            if (fs.existsSync(serverConfigFile)) {
+                const config = JSON.parse(fs.readFileSync(serverConfigFile, 'utf-8'));
+                if (config.active && Date.now() - config.timestamp < 3600000) { // active within last hour
+                    const nodeIds = selectedBoxes.map(b => `box_${b.box_id}`);
+                    const postData = JSON.stringify({ nodeIds });
+                    const clientReq = http.request({
+                        hostname: 'localhost',
+                        port: config.port,
+                        path: '/api/active-nodes',
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Content-Length': Buffer.byteLength(postData)
+                        }
+                    });
+                    clientReq.on('error', () => {}); // silent catch for dropped server connections
+                    clientReq.write(postData);
+                    clientReq.end();
+                }
+            }
+        } catch {
+            // silent catch to ensure retrieveContext never breaks the main execution
+        }
+
         return prompt;
     }
 
@@ -436,6 +490,8 @@ export class MemboxManager {
         const extractResultRaw = await this.callHelperLLM(extractPrompt, apiProvider);
         const parsedBatchMetadata = this.parseJSONSafely(extractResultRaw);
 
+        const boxesWithEvents: { box: Membox; events: string[] }[] = [];
+
         // Processar caixas e rodar costura
         for (let idx = 0; idx < segments.length; idx++) {
             const segment = segments[idx];
@@ -491,8 +547,12 @@ export class MemboxManager {
             this.saveBox(newBox);
 
             if (events.length > 0) {
-                await this.linkEventsToTracesBatch(newBox, events, apiProvider);
+                boxesWithEvents.push({ box: newBox, events });
             }
+        }
+
+        if (boxesWithEvents.length > 0) {
+            await this.linkAllBoxesEventsToTraces(boxesWithEvents, apiProvider);
         }
 
         console.log(`[Membox] Compactação finalizada. Caixas gravadas. Retornando cauda recente.`);
@@ -500,13 +560,34 @@ export class MemboxManager {
     }
 
     private async linkEventsToTracesBatch(box: Membox, events: string[], apiProvider: any) {
+        await this.linkAllBoxesEventsToTraces([{ box, events }], apiProvider);
+    }
+
+    private async linkAllBoxesEventsToTraces(boxesWithEvents: { box: Membox; events: string[] }[], apiProvider: any) {
+        interface EventInfo {
+            event: string;
+            box: Membox;
+            embedding?: number[];
+        }
+
+        const allEvents: EventInfo[] = [];
+        for (const item of boxesWithEvents) {
+            for (const event of item.events) {
+                allEvents.push({ event, box: item.box });
+            }
+        }
+        if (allEvents.length === 0) return;
+
+        // Get embeddings for all events in parallel
+        await Promise.all(allEvents.map(async (evInfo) => {
+            evInfo.embedding = await this.embeddingService.getEmbedding(evInfo.event);
+        }));
+
         const traces = this.loadTraces();
         const TRACE_SIMILARITY_THRESHOLD = 0.5;
 
         // Pre-filtering: identificar quais traces são candidatas
         const candidateTraces: Trace[] = [];
-        const eventEmbeddings = await Promise.all(events.map(e => this.embeddingService.getEmbedding(e)));
-
         for (const trace of traces) {
             const traceEvents = trace.entries.flatMap(entry => entry.events);
             if (traceEvents.length === 0) continue;
@@ -514,9 +595,10 @@ export class MemboxManager {
             const traceEventEmbeddings = await Promise.all(traceEvents.map(te => this.embeddingService.getEmbedding(te)));
             let passesFilter = false;
 
-            for (const evEmb of eventEmbeddings) {
+            for (const evInfo of allEvents) {
+                if (!evInfo.embedding) continue;
                 for (const teEmb of traceEventEmbeddings) {
-                    const similarity = this.embeddingService.cosineSimilarity(evEmb, teEmb);
+                    const similarity = this.embeddingService.cosineSimilarity(evInfo.embedding, teEmb);
                     if (similarity >= TRACE_SIMILARITY_THRESHOLD) {
                         passesFilter = true;
                         break;
@@ -530,17 +612,15 @@ export class MemboxManager {
             }
         }
 
-        // Se não houver traces candidatas, todos criam novas
+        // Se não houver traces candidatas, todos criam novas em lote
         if (candidateTraces.length === 0) {
-            for (const event of events) {
-                await this.createNewTrace(box, event, apiProvider, traces);
-            }
+            await this.createNewTracesBatchV2(allEvents, apiProvider, traces);
             return;
         }
 
         // Executar vinculação em lote via LLM (Batch Trace Linking)
         console.log('[Membox] Executando vinculação de eventos a traces (Trace Weaver) em lote...');
-        const newEventsText = events.map((e, idx) => `[E${idx}] ${e}`).join('\n');
+        const newEventsText = allEvents.map((info, idx) => `[E${idx}] ${info.event}`).join('\n');
         const tracesText = candidateTraces.map(t => `[T${t.trace_id}] ${t.entries_text}`).join('\n');
 
         const filterPrompt = PROMPT_BATCH_TRACE_LINKING
@@ -553,43 +633,83 @@ export class MemboxManager {
         // Fallback individual sequencial se o lote falhar
         if (!parsed || (!Array.isArray(parsed.mappings) && !Array.isArray(parsed.unmatched_events))) {
             console.log('[Membox] Batch Trace Linking falhou. Executando fallback individual...');
-            for (const event of events) {
-                await this.linkSingleEventToTraces(box, event, apiProvider, traces);
+            for (const info of allEvents) {
+                await this.linkSingleEventToTraces(info.box, info.event, apiProvider, traces);
             }
             return;
         }
 
-        const matchedEvents = new Set<string>();
+        const matchedEventsIndices = new Set<number>();
         if (Array.isArray(parsed.mappings)) {
             for (const map of parsed.mappings) {
                 const trace = traces.find(t => t.trace_id === map.trace_id);
                 if (trace && Array.isArray(map.related_events) && map.related_events.length > 0) {
-                    if (!trace.box_ids.includes(box.box_id)) {
-                        trace.box_ids.push(box.box_id);
+                    const matchingInfos: EventInfo[] = [];
+                    for (const relEventText of map.related_events) {
+                        const foundIdx = allEvents.findIndex(info => info.event === relEventText || `[E${allEvents.indexOf(info)}] ${info.event}` === relEventText);
+                        if (foundIdx !== -1) {
+                            matchingInfos.push(allEvents[foundIdx]);
+                            matchedEventsIndices.add(foundIdx);
+                        }
                     }
-                    trace.entries.push({
-                        box_id: box.box_id,
-                        start_time: box.start_time,
-                        events: map.related_events,
-                        order: trace.entries.length
-                    });
-                    const texts = trace.entries.map(e => `${e.start_time}: ${e.events.join(', ')}`);
-                    trace.entries_text = texts.join(' -> ');
-                    this.updateTraceInFile(trace);
-                    for (const re of map.related_events) {
-                        matchedEvents.add(re);
+
+                    if (matchingInfos.length > 0) {
+                        // Group by box_id to create one entry per box
+                        const groupedByBox = new Map<number, { box: Membox; events: string[] }>();
+                        for (const info of matchingInfos) {
+                            if (!groupedByBox.has(info.box.box_id)) {
+                                groupedByBox.set(info.box.box_id, { box: info.box, events: [] });
+                            }
+                            groupedByBox.get(info.box.box_id)!.events.push(info.event);
+                        }
+
+                        for (const [boxId, group] of groupedByBox.entries()) {
+                            if (!trace.box_ids.includes(boxId)) {
+                                trace.box_ids.push(boxId);
+                            }
+
+                            let bestSim = 1.0;
+                            const traceEvents = trace.entries.flatMap(entry => entry.events);
+                            if (traceEvents.length > 0) {
+                                const traceEventEmbeddings = await Promise.all(traceEvents.map(te => this.embeddingService.getEmbedding(te)));
+                                let maxSimForGroup = -1;
+                                for (const eventText of group.events) {
+                                    const eventIdx = allEvents.findIndex(info => info.event === eventText);
+                                    if (eventIdx !== -1 && allEvents[eventIdx].embedding) {
+                                        const targetEmb = allEvents[eventIdx].embedding!;
+                                        for (const teEmb of traceEventEmbeddings) {
+                                            const sim = this.embeddingService.cosineSimilarity(targetEmb, teEmb);
+                                            if (sim > maxSimForGroup) maxSimForGroup = sim;
+                                        }
+                                    }
+                                }
+                                if (maxSimForGroup > 0) bestSim = maxSimForGroup;
+                            }
+
+                            trace.entries.push({
+                                box_id: boxId,
+                                start_time: group.box.start_time,
+                                events: group.events,
+                                order: trace.entries.length,
+                                similarity: bestSim
+                            });
+                        }
+
+                        const texts = trace.entries.map(e => `${e.start_time}: ${e.events.join(', ')}`);
+                        trace.entries_text = texts.join(' -> ');
+                        this.updateTraceInFile(trace);
                     }
                 }
             }
         }
 
-        const unmatchedEvents = events.filter(e => {
-            const explicitlyUnmatched = Array.isArray(parsed.unmatched_events) && parsed.unmatched_events.includes(e);
-            return explicitlyUnmatched || !matchedEvents.has(e);
+        const unmatchedEventsInfo = allEvents.filter((info, idx) => {
+            const explicitlyUnmatched = Array.isArray(parsed.unmatched_events) && parsed.unmatched_events.includes(info.event);
+            return explicitlyUnmatched || !matchedEventsIndices.has(idx);
         });
 
-        for (const event of unmatchedEvents) {
-            await this.createNewTrace(box, event, apiProvider, traces);
+        if (unmatchedEventsInfo.length > 0) {
+            await this.createNewTracesBatchV2(unmatchedEventsInfo, apiProvider, traces);
         }
     }
 
@@ -632,7 +752,8 @@ export class MemboxManager {
                     box_id: box.box_id,
                     start_time: box.start_time,
                     events: related,
-                    order: trace.entries.length
+                    order: trace.entries.length,
+                    similarity: bestSimilarity
                 });
 
                 const texts = trace.entries.map(e => `${e.start_time}: ${e.events.join(', ')}`);
@@ -649,26 +770,49 @@ export class MemboxManager {
     }
 
     private async createNewTrace(box: Membox, event: string, apiProvider: any, traces: Trace[]) {
-        const initPrompt = PROMPT_TRACE_NARRATIVE.replace('{events}', event);
+        await this.createNewTracesBatch(box, [event], apiProvider, traces);
+    }
+
+    private async createNewTracesBatch(box: Membox, events: string[], apiProvider: any, traces: Trace[]) {
+        const eventsInfo = events.map(event => ({ event, box }));
+        await this.createNewTracesBatchV2(eventsInfo, apiProvider, traces);
+    }
+
+    private async createNewTracesBatchV2(eventsInfo: { event: string; box: Membox }[], apiProvider: any, traces: Trace[]) {
+        if (eventsInfo.length === 0) return;
+
+        const eventsText = eventsInfo.map((info, idx) => `--- Event ${idx} ---\n${info.event}`).join('\n\n');
+        const initPrompt = PROMPT_BATCH_TRACE_NARRATIVE.replace('{eventsText}', eventsText);
         const initResRaw = await this.callHelperLLM(initPrompt, apiProvider);
         const parsed = this.parseJSONSafely(initResRaw);
-        const chain = parsed?.primary_chain || [event];
 
-        const nextTraceId = traces.length;
-        const newTrace: Trace = {
-            trace_id: nextTraceId,
-            box_ids: [box.box_id],
-            entries: [{
-                box_id: box.box_id,
-                start_time: box.start_time,
-                events: chain,
-                order: 0
-            }],
-            entries_text: `${box.start_time}: ${chain.join(', ')}`
-        };
+        for (let idx = 0; idx < eventsInfo.length; idx++) {
+            const info = eventsInfo[idx];
+            let chain = [info.event];
+            if (parsed && Array.isArray(parsed.traces)) {
+                const item = parsed.traces.find((t: any) => t.event_index === idx);
+                if (item && Array.isArray(item.primary_chain)) {
+                    chain = item.primary_chain;
+                }
+            }
 
-        this.saveTrace(newTrace);
-        traces.push(newTrace);
+            const nextTraceId = traces.length;
+            const newTrace: Trace = {
+                trace_id: nextTraceId,
+                box_ids: [info.box.box_id],
+                entries: [{
+                    box_id: info.box.box_id,
+                    start_time: info.box.start_time,
+                    events: chain,
+                    order: 0,
+                    similarity: 1.0
+                }],
+                entries_text: `${info.box.start_time}: ${chain.join(', ')}`
+            };
+
+            this.saveTrace(newTrace);
+            traces.push(newTrace);
+        }
     }
 
     private updateTraceInFile(updatedTrace: Trace) {

@@ -38,6 +38,13 @@ export class HistoryManager {
         fs.writeFileSync(filePath, JSON.stringify(messages, null, 2), 'utf-8');
     }
 
+    static async deleteHistory(conversationId: string): Promise<void> {
+        const filePath = this.getFilePath(conversationId);
+        if (fs.existsSync(filePath)) {
+            fs.unlinkSync(filePath);
+        }
+    }
+
     static async appendMessage(conversationId: string, message: ChatMessage): Promise<void> {
         const history = await this.getHistory(conversationId);
         history.push(message);

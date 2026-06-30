@@ -6,6 +6,7 @@ import { getActiveRealm } from '../auth/get-active-realm.js';
 import { ConfigManager } from '../config-manager.js';
 import { ensureValidToken } from './stackspot-client.js';
 import { parseAgentResponse } from '../agents/agent-response-parser.js';
+import { HistoryManager } from '../workflow/history-manager.js';
 
 vi.mock('../auth/get-active-realm.js', () => ({
     getActiveRealm: vi.fn()
@@ -32,6 +33,13 @@ vi.mock('../agents/agent-response-parser.js', () => ({
     parseAgentResponse: vi.fn()
 }));
 
+vi.mock('../workflow/history-manager.js', () => ({
+    HistoryManager: {
+        getHistory: vi.fn().mockResolvedValue([]),
+        saveHistory: vi.fn().mockResolvedValue(undefined)
+    }
+}));
+
 describe('StackSpotProvider', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
@@ -43,9 +51,12 @@ describe('StackSpotProvider', () => {
             actions: [{ type: 'talk_with_user', content: raw?.message || '', path: '' }],
             conversation_id: raw?.conversation_id
         }));
+        vi.mocked(HistoryManager.getHistory).mockResolvedValue([]);
+        vi.mocked(HistoryManager.saveHistory).mockResolvedValue(undefined);
         vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
             stackspot: {
-                agentId: '01KEQCGJ65YENRA4QBXVN1YFFX'
+                agentId: '01KEQCGJ65YENRA4QBXVN1YFFX',
+                useServerConversation: true
             },
             agents: {},
             agentVersions: {}
@@ -200,5 +211,57 @@ describe('StackSpotProvider', () => {
         const [, payload] = vi.mocked(sseClient.streamAgentResponse).mock.calls[0] as any;
         expect(payload.user_prompt).not.toContain('SYSTEM INSTRUCTIONS:');
         expect(payload.user_prompt).toBe('Test prompt');
+    });
+
+    it('should use local history and not use server conversation when useServerConversation is false', async () => {
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
+            stackspot: {
+                agentId: 'test-agent-id',
+                useServerConversation: false
+            },
+            agents: {},
+            agentVersions: {}
+        } as any);
+        const provider = new StackSpotProvider('developer_agent');
+
+        vi.mocked(HistoryManager.getHistory).mockResolvedValue([
+            { role: 'system', content: 'Base system prompt' },
+            { role: 'user', content: 'First message' },
+            { role: 'assistant', content: '{"actions":[]}' }
+        ]);
+
+        vi.mocked(sseClient.streamAgentResponse).mockImplementation(
+            async (url, payload, headers, callbacks) => {
+                if (callbacks?.onComplete) {
+                    callbacks.onComplete('{"actions":[]}', { conversation_id: 'local-session-id' });
+                }
+            }
+        );
+
+        await provider.streamChat('Second message', {
+            agentType: 'developer_agent',
+            conversationId: 'local-session-id'
+        });
+
+        expect(HistoryManager.getHistory).toHaveBeenCalledWith('local-session-id');
+        expect(sseClient.streamAgentResponse).toHaveBeenCalled();
+        const [, payload] = vi.mocked(sseClient.streamAgentResponse).mock.calls[0] as any;
+        expect(payload.use_conversation).toBe(false);
+        expect(payload.conversation_id).toBe('local-session-id');
+        expect(payload.user_prompt).toContain('SYSTEM INSTRUCTIONS:\nBase system prompt');
+        expect(payload.user_prompt).toContain('USER REQUEST:\nFirst message');
+        expect(payload.user_prompt).toContain('ASSISTANT RESPONSE:\n{"actions":[]}');
+        expect(payload.user_prompt).toContain('USER REQUEST:\nSecond message');
+
+        expect(HistoryManager.saveHistory).toHaveBeenCalledWith(
+            'local-session-id',
+            expect.arrayContaining([
+                { role: 'system', content: 'Base system prompt' },
+                { role: 'user', content: 'First message' },
+                { role: 'assistant', content: '{"actions":[]}' },
+                { role: 'user', content: 'Second message' },
+                { role: 'assistant', content: expect.stringContaining('actions') }
+            ])
+        );
     });
 });

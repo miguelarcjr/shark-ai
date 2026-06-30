@@ -1,3 +1,38 @@
+# Membox Memory Graph Command Implementation Plan (Updated with Active Glow & Edge Weights)
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Create a local HTTP server and an interactive HTML web-based memory network graph visualizer that displays memory boxes and event traces in real-time, featuring edge thickness based on similarity scores and active node highlighting (Active Glow) when launched via `shark dev --graph`.
+
+**Architecture:** 
+- A lightweight Node HTTP server is spawned by `shark graph` or automatically by `shark dev --graph`.
+- The server serves a beautiful dark-mode single-page visualization and endpoints:
+  - `GET /api/graph` - returns nodes, edges, and currently active glowing nodes.
+  - `POST /api/active-nodes` - accepts a list of active node IDs to highlight.
+- `MemboxManager.retrieveContext` makes a fire-and-forget POST to the active graph server port if `--graph` is enabled.
+
+**Tech Stack:** Node.js http module, Commander.js, Vis.js Network, Tailwind CSS.
+
+## Global Constraints
+- Target Port: 4200 (auto-increment if occupied).
+- Dark mode theme must use Inter font and glassmorphism cards.
+- Live reload of graph data via client-side polling every 3 seconds.
+
+---
+
+### Task 1: Web Dashboard HTML Template (with Glow & Dynamic Edge weights)
+
+**Files:**
+- Create: `src/commands/graph-html.ts`
+
+**Interfaces:**
+- Produces: `export const GRAPH_HTML_TEMPLATE: string`
+
+- [ ] **Step 1: Create/Update the HTML template string file**
+
+Write the HTML template including Vis.js, Tailwind, active glow animation, and custom edge weights styling:
+
+```typescript
 export const GRAPH_HTML_TEMPLATE = `
 <!DOCTYPE html>
 <html lang="en">
@@ -73,7 +108,7 @@ export const GRAPH_HTML_TEMPLATE = `
                 }
                 container.classList.add('hidden');
                 
-                const currentDataString = JSON.stringify({ nodes: data.nodes, edges: data.edges });
+                const currentDataString = JSON.stringify(data);
                 if (currentDataString === lastDataString) {
                     highlightActiveNodes(data.activeNodes);
                     return;
@@ -98,18 +133,12 @@ export const GRAPH_HTML_TEMPLATE = `
                             levelSeparation: 250
                         }
                     },
-                    physics: {
-                        enabled: false
-                    },
+                    physics: { enabled: false },
                     interaction: { hover: true }
                 };
             } else {
                 return {
-                    layout: {
-                        hierarchical: {
-                            enabled: false
-                        }
-                    },
+                    layout: { hierarchical: { enabled: false } },
                     physics: {
                         enabled: true,
                         solver: 'forceAtlas2Based',
@@ -132,7 +161,7 @@ export const GRAPH_HTML_TEMPLATE = `
                     size: n.size || 15,
                     shape: n.type === 'box' ? 'dot' : 'circle',
                     color: {
-                        background: isActive ? '#d97706' : (n.type === 'box' ? '#1e40af' : '#065f46'),
+                        background: isActive ? '#f59e0b' : (n.type === 'box' ? '#1e40af' : '#065f46'),
                         border: isActive ? '#fbbf24' : (n.type === 'box' ? '#3b82f6' : '#10b981'),
                         highlight: { background: '#2563eb', border: '#60a5fa' }
                     },
@@ -147,7 +176,7 @@ export const GRAPH_HTML_TEMPLATE = `
                 return {
                     from: e.from,
                     to: e.to,
-                    label: e.label || '',
+                    label: e.label,
                     arrows: e.arrows || '',
                     width: width,
                     dashes: isWeak ? true : false,
@@ -173,14 +202,15 @@ export const GRAPH_HTML_TEMPLATE = `
         }
 
         function highlightActiveNodes(activeNodeIds) {
-            if (!network || !activeNodeIds) return;
+            if (!network || !activeNodeIds || activeNodeIds.length === 0) return;
+            // Update node colors dynamically in vis dataset to glow yellow
             const nodesDataset = network.body.data.nodes;
             graphData.nodes.forEach(n => {
                 const isActive = activeNodeIds.includes(n.id);
                 nodesDataset.update({
                     id: n.id,
                     color: {
-                        background: isActive ? '#d97706' : (n.type === 'box' ? '#1e40af' : '#065f46'),
+                        background: isActive ? '#f59e0b' : (n.type === 'box' ? '#1e40af' : '#065f46'),
                         border: isActive ? '#fbbf24' : (n.type === 'box' ? '#3b82f6' : '#10b981')
                     }
                 });
@@ -269,4 +299,139 @@ export const GRAPH_HTML_TEMPLATE = `
     </script>
 </body>
 </html>
-`;
+\`;
+```
+
+- [ ] **Step 2: Commit template**
+
+```bash
+git add src/commands/graph-html.ts
+git commit -m "feat(graph): add HTML template with active glow and variable edges"
+```
+
+---
+
+### Task 2: Implement Graph CLI endpoints and Active Node State
+
+**Files:**
+- Modify: `src/commands/graph.ts`
+
+- [ ] **Step 1: Update API Server in graph.ts to handle active nodes & edge similarity**
+
+We will update the `/api/graph` endpoint to output `activeNodes` and read edge similarities, and add a `POST /api/active-nodes` endpoint:
+
+```typescript
+// Add global active nodes state with timestamp
+let activeNodes: string[] = [];
+let activeNodesTimestamp = 0;
+
+// Inside the server creation block in src/commands/graph.ts:
+if (req.method === 'POST' && url.pathname === '/api/active-nodes') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', () => {
+        try {
+            const data = JSON.parse(body);
+            activeNodes = data.nodeIds || [];
+            activeNodesTimestamp = Date.now();
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ success: true }));
+        } catch {
+            res.writeHead(400);
+            res.end('Bad Request');
+        }
+    });
+    return;
+}
+
+// In the GET /api/graph endpoint response:
+const activeNodeList = (Date.now() - activeNodesTimestamp < 15000) ? activeNodes : [];
+res.writeHead(200, { 'Content-Type': 'application/json' });
+res.end(JSON.stringify({ nodes, edges, activeNodes: activeNodeList }));
+```
+
+Also, read and output the similarity fields when building timeline or boxes connections:
+```typescript
+if (trace.entries) {
+    trace.entries.forEach((entry: any, i: number) => {
+        // use entry.similarity if available, or default to 1.0
+        ...
+    });
+}
+```
+
+- [ ] **Step 2: Save graph server configuration to file**
+
+During startup, save the active port number to a configuration file `.shark/membox/graph-server.json`:
+```typescript
+fs.writeFileSync(
+    path.join(runDir, 'graph-server.json'),
+    JSON.stringify({ active: true, port: p, timestamp: Date.now() }),
+    'utf-8'
+);
+```
+
+- [ ] **Step 3: Verify & Commit**
+
+```bash
+git add src/commands/graph.ts
+git commit -m "feat(graph): add API endpoints for active node highlighting and similarity scores"
+```
+
+---
+
+### Task 3: Integrate with `shark dev --graph` and `MemboxManager`
+
+**Files:**
+- Modify: `src/commands/dev.ts`
+- Modify: `src/core/workflow/membox-manager.ts`
+
+- [ ] **Step 1: Add `--graph` option to `shark dev`**
+
+Modify `src/commands/dev.ts` to accept `--graph` flag:
+```typescript
+export const devCommand = new Command('dev')
+    .description('Start interactive development session')
+    .option('--graph', 'Enable real-time memory graph visualization', false)
+```
+When `--graph` is true, invoke `graphCommand.action` asynchronously in the background.
+
+- [ ] **Step 2: Write active nodes signal during `retrieveContext`**
+
+In `src/core/workflow/membox-manager.ts` inside `retrieveContext`, check if `.shark/membox/graph-server.json` is fresh and active. If yes, post the retrieved box IDs to `http://localhost:<port>/api/active-nodes`:
+
+```typescript
+const serverConfigFile = path.join(this.dbDir, 'graph-server.json');
+if (fs.existsSync(serverConfigFile)) {
+    try {
+        const config = JSON.parse(fs.readFileSync(serverConfigFile, 'utf-8'));
+        if (config.active && Date.now() - config.timestamp < 3600000) { // active within last hour
+            const nodeIds = retrievedBoxes.map(b => `box_${b.box_id}`);
+            // Fire-and-forget POST
+            const req = http.request({
+                hostname: 'localhost',
+                port: config.port,
+                path: '/api/active-nodes',
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            req.write(JSON.stringify({ nodeIds }));
+            req.end();
+        }
+    } catch {
+        // Ignore network errors to keep execution smooth
+    }
+}
+```
+
+- [ ] **Step 3: Compile & Verify**
+
+Run: `npm run build`
+Expected: Success
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add src/commands/dev.ts src/core/workflow/membox-manager.ts
+git commit -m "feat(graph): integrate active node highlighting with shark dev --graph"
+```

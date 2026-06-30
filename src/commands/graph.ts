@@ -19,6 +19,7 @@ interface GraphEdge {
     to: string;
     label: string;
     arrows: string;
+    similarity?: number;
 }
 
 export const graphCommand = new Command('graph')
@@ -31,13 +32,34 @@ export const graphCommand = new Command('graph')
             console.error(colors.error('❌ Invalid port number.'));
             process.exit(1);
         }
-        
+
+        let activeNodes: string[] = [];
+        let activeNodesTimestamp = 0;
+
         const server = http.createServer(async (req, res) => {
             const url = new URL(req.url || '', `http://localhost:${port}`);
             
             if (url.pathname === '/') {
                 res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
                 res.end(GRAPH_HTML_TEMPLATE);
+                return;
+            }
+
+            if (req.method === 'POST' && url.pathname === '/api/active-nodes') {
+                let body = '';
+                req.on('data', chunk => { body += chunk; });
+                req.on('end', () => {
+                    try {
+                        const data = JSON.parse(body);
+                        activeNodes = data.nodeIds || [];
+                        activeNodesTimestamp = Date.now();
+                        res.writeHead(200, { 'Content-Type': 'application/json' });
+                        res.end(JSON.stringify({ success: true }));
+                    } catch {
+                        res.writeHead(400);
+                        res.end('Bad Request');
+                    }
+                });
                 return;
             }
             
@@ -58,20 +80,48 @@ export const graphCommand = new Command('graph')
                             try {
                                 const box = JSON.parse(line);
                                 if (graphMode === 'boxes') {
+                                    // Map dialog history from content_text
+                                    const history: any[] = [];
+                                    if (box.content_text) {
+                                        const turns = box.content_text.split(/\n(?=user:|assistant:)/i);
+                                        turns.forEach((turn: string) => {
+                                            const match = turn.match(/^(user|assistant):\s*([\s\S]*)$/i);
+                                            if (match) {
+                                                const role = match[1].toLowerCase();
+                                                let content = match[2].trim();
+                                                if (content.startsWith('{')) {
+                                                    try {
+                                                        const parsed = JSON.parse(content);
+                                                        if (parsed.action && parsed.action.content) {
+                                                            content = parsed.action.content;
+                                                        } else if (parsed.summary) {
+                                                            content = parsed.summary;
+                                                        }
+                                                    } catch {
+                                                        // use raw JSON if parsing fails
+                                                    }
+                                                }
+                                                history.push({ role, content: content.replace(/\n/g, '<br>') });
+                                            } else {
+                                                history.push({ role: 'log', content: turn.trim().replace(/\n/g, '<br>') });
+                                            }
+                                        });
+                                    }
+                                    
                                     nodes.push({
                                         id: `box_${box.box_id}`,
-                                        label: box.topic || `Topic ${box.box_id}`,
+                                        label: box.features?.topic || `Topic ${box.box_id}`,
                                         type: 'box',
-                                        size: 15 + Math.min((box.dialog_history?.length || 0) * 2, 20),
+                                        size: 15 + Math.min((box.features?.events?.length || 0) * 2, 20),
                                         details: {
-                                            topic: box.topic,
-                                            keywords: box.keywords,
-                                            history: box.dialog_history
+                                            topic: box.features?.topic,
+                                            keywords: box.features?.keywords,
+                                            history: history
                                         }
                                     });
                                 } else {
                                     // Add individual events
-                                    box.events?.forEach((ev: string, idx: number) => {
+                                    box.features?.events?.forEach((ev: string, idx: number) => {
                                         nodes.push({
                                             id: `ev_${box.box_id}_${idx}`,
                                             label: ev.length > 30 ? ev.substring(0, 30) + '...' : ev,
@@ -95,28 +145,39 @@ export const graphCommand = new Command('graph')
                                 if (graphMode === 'boxes') {
                                     // Draw links between consecutive boxes in the trace
                                     const boxIds = trace.box_ids || [];
+                                    const entries = trace.entries || [];
                                     for (let i = 0; i < boxIds.length - 1; i++) {
+                                        const entry = entries.find((e: any) => e.box_id === boxIds[i+1]);
                                         edges.push({
                                             from: `box_${boxIds[i]}`,
                                             to: `box_${boxIds[i+1]}`,
                                             label: `Trace ${trace.trace_id}`,
-                                            arrows: 'to'
+                                            arrows: 'to',
+                                            similarity: entry?.similarity ?? 1.0
                                         });
                                     }
                                 } else {
-                                    // Draw timeline sequence links
+                                    // Draw timeline sequence links chronologically through all trace events
+                                    const traceEventIds: string[] = [];
                                     const entries = trace.entries || [];
-                                    for (let i = 0; i < entries.length - 1; i++) {
-                                        const fromEntry = entries[i];
-                                        const toEntry = entries[i+1];
-                                        if (fromEntry?.events?.length > 0 && toEntry?.events?.length > 0) {
-                                            edges.push({
-                                                from: `ev_${fromEntry.box_id}_0`,
-                                                to: `ev_${toEntry.box_id}_0`,
-                                                label: 'timeline',
-                                                arrows: 'to'
+                                    const eventSimilarities: number[] = [];
+                                    entries.forEach((entry: any) => {
+                                        if (entry?.events) {
+                                            entry.events.forEach((_: string, idx: number) => {
+                                                traceEventIds.push(`ev_${entry.box_id}_${idx}`);
+                                                eventSimilarities.push(entry.similarity ?? 1.0);
                                             });
                                         }
+                                    });
+                                    
+                                    for (let i = 0; i < traceEventIds.length - 1; i++) {
+                                        edges.push({
+                                            from: traceEventIds[i],
+                                            to: traceEventIds[i+1],
+                                            label: `Trace ${trace.trace_id}`,
+                                            arrows: 'to',
+                                            similarity: eventSimilarities[i+1] ?? 1.0
+                                        });
                                     }
                                 }
                             } catch (e) {
@@ -128,8 +189,9 @@ export const graphCommand = new Command('graph')
                     console.error('Error parsing memory graph files:', e);
                 }
                 
+                const activeNodeList = (Date.now() - activeNodesTimestamp < 15000) ? activeNodes : [];
                 res.writeHead(200, { 'Content-Type': 'application/json' });
-                res.end(JSON.stringify({ nodes, edges }));
+                res.end(JSON.stringify({ nodes, edges, activeNodes: activeNodeList }));
                 return;
             }
             
@@ -141,6 +203,17 @@ export const graphCommand = new Command('graph')
             server.listen(p, () => {
                 const url = `http://localhost:${p}/?mode=${mode}`;
                 console.log(colors.success(`🚀 Memory Graph Server active at: ${url}`));
+
+                // Save active server details to .shark/membox/graph-server.json
+                const runDir = path.join(process.cwd(), '.shark', 'membox');
+                if (!fs.existsSync(runDir)) {
+                    fs.mkdirSync(runDir, { recursive: true });
+                }
+                fs.writeFileSync(
+                    path.join(runDir, 'graph-server.json'),
+                    JSON.stringify({ active: true, port: p, timestamp: Date.now() }),
+                    'utf-8'
+                );
                 
                 if (process.platform === 'win32') {
                     exec(`start "" "${url}"`);
@@ -154,13 +227,26 @@ export const graphCommand = new Command('graph')
         
         server.on('error', (err: any) => {
             if (err.code === 'EADDRINUSE') {
-                console.log(colors.info(`⚠️ Port ${port} is busy. Retrying next port...`));
+                console.log(colors.secondary(`⚠️ Port ${port} is busy. Retrying next port...`));
                 port++;
                 startServer(port);
             } else {
                 console.error(colors.error('❌ Server startup error:'), err);
             }
         });
+
+        const cleanup = () => {
+            try {
+                const runDir = path.join(process.cwd(), '.shark', 'membox');
+                const file = path.join(runDir, 'graph-server.json');
+                if (fs.existsSync(file)) {
+                    fs.unlinkSync(file);
+                }
+            } catch {}
+        };
+        process.on('exit', cleanup);
+        process.on('SIGINT', () => { cleanup(); process.exit(0); });
+        process.on('SIGTERM', () => { cleanup(); process.exit(0); });
         
         startServer(port);
     });

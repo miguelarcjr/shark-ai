@@ -7,13 +7,17 @@ import { getActiveRealm } from '../auth/get-active-realm.js';
 import { ConfigManager } from '../config-manager.js';
 import { UNIFIED_SYSTEM_PROMPT } from './prompts.js';
 import { FileLogger } from '../debug/file-logger.js';
+import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
+import crypto from 'node:crypto';
 
 export class StackSpotProvider implements AIProvider {
     public agentId?: string;
+    private useServerConversation: boolean = true;
 
     constructor(private agentType: string) {
         const config = ConfigManager.getInstance().getConfig();
         this.agentId = config.stackspot?.agentId;
+        this.useServerConversation = config.stackspot?.useServerConversation !== false;
     }
 
     private getAgentId(): string {
@@ -67,10 +71,36 @@ export class StackSpotProvider implements AIProvider {
 
         const isFirstTurn = !options.conversationId;
         let finalPrompt = prompt;
-        if (!isFirstTurn && retrievedContext) {
-            finalPrompt = `[MEMÓRIA E CONTEXTO RECUPERADOS]\n${retrievedContext}\n\n[MENSAGEM DO USUÁRIO]\n${prompt}`;
-        } else if (isFirstTurn) {
-            finalPrompt = `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER REQUEST:\n${prompt}`;
+        const conversationId = options.conversationId || crypto.randomUUID();
+        let history: ChatMessage[] = [];
+
+        if (!this.useServerConversation) {
+            history = await HistoryManager.getHistory(conversationId);
+            if (history.length === 0) {
+                history.push({
+                    role: 'system',
+                    content: systemPrompt
+                });
+            }
+            history.push({ role: 'user', content: prompt });
+
+            let compiledPrompt = '';
+            for (const msg of history) {
+                if (msg.role === 'system') {
+                    compiledPrompt += `SYSTEM INSTRUCTIONS:\n${msg.content}\n\n`;
+                } else if (msg.role === 'user') {
+                    compiledPrompt += `USER REQUEST:\n${msg.content}\n\n`;
+                } else if (msg.role === 'assistant') {
+                    compiledPrompt += `ASSISTANT RESPONSE:\n${msg.content}\n\n`;
+                }
+            }
+            finalPrompt = compiledPrompt;
+        } else {
+            if (!isFirstTurn && retrievedContext) {
+                finalPrompt = `[MEMÓRIA E CONTEXTO RECUPERADOS]\n${retrievedContext}\n\n[MENSAGEM DO USUÁRIO]\n${prompt}`;
+            } else if (isFirstTurn) {
+                finalPrompt = `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER REQUEST:\n${prompt}`;
+            }
         }
 
         const requestPayload: any = {
@@ -79,8 +109,8 @@ export class StackSpotProvider implements AIProvider {
             stackspot_knowledge: false,
             return_ks_in_response: true,
             deep_search_ks: false,
-            use_conversation: true,
-            conversation_id: options.conversationId,
+            use_conversation: this.useServerConversation,
+            conversation_id: this.useServerConversation ? options.conversationId : conversationId,
         };
 
         const agentVersion = this.getAgentVersion();
@@ -124,7 +154,7 @@ export class StackSpotProvider implements AIProvider {
                 onComplete: async (message, metadata) => {
                     rawResponse = {
                         message: message || fullMessage,
-                        conversation_id: metadata?.conversation_id || options.conversationId,
+                        conversation_id: metadata?.conversation_id || conversationId,
                     };
                 },
                 onError: (error) => {
@@ -135,6 +165,13 @@ export class StackSpotProvider implements AIProvider {
 
         FileLogger.log('PROVIDER_RESPONSE', 'Raw response from StackSpot API', { rawResponse });
         const parsedResponse = parseAgentResponse(rawResponse);
+
+        if (!this.useServerConversation) {
+            parsedResponse.conversation_id = conversationId;
+            history.push({ role: 'assistant', content: JSON.stringify(parsedResponse) });
+            await HistoryManager.saveHistory(conversationId, history);
+        }
+
         if (options.onComplete) {
             options.onComplete(parsedResponse);
         }

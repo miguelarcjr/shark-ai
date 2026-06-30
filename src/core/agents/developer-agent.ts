@@ -12,6 +12,7 @@ import { FileLogger } from '../debug/file-logger.js';
 import { MessageQueue, QueueMessage } from '../workflow/message-queue.js';
 import { HistoryManager } from '../workflow/history-manager.js';
 import { MemboxManager } from '../workflow/membox-manager.js';
+import { ConfigManager } from '../config-manager.js';
 
 let activeOnCommandHandler: ((command: string) => Promise<boolean>) | undefined = undefined;
 
@@ -235,11 +236,15 @@ Your goal is to address the user's request:
             const memboxManager = new MemboxManager();
             const existingConversationId = await conversationManager.getConversationId(conversationKey);
             if (existingConversationId) {
-                const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
-                const provider = ProviderResolver.getProvider('developer_agent');
-                const truncatedHistory = await memboxManager.compactHistory(rawHistory, provider, existingConversationId, true);
-                await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
-                tui.log.success('✔ Memória compactada e truncada com sucesso!');
+                try {
+                    const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
+                    const provider = ProviderResolver.getProvider('developer_agent');
+                    const truncatedHistory = await memboxManager.compactHistory(rawHistory, provider, existingConversationId, true);
+                    await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
+                    tui.log.success('✔ Memória compactada e truncada com sucesso!');
+                } catch (error: any) {
+                    tui.log.error(`Erro durante a compactação: ${error.message}`);
+                }
             } else {
                 tui.log.warning('Nenhuma conversação ativa para compactar.');
             }
@@ -325,13 +330,18 @@ Your goal is to address the user's request:
                 if (existingConversationId) {
                     const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
                     const totalTokensEst = Math.ceil(JSON.stringify(rawHistory).length / 4);
-                    if (totalTokensEst >= 8000) {
-                        log.info('🦈 Limite de context/tokens atingido. Iniciando compactação automática...');
-                        const memboxManager = new MemboxManager();
-                        const providerInstance = ProviderResolver.getProvider('developer_agent');
-                        const truncatedHistory = await memboxManager.compactHistory(rawHistory, providerInstance, existingConversationId);
-                        await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
-                        log.success('✔ Compactação automática concluída!');
+                    const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 8000;
+                    if (totalTokensEst >= compactionTokenLimit) {
+                        try {
+                            log.info('🦈 Limite de context/tokens atingido. Iniciando compactação automática...');
+                            const memboxManager = new MemboxManager();
+                            const providerInstance = ProviderResolver.getProvider('developer_agent');
+                            const truncatedHistory = await memboxManager.compactHistory(rawHistory, providerInstance, existingConversationId);
+                            await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
+                            log.success('✔ Compactação automática concluída!');
+                        } catch (error: any) {
+                            log.error(`⚠️ Falha na compactação automática: ${error.message}. Prosseguindo sem compactação.`);
+                        }
                     }
                 }
 

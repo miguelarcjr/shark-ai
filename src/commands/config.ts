@@ -16,6 +16,7 @@ export const configCommand = {
         tui.log.message(`• Project: ${colors.primary(currentConfig.project || 'Not Set')}`);
         tui.log.message(`• Language: ${colors.primary(currentConfig.language)}`);
         tui.log.message(`• Log Level: ${colors.primary(currentConfig.logLevel)}`);
+        tui.log.message(`• Compaction Token Limit: ${colors.primary(String(currentConfig.memory?.compactionTokenLimit ?? 8000))}`);
 
         const action = await tui.select({
             message: t('commands.config.selectAction'),
@@ -25,6 +26,7 @@ export const configCommand = {
                 { value: 'logLevel', label: t('commands.config.actions.logLevel') },
                 { value: 'agents', label: t('commands.config.actions.agents') },
                 { value: 'validation', label: 'Validation Rules (Code Review)' },
+                { value: 'memory', label: 'Memory & Compaction Limit' },
                 { value: 'exit', label: t('commands.config.actions.back') }
             ]
         });
@@ -82,6 +84,25 @@ export const configCommand = {
                             saveGlobalRC({ validation: newValidation as any });
                             tui.log.success(`Updated validation rules for ${key}`);
                         }
+                    }
+                }
+            }
+
+            if (action === 'memory') {
+                const limitStr = await tui.text({
+                    message: 'Enter maximum token limit for automatic compaction:',
+                    initialValue: String(currentConfig.memory?.compactionTokenLimit ?? 8000),
+                    placeholder: 'e.g., 8000'
+                });
+
+                if (!tui.isCancel(limitStr)) {
+                    const limitNum = parseInt(limitStr.trim(), 10);
+                    if (isNaN(limitNum) || limitNum <= 0) {
+                        tui.log.error('Invalid token limit. Must be a positive number.');
+                    } else {
+                        const newMemory = { compactionTokenLimit: limitNum };
+                        saveGlobalRC({ memory: newMemory as any });
+                        tui.log.success(`Updated compaction token limit to: ${limitNum}`);
                     }
                 }
             }

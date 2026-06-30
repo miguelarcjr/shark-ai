@@ -91,23 +91,30 @@ export class OpenAICompatibleProvider implements AIProvider {
             payload: requestPayload
         });
 
-        const res = await fetch(`${this.options.baseURL}/chat/completions`, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify(requestPayload)
-        });
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
 
-        if (!res.ok) {
-            const errBody = await res.text();
-            throw new Error(`OpenAI API request failed: ${res.status} ${res.statusText} - ${errBody}`);
-        }
-
-        const reader = res.body?.getReader();
-        if (!reader) {
-            throw new Error('Response body reader is undefined');
-        }
-
+        let reader: ReadableStreamDefaultReader<Uint8Array> | undefined = undefined;
         try {
+            const res = await fetch(`${this.options.baseURL}/chat/completions`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestPayload),
+                signal: controller.signal
+            });
+
+            if (!res.ok) {
+                clearTimeout(timeoutId);
+                const errBody = await res.text();
+                throw new Error(`OpenAI API request failed: ${res.status} ${res.statusText} - ${errBody}`);
+            }
+
+            reader = res.body?.getReader();
+            if (!reader) {
+                clearTimeout(timeoutId);
+                throw new Error('Response body reader is undefined');
+            }
+
             const decoder = new TextDecoder();
             let fullContent = '';
             let done = false;
@@ -170,6 +177,8 @@ export class OpenAICompatibleProvider implements AIProvider {
                 }
             }
 
+            clearTimeout(timeoutId);
+
             FileLogger.log('PROVIDER_RESPONSE', 'Raw response from OpenAI Compatible API', { fullContent });
             const parsedResponse = parseAgentResponse(fullContent);
             parsedResponse.conversation_id = conversationId;
@@ -183,8 +192,14 @@ export class OpenAICompatibleProvider implements AIProvider {
             }
 
             return parsedResponse;
+        } catch (error: any) {
+            clearTimeout(timeoutId);
+            if (error.name === 'AbortError') {
+                throw new Error(`OpenAI API request timed out after 60 seconds.`);
+            }
+            throw error;
         } finally {
-            if (typeof reader.releaseLock === 'function') {
+            if (reader && typeof reader.releaseLock === 'function') {
                 reader.releaseLock();
             }
         }
