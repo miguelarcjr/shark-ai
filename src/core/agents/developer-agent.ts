@@ -245,6 +245,18 @@ Your goal is to address the user's request:
             }
             return true;
         }
+        if (command === '/context') {
+            const existingConversationId = await conversationManager.getConversationId(conversationKey);
+            if (existingConversationId) {
+                const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
+                const totalTokensEst = Math.ceil(JSON.stringify(rawHistory).length / 4);
+                tui.log.info(`📊 Histórico ativo: ${rawHistory.length} mensagens`);
+                tui.log.info(`📊 Tamanho estimado: ${totalTokensEst} / 8000 tokens (${Math.round((totalTokensEst / 8000) * 100)}% do limite)`);
+            } else {
+                tui.log.warning('Nenhuma conversação ativa para analisar.');
+            }
+            return true;
+        }
         return false;
     };
     activeOnCommandHandler = onCommandHandler;
