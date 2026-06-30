@@ -1,5 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
-import * as http from 'node:http';
+import { describe, it, expect } from 'vitest';
 import { graphCommand } from './graph.js';
 
 describe('Graph Command Server', () => {

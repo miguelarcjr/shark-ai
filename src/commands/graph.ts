@@ -28,8 +28,23 @@ export const graphCommand = new Command('graph')
                 const boxesFile = path.join(runDir, 'boxes.jsonl');
                 const tracesFile = path.join(runDir, 'traces.jsonl');
                 
-                const nodes: any[] = [];
-                const edges: any[] = [];
+                interface GraphNode {
+                    id: string;
+                    label: string;
+                    type: string;
+                    size?: number;
+                    details?: any;
+                }
+                
+                interface GraphEdge {
+                    from: string;
+                    to: string;
+                    label: string;
+                    arrows: string;
+                }
+
+                const nodes: GraphNode[] = [];
+                const edges: GraphEdge[] = [];
                 
                 try {
                     if (fs.existsSync(boxesFile)) {
@@ -94,7 +109,7 @@ export const graphCommand = new Command('graph')
                         });
                     }
                 } catch (e) {
-                    // Fail silently, return empty graph
+                    console.error('Error parsing memory graph files:', e);
                 }
                 
                 res.writeHead(200, { 'Content-Type': 'application/json' });
