@@ -289,6 +289,19 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         normalizedActions = [normalizedAction];
     }
 
+    // Auto-serialize content if the LLM outputted an object instead of a string (Issue 4 / parser robustness)
+    if (normalizedAction && typeof normalizedAction.content === 'object' && normalizedAction.content !== null) {
+        normalizedAction.content = JSON.stringify(normalizedAction.content);
+    }
+    if (Array.isArray(normalizedActions)) {
+        normalizedActions = normalizedActions.map(act => {
+            if (act && act.content && typeof act.content === 'object' && act.content !== null) {
+                return { ...act, content: JSON.stringify(act.content) };
+            }
+            return act;
+        });
+    }
+
     if (!normalizedAction && !normalizedActions) {
         FileLogger.log('PARSER', 'No Action/Actions Found - Constructing Default');
         const content = parsedObj.message || (typeof parsedObj === 'object' ? JSON.stringify(parsedObj) : String(parsedObj));

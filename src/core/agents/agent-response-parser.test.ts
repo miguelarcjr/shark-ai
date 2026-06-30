@@ -103,6 +103,22 @@ describe('AgentResponseParser', () => {
         expect(result.actions[0]).toEqual(result.action);
     });
 
+    it('should auto-serialize action.content object to string', () => {
+        const raw = {
+            action: {
+                type: 'talk_with_user',
+                content: {
+                    topic: 'Greeting',
+                    keywords: ['hi']
+                }
+            }
+        };
+        const result = parseAgentResponse(raw);
+        expect(result.action?.type).toBe('talk_with_user');
+        expect(typeof result.action?.content).toBe('string');
+        expect(result.action?.content).toContain('Greeting');
+    });
+
     it('should parse complete_task action successfully', () => {
         const raw = {
             summary: 'Task finalized',
