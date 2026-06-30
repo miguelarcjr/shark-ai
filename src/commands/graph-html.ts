@@ -59,6 +59,7 @@ export const GRAPH_HTML_TEMPLATE = `
         let network = null;
         let currentMode = 'boxes';
         let graphData = { nodes: [], edges: [] };
+        let lastDataString = '';
         
         async function fetchGraphData() {
             try {
@@ -71,6 +72,10 @@ export const GRAPH_HTML_TEMPLATE = `
                     return;
                 }
                 container.classList.add('hidden');
+                
+                const currentDataString = JSON.stringify(data);
+                if (currentDataString === lastDataString) return;
+                lastDataString = currentDataString;
                 
                 updateNetwork(data);
             } catch (err) {
@@ -179,6 +184,7 @@ export const GRAPH_HTML_TEMPLATE = `
 
         document.getElementById('btnBoxes').addEventListener('click', () => {
             currentMode = 'boxes';
+            lastDataString = '';
             document.getElementById('btnBoxes').className = 'px-4 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white transition-all';
             document.getElementById('btnTimeline').className = 'px-4 py-1.5 rounded-md text-xs font-medium text-gray-400 hover:text-white transition-all';
             fetchGraphData();
@@ -186,6 +192,7 @@ export const GRAPH_HTML_TEMPLATE = `
 
         document.getElementById('btnTimeline').addEventListener('click', () => {
             currentMode = 'timeline';
+            lastDataString = '';
             document.getElementById('btnTimeline').className = 'px-4 py-1.5 rounded-md text-xs font-medium bg-blue-600 text-white transition-all';
             document.getElementById('btnBoxes').className = 'px-4 py-1.5 rounded-md text-xs font-medium text-gray-400 hover:text-white transition-all';
             fetchGraphData();
