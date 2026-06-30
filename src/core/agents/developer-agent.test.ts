@@ -97,6 +97,7 @@ describe('DeveloperAgent', () => {
         expect(mockProvider.streamChat).toHaveBeenCalledWith(expect.stringContaining('Refactor developer-agent'), {
             conversationId: 'existing-conv-id',
             agentType: 'developer_agent',
+            searchQuery: expect.any(String),
             onChunk: expect.any(Function),
         });
 

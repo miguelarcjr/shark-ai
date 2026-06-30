@@ -36,14 +36,21 @@ export class OpenAICompatibleProvider implements AIProvider {
         
         const isHelperCall = conversationId.startsWith('membox-');
         if (!isHelperCall) {
+            let systemMsg = requestMessages.find(m => m.role === 'system');
+            if (!systemMsg) {
+                systemMsg = {
+                    role: 'system',
+                    content: this.getAgentSystemPrompt(options.agentType)
+                };
+                requestMessages.unshift(systemMsg);
+            }
+
             const { MemboxManager } = await import('../workflow/membox-manager.js');
             const memboxManager = new MemboxManager();
-            const retrievedContext = await memboxManager.retrieveContext(prompt, history);
+            const query = options?.searchQuery || prompt;
+            const retrievedContext = await memboxManager.retrieveContext(query, history);
             if (retrievedContext) {
-                const systemMsg = requestMessages.find(m => m.role === 'system');
-                if (systemMsg) {
-                    systemMsg.content = systemMsg.content + '\n' + retrievedContext;
-                }
+                systemMsg.content = systemMsg.content + '\n' + retrievedContext;
             }
         }
 

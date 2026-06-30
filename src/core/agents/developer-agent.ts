@@ -339,6 +339,7 @@ Your goal is to address the user's request:
                 const response = await provider.streamChat(promptToSend, {
                     conversationId: existingConversationId,
                     agentType: 'developer_agent',
+                    searchQuery: nextPrompt,
                     onChunk: () => {}
                 });
 

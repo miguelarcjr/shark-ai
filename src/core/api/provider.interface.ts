@@ -5,6 +5,7 @@ export interface ChatOptions {
     onComplete?: (response: AgentResponse) => void;
     conversationId?: string;
     agentType: 'developer_agent';
+    searchQuery?: string;
 }
 
 export interface AIProvider {

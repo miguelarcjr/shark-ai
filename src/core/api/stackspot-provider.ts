@@ -53,20 +53,25 @@ export class StackSpotProvider implements AIProvider {
         }
 
         let systemPrompt = UNIFIED_SYSTEM_PROMPT;
+        let retrievedContext = '';
         const isHelperCall = options.conversationId?.startsWith('membox-');
         if (!isHelperCall) {
             const { MemboxManager } = await import('../workflow/membox-manager.js');
             const memboxManager = new MemboxManager();
-            const retrievedContext = await memboxManager.retrieveContext(prompt, []);
+            const query = options?.searchQuery || prompt;
+            retrievedContext = await memboxManager.retrieveContext(query, []);
             if (retrievedContext) {
                 systemPrompt = systemPrompt + '\n' + retrievedContext;
             }
         }
 
         const isFirstTurn = !options.conversationId;
-        const finalPrompt = isFirstTurn
-            ? `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER REQUEST:\n${prompt}`
-            : prompt;
+        let finalPrompt = prompt;
+        if (!isFirstTurn && retrievedContext) {
+            finalPrompt = `[MEMÓRIA E CONTEXTO RECUPERADOS]\n${retrievedContext}\n\n[MENSAGEM DO USUÁRIO]\n${prompt}`;
+        } else if (isFirstTurn) {
+            finalPrompt = `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER REQUEST:\n${prompt}`;
+        }
 
         const requestPayload: any = {
             user_prompt: finalPrompt,
