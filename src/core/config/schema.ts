@@ -3,6 +3,10 @@ import { z } from 'zod';
 export const ConfigSchema = z.object({
     logLevel: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
     provider: z.enum(['stackspot', 'openai-compatible']).default('stackspot'),
+    embeddings: z.object({
+        provider: z.enum(['local', 'openai-compatible']).default('local'),
+        model: z.string().default('all-MiniLM-L6-v2'),
+    }).default({}),
     stackspot: z.object({
         agentId: z.string().default('01KEQCGJ65YENRA4QBXVN1YFFX'),
     }).optional().default({}),
