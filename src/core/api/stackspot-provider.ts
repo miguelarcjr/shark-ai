@@ -52,9 +52,20 @@ export class StackSpotProvider implements AIProvider {
             throw new Error(`No authentication token found for realm '${realm}'. Please run 'shark login'.`);
         }
 
+        let systemPrompt = UNIFIED_SYSTEM_PROMPT;
+        const isHelperCall = options.conversationId?.startsWith('membox-');
+        if (!isHelperCall) {
+            const { MemboxManager } = await import('../workflow/membox-manager.js');
+            const memboxManager = new MemboxManager();
+            const retrievedContext = await memboxManager.retrieveContext(prompt, []);
+            if (retrievedContext) {
+                systemPrompt = systemPrompt + '\n' + retrievedContext;
+            }
+        }
+
         const isFirstTurn = !options.conversationId;
         const finalPrompt = isFirstTurn
-            ? `SYSTEM INSTRUCTIONS:\n${UNIFIED_SYSTEM_PROMPT}\n\nUSER REQUEST:\n${prompt}`
+            ? `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER REQUEST:\n${prompt}`
             : prompt;
 
         const requestPayload: any = {

@@ -10,27 +10,39 @@ import { skillManager } from '../workflow/skill-manager.js';
 import { subagentManager } from '../workflow/subagent-manager.js';
 import { FileLogger } from '../debug/file-logger.js';
 import { MessageQueue, QueueMessage } from '../workflow/message-queue.js';
+import { HistoryManager } from '../workflow/history-manager.js';
+import { MemboxManager } from '../workflow/membox-manager.js';
+
+let activeOnCommandHandler: ((command: string) => Promise<boolean>) | undefined = undefined;
 
 const AGENT_TYPE = 'developer_agent';
 
 async function promptUser(message: string, initialValue?: string, placeholder?: string, prefix: string = ''): Promise<string> {
     let userReply = await tui.text({ message: `${prefix}${message}`, initialValue, placeholder });
     
-    while (userReply === '/skills') {
-        const availableSkills = await skillManager.listAvailableSkills();
-        const options = availableSkills.map(name => ({ value: name, label: name }));
-        if (options.length === 0) {
-            tui.log.warning('Nenhuma skill encontrada. Execute `shark super` para instalar as skills.');
-        } else {
-            const selectedSkill = await tui.select({
-                message: 'Selecione a Skill do Superpowers para ativar:',
-                options
-            });
-            if (!tui.isCancel(selectedSkill)) {
-                await skillManager.activateSkill(selectedSkill as string);
-                tui.log.success(`✔ Skill '${selectedSkill}' ativada com sucesso!`);
-            }
+    while (userReply && userReply.startsWith('/')) {
+        let handled = false;
+        if (activeOnCommandHandler) {
+            handled = await activeOnCommandHandler(userReply);
         }
+        if (!handled && userReply === '/skills') {
+            const availableSkills = await skillManager.listAvailableSkills();
+            const options = availableSkills.map(name => ({ value: name, label: name }));
+            if (options.length === 0) {
+                tui.log.warning('Nenhuma skill encontrada. Execute `shark super` para instalar as skills.');
+            } else {
+                const selectedSkill = await tui.select({
+                    message: 'Selecione a Skill do Superpowers para ativar:',
+                    options
+                });
+                if (!tui.isCancel(selectedSkill)) {
+                    await skillManager.activateSkill(selectedSkill as string);
+                    tui.log.success(`✔ Skill '${selectedSkill}' ativada com sucesso!`);
+                }
+            }
+            handled = true;
+        }
+        
         userReply = await tui.text({ 
             message: `${prefix}${message}`, 
             initialValue, 
@@ -217,6 +229,26 @@ Your goal is to address the user's request:
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
     const anchorManager = new AnchorStateManager();
 
+    const onCommandHandler = async (command: string): Promise<boolean> => {
+        if (command === '/compact') {
+            tui.log.info('🦈 Compactando memória de forma manual...');
+            const memboxManager = new MemboxManager();
+            const existingConversationId = await conversationManager.getConversationId(conversationKey);
+            if (existingConversationId) {
+                const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
+                const provider = ProviderResolver.getProvider('developer_agent');
+                const truncatedHistory = await memboxManager.compactHistory(rawHistory, provider, existingConversationId);
+                await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
+                tui.log.success('✔ Memória compactada e truncada com sucesso!');
+            } else {
+                tui.log.warning('Nenhuma conversação ativa para compactar.');
+            }
+            return true;
+        }
+        return false;
+    };
+    activeOnCommandHandler = onCommandHandler;
+
     const spinner = tui.spinner();
 
     const handleCleanupSignal = (exitCode: number) => {
@@ -277,6 +309,20 @@ Your goal is to address the user's request:
                 spinner.start(spinnerText);
 
                 const existingConversationId = await conversationManager.getConversationId(conversationKey);
+                
+                if (existingConversationId) {
+                    const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
+                    const totalTokensEst = Math.ceil(JSON.stringify(rawHistory).length / 4);
+                    if (totalTokensEst >= 8000) {
+                        log.info('🦈 Limite de context/tokens atingido. Iniciando compactação automática...');
+                        const memboxManager = new MemboxManager();
+                        const providerInstance = ProviderResolver.getProvider('developer_agent');
+                        const truncatedHistory = await memboxManager.compactHistory(rawHistory, providerInstance, existingConversationId);
+                        await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
+                        log.success('✔ Compactação automática concluída!');
+                    }
+                }
+
                 const provider = ProviderResolver.getProvider('developer_agent');
                 const response = await provider.streamChat(promptToSend, {
                     conversationId: existingConversationId,
@@ -846,6 +892,7 @@ Your goal is to address the user's request:
         log.success('✅ Task Scope Completed');
         return finalResult;
     } finally {
+        activeOnCommandHandler = undefined;
         process.off('SIGINT', sigIntHandler);
         process.off('SIGTERM', sigTermHandler);
 

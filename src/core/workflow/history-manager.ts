@@ -43,4 +43,16 @@ export class HistoryManager {
         history.push(message);
         await this.saveHistory(conversationId, history);
     }
+
+    static getRawHistoryPath(conversationId: string): string {
+        return this.getFilePath(conversationId);
+    }
+
+    static async getRawHistory(conversationId: string): Promise<ChatMessage[]> {
+        return this.getHistory(conversationId);
+    }
+
+    static async saveRawHistory(conversationId: string, history: ChatMessage[]): Promise<void> {
+        await this.saveHistory(conversationId, history);
+    }
 }
