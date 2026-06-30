@@ -112,14 +112,40 @@ export class MemboxManager {
             scoredBoxes.push({ box, score });
         }
 
-        // Ordenar caixas por score e selecionar top_k = 5
-        scoredBoxes.sort((a, b) => b.score - a.score);
-        const topKBoxes = scoredBoxes.slice(0, 5).map(sb => sb.box);
+        // Ordenar caixas por score e selecionar usando estratégia híbrida
+        let selectedBoxes: Membox[] = [];
+        if (boxes.length <= 8) {
+            selectedBoxes = [...boxes];
+        } else {
+            // 1. Sempre incluir a Box 0 (kickoff/definição geral do projeto)
+            const box0 = boxes.find(b => b.box_id === 0);
+            if (box0) selectedBoxes.push(box0);
+
+            // 2. Sempre incluir as 2 caixas mais recentes
+            const recentBoxes = boxes.slice(-2);
+            for (const rb of recentBoxes) {
+                if (!selectedBoxes.some(b => b.box_id === rb.box_id)) {
+                    selectedBoxes.push(rb);
+                }
+            }
+
+            // 3. Preencher até 6 caixas com as de maior similaridade semântica
+            scoredBoxes.sort((a, b) => b.score - a.score);
+            for (const sb of scoredBoxes) {
+                if (selectedBoxes.length >= 6) break;
+                if (!selectedBoxes.some(b => b.box_id === sb.box.box_id)) {
+                    selectedBoxes.push(sb.box);
+                }
+            }
+        }
+
+        // Ordenar cronologicamente por box_id
+        selectedBoxes.sort((a, b) => a.box_id - b.box_id);
 
         // Buscar traces relevantes de eventos a partir dos eventos das caixas recuperadas
         const traces = this.loadTraces();
         const relevantTracesText: string[] = [];
-        const topBoxIds = topKBoxes.map(b => b.box_id);
+        const topBoxIds = selectedBoxes.map(b => b.box_id);
 
         for (const trace of traces) {
             const hasSharedBox = trace.box_ids.some(id => topBoxIds.includes(id));
@@ -137,7 +163,7 @@ export class MemboxManager {
         }
 
         prompt += '\n--- MEMÓRIA EPISÓDICA: CAIXAS DE DIÁLOGOS RECUPERADAS ---\n';
-        for (const box of topKBoxes) {
+        for (const box of selectedBoxes) {
             prompt += `Tópico: ${box.features.topic} [Sessão: ${box.coverage.session_id}]\n`;
             prompt += `${box.content_text}\n\n`;
         }
