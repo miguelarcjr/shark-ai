@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { OpenAICompatibleProvider } from './openai-compatible-provider.js';
 import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
+import { skillManager } from '../workflow/skill-manager.js';
 
 function createMockStream(chunks: string[]) {
     let index = 0;
@@ -304,5 +305,59 @@ describe('OpenAICompatibleProvider', () => {
         expect(schema.required).toContain('action');
         expect(schema.required).not.toContain('actions');
         expect(schema.properties.action.properties.type.enum).toContain('use_mcp_tool');
+    });
+
+    it('should dynamically append skill extension to system message without modifying saved history', async () => {
+        const provider = new OpenAICompatibleProvider({
+            baseURL: 'http://localhost:11434/v1',
+            apiKey: 'ollama',
+            model: 'llama3',
+            useStructuredOutputs: false
+        });
+
+        // Mock HistoryManager
+        const mockHistoryGet = vi.spyOn(HistoryManager, 'getHistory').mockResolvedValue([
+            { role: 'system', content: 'Base system prompt' },
+            { role: 'user', content: 'Hello' }
+        ]);
+        const mockHistorySave = vi.spyOn(HistoryManager, 'saveHistory').mockResolvedValue(undefined);
+
+        // Mock skillManager
+        vi.spyOn(skillManager, 'getSystemInstructionExtension').mockReturnValue('\n\n--- ACTIVE SKILL: test-skill ---\nTest skill prompt\n');
+
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            body: createMockStream([
+                'data: {"choices": [{"delta": {"content": "{\\"action\\": {\\"type\\": \\"talk_with_user\\", \\"content\\": \\"response\\"}, \\"summary\\": \\"ok\\"}"}}]}\n',
+                'data: [DONE]\n'
+            ])
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        await provider.streamChat('World', {
+            conversationId: 'test-convo-456',
+            agentType: 'developer_agent'
+        });
+
+        expect(mockHistoryGet).toHaveBeenCalledWith('test-convo-456');
+        expect(mockFetch).toHaveBeenCalled();
+        const fetchOptions = mockFetch.mock.calls[0][1];
+        const payload = JSON.parse(fetchOptions.body);
+
+        // System prompt in the payload must contain the skill extension
+        expect(payload.messages[0].content).toContain('Base system prompt');
+        expect(payload.messages[0].content).toContain('--- ACTIVE SKILL: test-skill ---');
+        expect(payload.messages[0].content).toContain('Test skill prompt');
+
+        // The user message should NOT contain the skill extension
+        expect(payload.messages[2].content).toBe('World');
+
+        // HistoryManager.saveHistory should have been called with the clean history
+        const lastCall = mockHistorySave.mock.calls[0];
+        expect(lastCall[1][0].content).toBe('Base system prompt'); // system message in history remains unchanged
+        expect(lastCall[1][0].content).not.toContain('--- ACTIVE SKILL');
+        expect(lastCall[1][2].content).toBe('World'); // user message in history remains clean
     });
 });

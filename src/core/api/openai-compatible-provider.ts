@@ -4,6 +4,7 @@ import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
 import { UNIFIED_SYSTEM_PROMPT, AGENT_RESPONSE_JSON_SCHEMA } from './prompts.js';
 import crypto from 'node:crypto';
 import { FileLogger } from '../debug/file-logger.js';
+import { skillManager } from '../workflow/skill-manager.js';
 
 interface OpenAIConfig {
     baseURL: string;
@@ -52,6 +53,11 @@ export class OpenAICompatibleProvider implements AIProvider {
             if (retrievedContext) {
                 systemMsg.content = systemMsg.content + '\n' + retrievedContext;
             }
+
+            const skillExtension = skillManager.getSystemInstructionExtension();
+            if (skillExtension) {
+                systemMsg.content = systemMsg.content + '\n' + skillExtension;
+            }
         }
 
         const requestPayload: any = {
@@ -92,7 +98,7 @@ export class OpenAICompatibleProvider implements AIProvider {
         });
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000); // 60s timeout
+        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
 
         let reader: ReadableStreamDefaultReader<Uint8Array> | undefined = undefined;
         try {
@@ -195,7 +201,7 @@ export class OpenAICompatibleProvider implements AIProvider {
         } catch (error: any) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
-                throw new Error(`OpenAI API request timed out after 60 seconds.`);
+                throw new Error(`OpenAI API request timed out after 5 minutes.`);
             }
             throw error;
         } finally {

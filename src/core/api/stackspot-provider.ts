@@ -9,6 +9,7 @@ import { UNIFIED_SYSTEM_PROMPT } from './prompts.js';
 import { FileLogger } from '../debug/file-logger.js';
 import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
 import crypto from 'node:crypto';
+import { skillManager } from '../workflow/skill-manager.js';
 
 export class StackSpotProvider implements AIProvider {
     public agentId?: string;
@@ -87,7 +88,9 @@ export class StackSpotProvider implements AIProvider {
             let compiledPrompt = '';
             for (const msg of history) {
                 if (msg.role === 'system') {
-                    compiledPrompt += `SYSTEM INSTRUCTIONS:\n${msg.content}\n\n`;
+                    const skillExtension = skillManager.getSystemInstructionExtension();
+                    const fullSystemPrompt = skillExtension ? msg.content + '\n' + skillExtension : msg.content;
+                    compiledPrompt += `SYSTEM INSTRUCTIONS:\n${fullSystemPrompt}\n\n`;
                 } else if (msg.role === 'user') {
                     compiledPrompt += `USER REQUEST:\n${msg.content}\n\n`;
                 } else if (msg.role === 'assistant') {
@@ -96,10 +99,15 @@ export class StackSpotProvider implements AIProvider {
             }
             finalPrompt = compiledPrompt;
         } else {
-            if (!isFirstTurn && retrievedContext) {
-                finalPrompt = `[MEMÓRIA E CONTEXTO RECUPERADOS]\n${retrievedContext}\n\n[MENSAGEM DO USUÁRIO]\n${prompt}`;
-            } else if (isFirstTurn) {
-                finalPrompt = `SYSTEM INSTRUCTIONS:\n${systemPrompt}\n\nUSER REQUEST:\n${prompt}`;
+            const skillExtension = skillManager.getSystemInstructionExtension();
+            if (isFirstTurn) {
+                const fullSystemPrompt = skillExtension ? systemPrompt + '\n' + skillExtension : systemPrompt;
+                finalPrompt = `SYSTEM INSTRUCTIONS:\n${fullSystemPrompt}\n\nUSER REQUEST:\n${prompt}`;
+            } else {
+                finalPrompt = skillExtension ? prompt + '\n' + skillExtension : prompt;
+                if (retrievedContext) {
+                    finalPrompt = `[MEMÓRIA E CONTEXTO RECUPERADOS]\n${retrievedContext}\n\n[MENSAGEM DO USUÁRIO]\n${finalPrompt}`;
+                }
             }
         }
 

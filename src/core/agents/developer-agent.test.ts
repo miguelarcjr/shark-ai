@@ -425,7 +425,7 @@ describe('DeveloperAgent', () => {
         expect(skillManager.activateSkill).toHaveBeenCalledWith('my-skill');
         expect(mockProvider.streamChat).toHaveBeenNthCalledWith(
             2,
-            expect.stringContaining("[System]: Skill 'my-skill' activated successfully.\n\n<EXTREMELY_IMPORTANT>\n--- ACTIVE SKILL: my-skill ---\nMy Skill Prompt Content\n</EXTREMELY_IMPORTANT>\n"),
+            expect.stringContaining("[System]: Skill 'my-skill' activated successfully."),
             expect.any(Object)
         );
         expect(result).toEqual({ success: true, summary: 'Done with skill' });

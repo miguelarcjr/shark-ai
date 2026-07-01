@@ -7,6 +7,7 @@ import { ConfigManager } from '../config-manager.js';
 import { ensureValidToken } from './stackspot-client.js';
 import { parseAgentResponse } from '../agents/agent-response-parser.js';
 import { HistoryManager } from '../workflow/history-manager.js';
+import { skillManager } from '../workflow/skill-manager.js';
 
 vi.mock('../auth/get-active-realm.js', () => ({
     getActiveRealm: vi.fn()
@@ -40,6 +41,15 @@ vi.mock('../workflow/history-manager.js', () => ({
     }
 }));
 
+vi.mock('../workflow/skill-manager.js', () => ({
+    skillManager: {
+        getSystemInstructionExtension: vi.fn().mockReturnValue(''),
+        activateSkill: vi.fn().mockResolvedValue(''),
+        listAvailableSkills: vi.fn().mockResolvedValue([]),
+        reset: vi.fn()
+    }
+}));
+
 describe('StackSpotProvider', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
@@ -53,6 +63,7 @@ describe('StackSpotProvider', () => {
         }));
         vi.mocked(HistoryManager.getHistory).mockResolvedValue([]);
         vi.mocked(HistoryManager.saveHistory).mockResolvedValue(undefined);
+        vi.mocked(skillManager.getSystemInstructionExtension).mockReturnValue('');
         vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
             stackspot: {
                 agentId: '01KEQCGJ65YENRA4QBXVN1YFFX',
@@ -263,5 +274,73 @@ describe('StackSpotProvider', () => {
                 { role: 'assistant', content: expect.stringContaining('actions') }
             ])
         );
+    });
+
+    it('should inject skill instructions in system instructions and not in user prompt when useServerConversation is false', async () => {
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
+            stackspot: {
+                agentId: 'test-agent-id',
+                useServerConversation: false
+            },
+            agents: {},
+            agentVersions: {}
+        } as any);
+        const provider = new StackSpotProvider('developer_agent');
+
+        vi.mocked(HistoryManager.getHistory).mockResolvedValue([
+            { role: 'system', content: 'Base system prompt' }
+        ]);
+
+        vi.mocked(skillManager.getSystemInstructionExtension).mockReturnValue('\n\n--- ACTIVE SKILL: my-skill ---\nMy Skill Prompt Content\n');
+
+        vi.mocked(sseClient.streamAgentResponse).mockImplementation(
+            async (url, payload, headers, callbacks) => {
+                if (callbacks?.onComplete) {
+                    callbacks.onComplete('{"actions":[]}', { conversation_id: 'local-session-id' });
+                }
+            }
+        );
+
+        await provider.streamChat('Test message', {
+            agentType: 'developer_agent',
+            conversationId: 'local-session-id'
+        });
+
+        const [, payload] = vi.mocked(sseClient.streamAgentResponse).mock.calls[0] as any;
+        expect(payload.user_prompt).toContain('SYSTEM INSTRUCTIONS:\nBase system prompt');
+        expect(payload.user_prompt).toContain('--- ACTIVE SKILL: my-skill ---\nMy Skill Prompt Content');
+        expect(payload.user_prompt).toContain('USER REQUEST:\nTest message');
+        expect(payload.user_prompt).not.toContain('Test message\n\n--- ACTIVE SKILL');
+    });
+
+    it('should inject skill instructions in user prompt for subsequent turns when useServerConversation is true', async () => {
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
+            stackspot: {
+                agentId: 'test-agent-id',
+                useServerConversation: true
+            },
+            agents: {},
+            agentVersions: {}
+        } as any);
+        const provider = new StackSpotProvider('developer_agent');
+
+        vi.mocked(skillManager.getSystemInstructionExtension).mockReturnValue('\n\n--- ACTIVE SKILL: my-skill ---\nMy Skill Prompt Content\n');
+
+        vi.mocked(sseClient.streamAgentResponse).mockImplementation(
+            async (url, payload, headers, callbacks) => {
+                if (callbacks?.onComplete) {
+                    callbacks.onComplete('{"actions":[]}', { conversation_id: 'server-session-id' });
+                }
+            }
+        );
+
+        await provider.streamChat('Test message', {
+            agentType: 'developer_agent',
+            conversationId: 'server-session-id'
+        });
+
+        const [, payload] = vi.mocked(sseClient.streamAgentResponse).mock.calls[0] as any;
+        expect(payload.user_prompt).toContain('Test message');
+        expect(payload.user_prompt).toContain('--- ACTIVE SKILL: my-skill ---\nMy Skill Prompt Content');
     });
 });

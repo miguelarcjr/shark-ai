@@ -315,7 +315,7 @@ Your goal is to address the user's request:
             }
 
             // Append skill extension to this turn's prompt
-            const promptToSend = currentTurnPrompt + skillManager.getSystemInstructionExtension();
+            const promptToSend = currentTurnPrompt;
 
             try {
                 const activeSubagents = subagentManager.getActiveSubagents();
