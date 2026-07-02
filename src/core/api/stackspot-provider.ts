@@ -10,6 +10,7 @@ import { FileLogger } from '../debug/file-logger.js';
 import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
 import crypto from 'node:crypto';
 import { skillManager } from '../workflow/skill-manager.js';
+import { compactToolOutputRetroactively, cleanResponseObject } from './openai-compatible-provider.js';
 
 export class StackSpotProvider implements AIProvider {
     public agentId?: string;
@@ -80,23 +81,42 @@ export class StackSpotProvider implements AIProvider {
             if (history.length === 0) {
                 history.push({
                     role: 'system',
-                    content: systemPrompt
+                    content: UNIFIED_SYSTEM_PROMPT
                 });
             }
             history.push({ role: 'user', content: prompt });
 
-            let compiledPrompt = '';
-            for (const msg of history) {
-                if (msg.role === 'system') {
-                    const skillExtension = skillManager.getSystemInstructionExtension();
-                    const fullSystemPrompt = skillExtension ? msg.content + '\n' + skillExtension : msg.content;
-                    compiledPrompt += `SYSTEM INSTRUCTIONS:\n${fullSystemPrompt}\n\n`;
-                } else if (msg.role === 'user') {
+            const skillExtension = skillManager.getSystemInstructionExtension();
+            const staticSystem = history.find(m => m.role === 'system')?.content || UNIFIED_SYSTEM_PROMPT;
+            
+            let compiledPrompt = `SYSTEM INSTRUCTIONS:\n${staticSystem}\n\n`;
+            
+            const historyCopy = history.filter(m => m.role !== 'system');
+            const newPromptMsg = historyCopy.pop();
+            
+            for (const msg of historyCopy) {
+                if (msg.role === 'user') {
                     compiledPrompt += `USER REQUEST:\n${msg.content}\n\n`;
                 } else if (msg.role === 'assistant') {
                     compiledPrompt += `ASSISTANT RESPONSE:\n${msg.content}\n\n`;
                 }
             }
+            
+            if (retrievedContext || skillExtension) {
+                let dynamicContent = '--- DADOS E MEMÓRIA DE SUPORTE ---';
+                if (retrievedContext) {
+                    dynamicContent += '\n' + retrievedContext;
+                }
+                if (skillExtension) {
+                    dynamicContent += '\n' + skillExtension;
+                }
+                compiledPrompt += `SUPPORT DATA:\n${dynamicContent}\n\n`;
+            }
+            
+            if (newPromptMsg) {
+                compiledPrompt += `USER REQUEST:\n${newPromptMsg.content}\n\n`;
+            }
+            
             finalPrompt = compiledPrompt;
         } else {
             const skillExtension = skillManager.getSystemInstructionExtension();
@@ -176,7 +196,15 @@ export class StackSpotProvider implements AIProvider {
 
         if (!this.useServerConversation) {
             parsedResponse.conversation_id = conversationId;
-            history.push({ role: 'assistant', content: JSON.stringify(parsedResponse) });
+            const cleanedResponse = cleanResponseObject(parsedResponse);
+            history.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+
+            // Retroactive Tool Output Compaction (Micro-cycle Cleanup)
+            const lastUserMsg = history[history.length - 2];
+            if (lastUserMsg && lastUserMsg.role === 'user') {
+                lastUserMsg.content = compactToolOutputRetroactively(lastUserMsg.content);
+            }
+
             await HistoryManager.saveHistory(conversationId, history);
         }
 

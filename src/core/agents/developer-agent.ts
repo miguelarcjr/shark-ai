@@ -13,6 +13,22 @@ import { MessageQueue, QueueMessage } from '../workflow/message-queue.js';
 import { HistoryManager } from '../workflow/history-manager.js';
 import { MemboxManager } from '../workflow/membox-manager.js';
 import { ConfigManager } from '../config-manager.js';
+import { encode } from 'gpt-tokenizer';
+import { UNIFIED_SYSTEM_PROMPT } from '../api/prompts.js';
+
+export function truncateToolOutput(output: string, maxTokens: number = 2000): string {
+    const tokens = encode(output);
+    if (tokens.length <= maxTokens) {
+        return output;
+    }
+    const lines = output.split('\n');
+    if (lines.length <= 80) {
+        return output;
+    }
+    const head = lines.slice(0, 40).join('\n');
+    const tail = lines.slice(-40).join('\n');
+    return `${head}\n\n... [TRUNCADO PARA ECONOMIZAR CONTEXTO - ${lines.length - 80} LINHAS OCULTAS] ...\n\n${tail}`;
+}
 
 let activeOnCommandHandler: ((command: string) => Promise<boolean>) | undefined = undefined;
 
@@ -329,18 +345,43 @@ Your goal is to address the user's request:
                 
                 if (existingConversationId) {
                     const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
-                    const totalTokensEst = Math.ceil(JSON.stringify(rawHistory).length / 4);
+                    const memboxManager = new MemboxManager();
+                    const searchQuery = nextPrompt || '';
+                    const retrievedContext = await memboxManager.retrieveContext(searchQuery, rawHistory);
+                    const skillExtension = skillManager.getSystemInstructionExtension();
+                    
+                    let fullTextForEstimation = UNIFIED_SYSTEM_PROMPT;
+                    if (retrievedContext) {
+                        fullTextForEstimation += '\n' + retrievedContext;
+                    }
+                    if (skillExtension) {
+                        fullTextForEstimation += '\n' + skillExtension;
+                    }
+                    for (const msg of rawHistory) {
+                        fullTextForEstimation += `\n${msg.role}: ${msg.content}`;
+                    }
+                    if (promptToSend) {
+                        fullTextForEstimation += `\nuser: ${promptToSend}`;
+                    }
+
+                    const totalTokens = encode(fullTextForEstimation).length;
                     const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 8000;
-                    if (totalTokensEst >= compactionTokenLimit) {
-                        try {
-                            log.info('🦈 Limite de context/tokens atingido. Iniciando compactação automática...');
-                            const memboxManager = new MemboxManager();
-                            const providerInstance = ProviderResolver.getProvider('developer_agent');
-                            const truncatedHistory = await memboxManager.compactHistory(rawHistory, providerInstance, existingConversationId);
-                            await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
-                            log.success('✔ Compactação automática concluída!');
-                        } catch (error: any) {
-                            log.error(`⚠️ Falha na compactação automática: ${error.message}. Prosseguindo sem compactação.`);
+                    const effectiveLimit = compactionTokenLimit - 1000; // 1000 token output margin
+
+                    if (totalTokens >= effectiveLimit * 0.85) {
+                        if (rawHistory.length >= 10) {
+                            try {
+                                log.info('🦈 Limite de context/tokens atingido. Iniciando compactação automática...');
+                                const providerInstance = ProviderResolver.getProvider('developer_agent');
+                                const truncatedHistory = await memboxManager.compactHistory(rawHistory, providerInstance, existingConversationId);
+                                await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
+                                log.success('✔ Compactação automática concluída!');
+                            } catch (error: any) {
+                                log.error(`⚠️ Falha na compactação automática: ${error.message}. Prosseguindo sem compactação.`);
+                            }
+                        } else {
+                            // Alerta de saturação do contexto estático (regras + skills)
+                            log.warning(`⚠️ Alerta: O contexto estático (regras, prompts e skills ativas) está utilizando ${totalTokens} tokens. Isso representa mais de 85% do limite configurado (teto efetivo: ${effectiveLimit}). Para evitar erros de estouro de contexto, por favor desative algumas skills ou aumente o "compactionTokenLimit" no arquivo '.sharkrc'.`);
                         }
                     }
                 }
@@ -593,6 +634,13 @@ Your goal is to address the user's request:
                         }
                     } else {
                         resultMsg = `[Action run_command(${cmd}) User Denied]`;
+                    }
+
+                    // Immediate Safety Truncation if the command output is colossally large
+                    const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 8000;
+                    const safetyLimit = Math.max(1500, compactionTokenLimit - 2500);
+                    if (encode(resultMsg).length > safetyLimit) {
+                        resultMsg = truncateToolOutput(resultMsg, safetyLimit);
                     }
                 }
                 else if (action.type === 'list_files') {

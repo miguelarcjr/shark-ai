@@ -5,6 +5,8 @@ import { EmbeddingService } from './embedding-service.js';
 import { jsonrepair } from 'jsonrepair';
 import * as http from 'node:http';
 import { HistoryManager } from './history-manager.js';
+import { encode } from 'gpt-tokenizer';
+import { ConfigManager } from '../config-manager.js';
 
 export interface Membox {
     box_id: number;
@@ -272,15 +274,12 @@ export class MemboxManager {
         const boxes = this.loadBoxes();
         if (boxes.length === 0) return '';
 
-        const qVec = await this.embeddingService.getEmbedding(query);
-        const scoredBoxes: { box: Membox; score: number }[] = [];
-
-        for (const box of boxes) {
-            const textToEmbed = `${box.content_text} ${box.features.events_text} ${box.features.topic} ${box.features.keywords.join(' ')}`;
-            const bVec = await this.embeddingService.getEmbedding(textToEmbed);
-            const score = this.embeddingService.cosineSimilarity(qVec, bVec);
-            scoredBoxes.push({ box, score });
-        }
+        const boxTexts = boxes.map(box => `${box.content_text} ${box.features.events_text} ${box.features.topic} ${box.features.keywords.join(' ')}`);
+        const boxScores = this.embeddingService.scoreDocumentsBM25(query, boxTexts);
+        const scoredBoxes: { box: Membox; score: number }[] = boxes.map((box, idx) => ({
+            box,
+            score: boxScores[idx]
+        }));
 
         // Selecionar caixas usando estratégia híbrida
         let selectedBoxes: Membox[] = [];
@@ -332,28 +331,82 @@ export class MemboxManager {
         }
 
         // Rankear esses eventos com base na similaridade com a query
-        const scoredEvents: { event: string; trace: Trace; score: number }[] = [];
-        for (const candidate of candidateEvents) {
-            const eVec = await this.embeddingService.getEmbedding(candidate.event);
-            const score = this.embeddingService.cosineSimilarity(qVec, eVec);
-            scoredEvents.push({ ...candidate, score });
-        }
+        const eventTexts = candidateEvents.map(c => c.event);
+        const eventScores = this.embeddingService.scoreDocumentsBM25(query, eventTexts);
+        const scoredEvents: { event: string; trace: Trace; score: number }[] = candidateEvents.map((candidate, idx) => ({
+            ...candidate,
+            score: eventScores[idx]
+        }));
 
         // Selecionar os top trace_event_topn eventos
         scoredEvents.sort((a, b) => b.score - a.score);
         const topEvents = scoredEvents.slice(0, traceEventTopN);
 
-        // Recuperar as traces correspondentes a esses eventos selecionados
+        // Recuperar as traces correspondentes a esses eventos selecionados com orçamento de tokens
+        const config = ConfigManager.getInstance().getConfig();
+        const compactionTokenLimit = config.memory?.compactionTokenLimit ?? 8000;
+        const budget = Math.floor(compactionTokenLimit * 0.3); // 30% of compaction limit
+
+        let currentTokens = 0;
         const relevantTracesText: string[] = [];
         const retrievedTraceIds = new Set<number>();
+
+        // 1. Pack traces
         for (const entry of topEvents) {
             if (!retrievedTraceIds.has(entry.trace.trace_id)) {
                 retrievedTraceIds.add(entry.trace.trace_id);
                 if (entry.trace.entries_text) {
-                    relevantTracesText.push(entry.trace.entries_text);
+                    const traceText = entry.trace.entries_text + '\n';
+                    const traceTokens = encode(traceText).length;
+                    if (currentTokens + traceTokens <= budget) {
+                        relevantTracesText.push(entry.trace.entries_text);
+                        currentTokens += traceTokens;
+                    }
                 }
             }
         }
+
+        // 2. Identificar caixas recentes (as 2 últimas)
+        const recentBoxes = boxes.slice(-2);
+
+        // 3. Ordenar selectedBoxes por prioridade: Box 0 (regras globais) -> Caixas recentes -> BM25
+        const priorityBoxes = [...selectedBoxes];
+        priorityBoxes.sort((a, b) => {
+            if (a.box_id === 0) return -1;
+            if (b.box_id === 0) return 1;
+
+            const isARecent = recentBoxes.some(rb => rb.box_id === a.box_id);
+            const isBRecent = recentBoxes.some(rb => rb.box_id === b.box_id);
+            if (isARecent && !isBRecent) return -1;
+            if (isBRecent && !isARecent) return 1;
+
+            const scoreA = scoredBoxes.find(sb => sb.box.box_id === a.box_id)?.score ?? 0;
+            const scoreB = scoredBoxes.find(sb => sb.box.box_id === b.box_id)?.score ?? 0;
+            return scoreB - scoreA;
+        });
+
+        // 4. Empacotamento guloso (Greedy Packing) com fallback para assinaturas
+        const packedBoxes: { box: Membox; useFull: boolean }[] = [];
+        for (const box of priorityBoxes) {
+            const fullText = `Tópico: ${box.features.topic} [Sessão: ${box.coverage.session_id}]\n${box.content_text}\n\n`;
+            const fullTokens = encode(fullText).length;
+
+            if (currentTokens + fullTokens <= budget) {
+                packedBoxes.push({ box, useFull: true });
+                currentTokens += fullTokens;
+            } else {
+                // Fallback para metadados/assinatura da caixa
+                const signatureText = `Tópico: ${box.features.topic} [Sessão: ${box.coverage.session_id}]\nPalavras-chave: ${box.features.keywords.join(', ')}\nEventos: ${box.features.events_text}\n(Conteúdo resumido/omitido por restrição de contexto)\n\n`;
+                const sigTokens = encode(signatureText).length;
+                if (currentTokens + sigTokens <= budget) {
+                    packedBoxes.push({ box, useFull: false });
+                    currentTokens += sigTokens;
+                }
+            }
+        }
+
+        // Ordenar cronologicamente por box_id para manter sequência natural do diálogo
+        packedBoxes.sort((a, b) => a.box.box_id - b.box.box_id);
 
         // Montar bloco de prompt
         let prompt = '\n--- MEMÓRIA DE LONGO PRAZO: TRACES TEMÁTICOS ---\n';
@@ -364,9 +417,20 @@ export class MemboxManager {
         }
 
         prompt += '\n--- MEMÓRIA EPISÓDICA: CAIXAS DE DIÁLOGOS RECUPERADAS ---\n';
-        for (const box of selectedBoxes) {
-            prompt += `Tópico: ${box.features.topic} [Sessão: ${box.coverage.session_id}]\n`;
-            prompt += `${box.content_text}\n\n`;
+        if (packedBoxes.length > 0) {
+            for (const pb of packedBoxes) {
+                if (pb.useFull) {
+                    prompt += `Tópico: ${pb.box.features.topic} [Sessão: ${pb.box.coverage.session_id}]\n`;
+                    prompt += `${pb.box.content_text}\n\n`;
+                } else {
+                    prompt += `Tópico: ${pb.box.features.topic} [Sessão: ${pb.box.coverage.session_id}]\n`;
+                    prompt += `Palavras-chave: ${pb.box.features.keywords.join(', ')}\n`;
+                    prompt += `Eventos: ${pb.box.features.events_text}\n`;
+                    prompt += `(Conteúdo resumido/omitido por restrição de contexto)\n\n`;
+                }
+            }
+        } else {
+            prompt += 'Sem caixas correspondentes históricas.\n';
         }
 
         // Notify graph visualizer (Active Glow) if active
@@ -404,7 +468,7 @@ export class MemboxManager {
 
         console.log(`[Membox] Iniciando compactação do histórico para: ${conversationId}`);
 
-        const messagesToCompact = rawMessages.slice(0, -4);
+        const messagesToCompact = rawMessages.slice(0, -4).filter(m => m.role !== 'system');
         const rawTail = rawMessages.slice(-4);
 
         if (messagesToCompact.length === 0) return rawMessages;
@@ -556,7 +620,8 @@ export class MemboxManager {
         }
 
         console.log(`[Membox] Compactação finalizada. Caixas gravadas. Retornando cauda recente.`);
-        return rawTail;
+        const systemMsg = rawMessages.find(m => m.role === 'system');
+        return systemMsg ? [systemMsg, ...rawTail] : rawTail;
     }
 
     private async linkEventsToTracesBatch(box: Membox, events: string[], apiProvider: any) {
@@ -567,7 +632,6 @@ export class MemboxManager {
         interface EventInfo {
             event: string;
             box: Membox;
-            embedding?: number[];
         }
 
         const allEvents: EventInfo[] = [];
@@ -578,11 +642,6 @@ export class MemboxManager {
         }
         if (allEvents.length === 0) return;
 
-        // Get embeddings for all events in parallel
-        await Promise.all(allEvents.map(async (evInfo) => {
-            evInfo.embedding = await this.embeddingService.getEmbedding(evInfo.event);
-        }));
-
         const traces = this.loadTraces();
         const TRACE_SIMILARITY_THRESHOLD = 0.5;
 
@@ -591,14 +650,11 @@ export class MemboxManager {
         for (const trace of traces) {
             const traceEvents = trace.entries.flatMap(entry => entry.events);
             if (traceEvents.length === 0) continue;
-
-            const traceEventEmbeddings = await Promise.all(traceEvents.map(te => this.embeddingService.getEmbedding(te)));
             let passesFilter = false;
 
             for (const evInfo of allEvents) {
-                if (!evInfo.embedding) continue;
-                for (const teEmb of traceEventEmbeddings) {
-                    const similarity = this.embeddingService.cosineSimilarity(evInfo.embedding, teEmb);
+                for (const te of traceEvents) {
+                    const similarity = this.embeddingService.calculateTextSimilarity(evInfo.event, te);
                     if (similarity >= TRACE_SIMILARITY_THRESHOLD) {
                         passesFilter = true;
                         break;
@@ -671,16 +727,11 @@ export class MemboxManager {
                             let bestSim = 1.0;
                             const traceEvents = trace.entries.flatMap(entry => entry.events);
                             if (traceEvents.length > 0) {
-                                const traceEventEmbeddings = await Promise.all(traceEvents.map(te => this.embeddingService.getEmbedding(te)));
                                 let maxSimForGroup = -1;
                                 for (const eventText of group.events) {
-                                    const eventIdx = allEvents.findIndex(info => info.event === eventText);
-                                    if (eventIdx !== -1 && allEvents[eventIdx].embedding) {
-                                        const targetEmb = allEvents[eventIdx].embedding!;
-                                        for (const teEmb of traceEventEmbeddings) {
-                                            const sim = this.embeddingService.cosineSimilarity(targetEmb, teEmb);
-                                            if (sim > maxSimForGroup) maxSimForGroup = sim;
-                                        }
+                                    for (const te of traceEvents) {
+                                        const sim = this.embeddingService.calculateTextSimilarity(eventText, te);
+                                        if (sim > maxSimForGroup) maxSimForGroup = sim;
                                     }
                                 }
                                 if (maxSimForGroup > 0) bestSim = maxSimForGroup;
@@ -716,17 +767,14 @@ export class MemboxManager {
     private async linkSingleEventToTraces(box: Membox, event: string, apiProvider: any, traces: Trace[]) {
         const TRACE_SIMILARITY_THRESHOLD = 0.5;
         let matchedAnyTrace = false;
-        const eventEmbedding = await this.embeddingService.getEmbedding(event);
 
         for (const trace of traces) {
             const traceEvents = trace.entries.flatMap(entry => entry.events);
             if (traceEvents.length === 0) continue;
 
-            const traceEventEmbeddings = await Promise.all(traceEvents.map(te => this.embeddingService.getEmbedding(te)));
             let bestSimilarity = -1;
-
-            for (const teEmb of traceEventEmbeddings) {
-                const similarity = this.embeddingService.cosineSimilarity(eventEmbedding, teEmb);
+            for (const te of traceEvents) {
+                const similarity = this.embeddingService.calculateTextSimilarity(event, te);
                 if (similarity > bestSimilarity) {
                     bestSimilarity = similarity;
                 }

@@ -5,6 +5,103 @@ import { UNIFIED_SYSTEM_PROMPT, AGENT_RESPONSE_JSON_SCHEMA } from './prompts.js'
 import crypto from 'node:crypto';
 import { FileLogger } from '../debug/file-logger.js';
 import { skillManager } from '../workflow/skill-manager.js';
+import { encode } from 'gpt-tokenizer';
+
+export function compactToolOutputRetroactively(content: string): string {
+    // 1. run_command output
+    if (content.startsWith('[Action run_command(')) {
+        const lines = content.split('\n');
+        if (lines.length > 80) {
+            const head = lines.slice(0, 40).join('\n');
+            const tail = lines.slice(-40).join('\n');
+            return `${head}\n\n... [TRUNCADO PARA ECONOMIZAR CONTEXTO - ${lines.length - 80} LINHAS OCULTAS] ...\n\n${tail}`;
+        }
+    }
+    
+    // 2. read_file output
+    if (content.startsWith('[Action read_file(')) {
+        const parts = content.split('Success]:\n');
+        if (parts.length > 1) {
+            const prefix = parts[0] + 'Success (Signatures Only)]:\n';
+            const fileCode = parts.slice(1).join('Success]:\n');
+            
+            const lines = fileCode.split('\n');
+            let signatureText = '';
+            let braceCount = 0;
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('import ') || trimmed.startsWith('export {') || trimmed.startsWith('export default')) {
+                    signatureText += line + '\n';
+                    continue;
+                }
+                if (
+                    trimmed.includes('class ') || 
+                    trimmed.includes('interface ') || 
+                    trimmed.includes('function ') || 
+                    trimmed.includes('constructor') ||
+                    (trimmed.includes('public ') && (trimmed.includes('(') || trimmed.includes('=>'))) ||
+                    (trimmed.includes('private ') && (trimmed.includes('(') || trimmed.includes('=>'))) ||
+                    (trimmed.includes('export ') && (trimmed.includes('class ') || trimmed.includes('interface ') || trimmed.includes('function ')))
+                ) {
+                    if (braceCount === 0) {
+                        signatureText += line + '\n';
+                    }
+                }
+                
+                for (const char of line) {
+                    if (char === '{') braceCount++;
+                    if (char === '}') braceCount--;
+                }
+            }
+            if (signatureText.trim()) {
+                return prefix + signatureText;
+            }
+        }
+    }
+    
+    // 3. create_file / modify_file
+    if (content.startsWith('[Action create_file(') || content.startsWith('[Action modify_file(')) {
+        const lines = content.split('\n');
+        return lines[0];
+    }
+    
+    // 4. list_files / search_file / search_code
+    if (content.startsWith('[Action list_files(') || content.startsWith('[Action search_file(') || content.startsWith('[Action search_code(')) {
+        const lines = content.split('\n');
+        const header = lines[0];
+        if (lines.length > 5) {
+            return `${header} - Compacted (found ${lines.length - 2} matches/items)`;
+        }
+    }
+
+    return content;
+}
+
+export function cleanResponseObject(val: any): any {
+    if (val === null || val === undefined || val === false) {
+        return undefined;
+    }
+    if (Array.isArray(val)) {
+        if (val.length === 0) {
+            return undefined;
+        }
+        const cleanedArr = val.map(item => cleanResponseObject(item)).filter(item => item !== undefined);
+        return cleanedArr.length > 0 ? cleanedArr : undefined;
+    }
+    if (typeof val === 'object') {
+        const cleanedObj: any = {};
+        let hasKeys = false;
+        for (const key of Object.keys(val)) {
+            const cleanedVal = cleanResponseObject(val[key]);
+            if (cleanedVal !== undefined && cleanedVal !== '') {
+                cleanedObj[key] = cleanedVal;
+                hasKeys = true;
+            }
+        }
+        return hasKeys ? cleanedObj : undefined;
+    }
+    return val;
+}
 
 interface OpenAIConfig {
     baseURL: string;
@@ -33,31 +130,52 @@ export class OpenAICompatibleProvider implements AIProvider {
 
         history.push({ role: 'user', content: prompt });
 
-        const requestMessages = history.map(msg => ({ ...msg }));
+        const requestMessages: ChatMessage[] = [];
+        let systemPrompt = this.getAgentSystemPrompt(options.agentType);
         
+        // Clone history to avoid mutating the original array
+        const historyCopy = history.map(msg => ({ ...msg }));
+        
+        // Extract and remove the system message from historyCopy to place it strictly at the beginning
+        const systemIndex = historyCopy.findIndex(m => m.role === 'system');
+        if (systemIndex !== -1) {
+            systemPrompt = historyCopy[systemIndex].content;
+            historyCopy.splice(systemIndex, 1);
+        }
+        
+        // 1. Message 0: Static system prompt (Stable prefix - 100% cached)
+        requestMessages.push({ role: 'system', content: systemPrompt });
+        
+        // Extract the latest user query (which was just pushed to history)
+        const newPromptMsg = historyCopy.pop();
+        
+        // 2. Messages 1..N-2: Chat history (Fully cached stable prefix)
+        requestMessages.push(...historyCopy);
+        
+        // 3. Message N-1: Dynamic support context (RAG + Skill Extensions)
         const isHelperCall = conversationId.startsWith('membox-');
         if (!isHelperCall) {
-            let systemMsg = requestMessages.find(m => m.role === 'system');
-            if (!systemMsg) {
-                systemMsg = {
-                    role: 'system',
-                    content: this.getAgentSystemPrompt(options.agentType)
-                };
-                requestMessages.unshift(systemMsg);
-            }
-
             const { MemboxManager } = await import('../workflow/membox-manager.js');
             const memboxManager = new MemboxManager();
             const query = options?.searchQuery || prompt;
             const retrievedContext = await memboxManager.retrieveContext(query, history);
-            if (retrievedContext) {
-                systemMsg.content = systemMsg.content + '\n' + retrievedContext;
-            }
-
             const skillExtension = skillManager.getSystemInstructionExtension();
-            if (skillExtension) {
-                systemMsg.content = systemMsg.content + '\n' + skillExtension;
+            
+            if (retrievedContext || skillExtension) {
+                let dynamicContent = '--- DADOS E MEMÓRIA DE SUPORTE ---';
+                if (retrievedContext) {
+                    dynamicContent += '\n' + retrievedContext;
+                }
+                if (skillExtension) {
+                    dynamicContent += '\n' + skillExtension;
+                }
+                requestMessages.push({ role: 'system', content: dynamicContent });
             }
+        }
+        
+        // 4. Message N: The current user query
+        if (newPromptMsg) {
+            requestMessages.push(newPromptMsg);
         }
 
         const requestPayload: any = {
@@ -190,7 +308,15 @@ export class OpenAICompatibleProvider implements AIProvider {
             parsedResponse.conversation_id = conversationId;
 
             // Save LLM response to history
-            history.push({ role: 'assistant', content: JSON.stringify(parsedResponse) });
+            const cleanedResponse = cleanResponseObject(parsedResponse);
+            history.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+
+            // Retroactive Tool Output Compaction (Micro-cycle Cleanup)
+            const lastUserMsg = history[history.length - 2];
+            if (lastUserMsg && lastUserMsg.role === 'user') {
+                lastUserMsg.content = compactToolOutputRetroactively(lastUserMsg.content);
+            }
+
             await HistoryManager.saveHistory(conversationId, history);
 
             if (options.onComplete) {

@@ -346,13 +346,16 @@ describe('OpenAICompatibleProvider', () => {
         const fetchOptions = mockFetch.mock.calls[0][1];
         const payload = JSON.parse(fetchOptions.body);
 
-        // System prompt in the payload must contain the skill extension
+        // System prompt in the payload must contain the static base system prompt (Message 0)
         expect(payload.messages[0].content).toContain('Base system prompt');
-        expect(payload.messages[0].content).toContain('--- ACTIVE SKILL: test-skill ---');
-        expect(payload.messages[0].content).toContain('Test skill prompt');
+        expect(payload.messages[0].content).not.toContain('--- ACTIVE SKILL');
 
-        // The user message should NOT contain the skill extension
-        expect(payload.messages[2].content).toBe('World');
+        // Dynamic system prompt (Message 2) must contain the skill extension
+        expect(payload.messages[2].content).toContain('--- ACTIVE SKILL: test-skill ---');
+        expect(payload.messages[2].content).toContain('Test skill prompt');
+
+        // The user message (Message 3) should NOT contain the skill extension
+        expect(payload.messages[3].content).toBe('World');
 
         // HistoryManager.saveHistory should have been called with the clean history
         const lastCall = mockHistorySave.mock.calls[0];
