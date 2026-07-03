@@ -60,7 +60,39 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
   "summary": "Resumo de 1 frase do que você realizou nesta rodada."
 }`;
 
-export const AGENT_RESPONSE_JSON_SCHEMA = {
+export const SUBAGENT_SYSTEM_PROMPT = `Você é um Subagente de Execução Técnica no Shark AI.
+Sua missão é realizar uma tarefa de programação específica e isolada solicitada pelo Agente Coordenador e reportar o resultado.
+Você opera de forma Stateless: não mantém memória entre chamadas. Foque estritamente nas instruções da tarefa recebida.
+
+ℹ️ SISTEMA DE ÂNCORAS PARA LEITURA/EDIÇÃO DE ARQUIVOS (Anchor System):
+- Ao ler arquivos com 'read_file', as linhas vêm no formato \`palavra_âncora§conteúdo\`.
+- Ao alterar arquivos com 'modify_file', use \`start_anchor\` e \`end_anchor\` com as palavras-chave correspondentes e coloque o novo trecho em \`content\`.
+
+🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):
+- Você deve responder APENAS com um objeto JSON válido.
+- Você NÃO tem um terminal interativo com o usuário humano. Não tente falar com o usuário.
+- Para enviar uma dúvida ou atualização intermediária para o Coordenador, use a ação 'send_message' com 'recipient' (ID do pai) e 'message' (sua mensagem).
+- Para concluir a tarefa com sucesso e enviar os resultados detalhados em markdown, use obrigatoriamente a ação 'complete_task' com suas descobertas no campo 'content'.
+
+SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
+{
+  "action": {
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "use_mcp_tool" | "send_message" | "complete_task",
+    "path": "caminho/relativo/do/arquivo (opcional)",
+    "content": "conteúdo do arquivo ou relatório final em markdown (opcional)",
+    "start_anchor": "âncora de início (modify_file apenas)",
+    "end_anchor": "âncora de fim (modify_file apenas)",
+    "command": "comando a rodar (run_command apenas)",
+    "query": "termo de busca (search_code apenas)",
+    "tool_name": "ferramenta MCP (use_mcp_tool apenas)",
+    "tool_args": "argumentos em JSON (use_mcp_tool apenas)",
+    "recipient": "ID do Coordenador de destino (send_message apenas)",
+    "message": "mensagem para o Coordenador (send_message apenas)"
+  },
+  "summary": "Resumo de 1 frase do que você realizou nesta rodada."
+}`;
+
+export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AgentResponse",
   "type": "object",
@@ -140,3 +172,49 @@ export const AGENT_RESPONSE_JSON_SCHEMA = {
   "required": ["action"]
 };
 
+export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SubagentResponse",
+  "type": "object",
+  "properties": {
+    "action": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "create_file",
+            "modify_file",
+            "read_file",
+            "list_files",
+            "search_file",
+            "search_code",
+            "delete_file",
+            "run_command",
+            "use_mcp_tool",
+            "send_message",
+            "complete_task"
+          ]
+        },
+        "path": { "type": ["string", "null"] },
+        "content": { "type": ["string", "null"] },
+        "start_anchor": { "type": ["string", "null"] },
+        "end_anchor": { "type": ["string", "null"] },
+        "command": { "type": ["string", "null"] },
+        "query": { "type": ["string", "null"] },
+        "tool_name": { "type": ["string", "null"] },
+        "tool_args": { "type": ["string", "null"] },
+        "recipient": { "type": ["string", "null"] },
+        "message": { "type": ["string", "null"] }
+      },
+      "required": ["type"]
+    },
+    "summary": {
+      "type": "string",
+      "description": "Resumo de uma única frase muito curta e sucinta do que você realizou nesta rodada. Evite explicações longas."
+    }
+  },
+  "required": ["action"]
+};
+
+export const AGENT_RESPONSE_JSON_SCHEMA = COORDINATOR_RESPONSE_JSON_SCHEMA;
