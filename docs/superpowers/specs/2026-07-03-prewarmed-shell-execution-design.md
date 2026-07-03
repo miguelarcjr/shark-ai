@@ -64,7 +64,9 @@ let nextShellProcess: ExecaChildProcess | null = null;
 
 export function prewarmShell() {
     const isWindows = process.platform === 'win32';
-    const shell = isWindows ? 'cmd.exe' : 'sh';
+    const shell = isWindows 
+        ? (process.env.COMSPEC || 'cmd.exe') 
+        : (process.env.SHELL || 'sh');
 
     nextShellProcess = execa(shell, [], {
         stdin: 'pipe',
