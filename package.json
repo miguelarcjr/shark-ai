@@ -61,6 +61,7 @@
         "access": "public"
     },
     "dependencies": {
+        "execa": "^8.0.1",
         "@clack/prompts": "^0.7.0",
         "@modelcontextprotocol/sdk": "^1.25.2",
         "@types/diff": "^7.0.2",
