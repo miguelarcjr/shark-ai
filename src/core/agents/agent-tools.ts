@@ -7,6 +7,7 @@ import { tui } from '../../ui/tui.js';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { execa, type ExecaChildProcess } from 'execa';
 
 const execAsync = promisify(exec);
 
@@ -278,57 +279,54 @@ export function startSmartReplace(filePath: string, newContent: string, targetCo
     return true;
 }
 
+let nextShellProcess: ExecaChildProcess | null = null;
+
+export function prewarmShell() {
+    const isWindows = process.platform === 'win32';
+    const shell = isWindows
+        ? (process.env.COMSPEC || 'cmd.exe')
+        : (process.env.SHELL || 'sh');
+
+    nextShellProcess = execa(shell, [], {
+        stdin: 'pipe',
+        stdout: 'pipe',
+        stderr: 'pipe',
+        reject: false,
+        buffer: true,
+        cwd: process.cwd(),
+        env: process.env
+    });
+}
+
+// Clean up background shell on Node process exit
+process.on('exit', () => {
+    if (nextShellProcess) {
+        try {
+            nextShellProcess.kill();
+        } catch {
+            // Ignore errors on shutdown
+        }
+    }
+});
+
 export async function handleRunCommand(command: string): Promise<string> {
-    const { spawn } = await import('node:child_process');
     try {
         tui.log.info(`💻 Executing: ${colors.dim(command)}`);
 
-        // Split command into cmd and args (naive split, use specific parser if needed for complex quotes)
-        // For simplicity in Agent usage, we might act as a shell?
-        // Let's use shell: true option for ease of piping/env usage.
+        if (!nextShellProcess) {
+            prewarmShell();
+        }
+        const currentShell = nextShellProcess!;
 
-        return new Promise((resolve) => {
-            const child = spawn(command, {
-                shell: true,
-                stdio: ['ignore', 'pipe', 'pipe'],
-                cwd: process.cwd()
-            });
+        // Pre-warm the next process immediately in background
+        prewarmShell();
 
-            let stdout = '';
-            let stderr = '';
+        currentShell.stdin?.write(`${command}\nexit\n`);
 
-            // Timeout safety: 5 minutes
-            const timer = setTimeout(() => {
-                child.kill();
-                resolve(`Error: Command timed out after 5 minutes.\nOutput so far:\n${stdout}\n${stderr}`);
-            }, 5 * 60 * 1000);
-
-            child.stdout.on('data', (data) => {
-                const chunk = data.toString();
-                stdout += chunk;
-                // Optional: Stream to TUI if verbose?
-            });
-
-            child.stderr.on('data', (data) => {
-                stderr += data.toString();
-            });
-
-            child.on('close', (code) => {
-                clearTimeout(timer);
-                if (code === 0) {
-                    resolve(stdout.trim() || 'Command executed successfully (no output).');
-                } else {
-                    resolve(`Command failed with exit code ${code}.\nSTDERR:\n${stderr}\nSTDOUT:\n${stdout}`);
-                }
-            });
-
-            child.on('error', (err) => {
-                clearTimeout(timer);
-                resolve(`Error executing command: ${err.message}`);
-            });
-        });
-
+        const { stdout, stderr } = await currentShell;
+        const output = stdout.trim() || stderr.trim();
+        return output || 'Command executed successfully (no output).';
     } catch (e: any) {
-        return `Error launching command: ${e.message}`;
+        return `Error executing command: ${e.message}`;
     }
 }
