@@ -1,8 +1,18 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { subagentManager } from './subagent-manager.js';
-import { interactiveDeveloperAgent } from '../agents/developer-agent.js';
+import { describe, it, expect, vi, beforeEach, afterEach, afterAll } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+
+vi.hoisted(() => {
+    const os = require('node:os');
+    const path = require('node:path');
+    const fs = require('node:fs');
+    const tempDir = path.resolve(os.tmpdir(), `shark-test-${Math.random().toString(36).substring(2)}`);
+    fs.mkdirSync(tempDir, { recursive: true });
+    process.cwd = () => tempDir;
+});
+
+import { subagentManager } from './subagent-manager.js';
+import { interactiveDeveloperAgent } from '../agents/developer-agent.js';
 import { EventEmitter } from 'node:events';
 import { Readable } from 'node:stream';
 import { MessageQueue } from './message-queue.js';
@@ -51,6 +61,15 @@ beforeEach(() => {
 
 afterEach(() => {
     subagentManager.destroy();
+});
+
+afterAll(() => {
+    const tempDir = process.cwd();
+    if (tempDir && tempDir.includes('shark-test-')) {
+        try {
+            fs.rmSync(tempDir, { recursive: true, force: true });
+        } catch {}
+    }
 });
 
 describe('SubagentManager', () => {
