@@ -41,6 +41,12 @@ beforeEach(() => {
     if (fs.existsSync(mailboxDir)) {
         fs.rmSync(mailboxDir, { recursive: true, force: true });
     }
+    const ledgerFile = path.resolve(process.cwd(), '.shark', 'subagents.json');
+    if (fs.existsSync(ledgerFile)) {
+        try {
+            fs.unlinkSync(ledgerFile);
+        } catch {}
+    }
 });
 
 afterEach(() => {
