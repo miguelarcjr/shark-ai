@@ -8,6 +8,7 @@ describe('Dev Command (Single Agent)', () => {
     beforeEach(() => {
         vi.resetAllMocks();
         devCommand.setOptionValue('task', undefined);
+        devCommand.setOptionValue('taskFile', undefined);
         devCommand.setOptionValue('context', undefined);
         devCommand.setOptionValue('yes', undefined);
         devCommand.setOptionValue('auto', undefined);
@@ -85,6 +86,31 @@ describe('Dev Command (Single Agent)', () => {
         expect(interactiveDeveloperAgent).toHaveBeenCalledWith(expect.objectContaining({
             taskId: 'subagent-123'
         }));
+    });
+
+    it('should read task instructions from file when --task-file is provided', async () => {
+        vi.mocked(interactiveDeveloperAgent).mockResolvedValue({
+            success: true,
+            summary: 'Task completed'
+        });
+
+        const fs = await import('node:fs');
+        const path = await import('node:path');
+        const tempFile = path.resolve(process.cwd(), 'temp-task-instruction.md');
+        fs.writeFileSync(tempFile, 'Task content from file', 'utf-8');
+
+        try {
+            await devCommand.parseAsync(['node', 'shark', 'dev', '--task-file', 'temp-task-instruction.md', '-y']);
+
+            expect(interactiveDeveloperAgent).toHaveBeenCalledWith(expect.objectContaining({
+                taskInstruction: 'Task content from file',
+                auto: true
+            }));
+        } finally {
+            if (fs.existsSync(tempFile)) {
+                fs.unlinkSync(tempFile);
+            }
+        }
     });
 });
 

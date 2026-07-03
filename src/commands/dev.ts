@@ -12,6 +12,7 @@ const __dirname = path.dirname(__filename);
 export const devCommand = new Command('dev')
     .description('Starts the Shark Developer Agent (Shark Dev Orchestration V2)')
     .option('-t, --task <type>', 'Initial task description (Quick Mode)')
+    .option('--task-file <path>', 'Path to a file containing the task instruction')
     .option('-c, --context <path>', 'Path to custom context file')
     .option('-y, --yes', 'Automatically approve all actions without prompting')
     .option('--auto', 'Automatically approve all actions without prompting')
@@ -38,9 +39,25 @@ export const devCommand = new Command('dev')
             child.unref();
         }
 
+        let taskInstruction = options.task;
+        if (options.taskFile) {
+            const resolvedTaskPath = path.resolve(process.cwd(), options.taskFile);
+            if (fs.existsSync(resolvedTaskPath)) {
+                try {
+                    taskInstruction = fs.readFileSync(resolvedTaskPath, 'utf-8');
+                } catch (e: any) {
+                    console.error(`Failed to read task file: ${e.message}`);
+                    process.exit(1);
+                }
+            } else {
+                console.error(`Task file not found: ${resolvedTaskPath}`);
+                process.exit(1);
+            }
+        }
+
         try {
             const result = await interactiveDeveloperAgent({
-                taskInstruction: options.task,
+                taskInstruction,
                 context: options.context,
                 auto: options.yes || options.auto,
                 taskId: options.taskId

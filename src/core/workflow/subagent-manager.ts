@@ -249,7 +249,7 @@ export class SubagentManager {
                     customContext += `- Seu ID é: ${id}\n`;
                     customContext += `- O ID do seu Agente Pai é: ${parentId}\n`;
                     customContext += `- Você NÃO tem um terminal interativo com o usuário humano. Não use 'talk_with_user' para interagir.\n`;
-                    customContext += `- Para reportar progresso intermediário ou tirar dúvidas com seu pai, use a ação 'send_message' com Recipient='${parentId}'.\n`;
+                    customContext += `- Para reportar progresso intermediário ou tirar dúvidas com seu pai, use a ação 'send_message' com recipient='${parentId}' e message='sua mensagem'.\n`;
                     customContext += `- Para concluir a tarefa e enviar o resultado detalhado em markdown, use obrigatoriamente a ação 'complete_task' com suas descobertas no campo 'content'.\n`;
                     
                     if (customType) {
@@ -257,7 +257,12 @@ export class SubagentManager {
                     }
                     const instruction = customContext + '\n\n' + sub.Prompt;
 
-                    const args = ['dev', '-t', instruction, '--taskId', id, '--auto'];
+                    const sddDir = path.resolve(projectRoot, '.shark', 'sdd');
+                    fs.mkdirSync(sddDir, { recursive: true });
+                    const briefFile = path.join(sddDir, `task-${id}-brief.md`);
+                    fs.writeFileSync(briefFile, instruction, 'utf-8');
+
+                    const args = ['dev', '--task-file', briefFile, '--taskId', id, '--auto'];
 
                     // Fork the child process silently (pipes stdout/stderr)
                     const child = fork(pathToSharkJs, args, {
