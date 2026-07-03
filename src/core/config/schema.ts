@@ -29,9 +29,11 @@ export const ConfigSchema = z.object({
     activeRealm: z.string().optional(), // Currently logged-in realm
     agents: z.object({
         dev: z.string().optional(),
+        subagent: z.string().optional(),
     }).default({}),
     agentVersions: z.object({
         dev: z.string().optional(),
+        subagent: z.string().optional(),
     }).default({})
 });
 

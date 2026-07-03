@@ -160,6 +160,7 @@ export const configCommand = {
                     message: t('commands.config.agentMenu.selectAgent'),
                     options: [
                         { value: 'dev', label: t('commands.config.agentMenu.options.dev') },
+                        { value: 'subagent', label: 'Subagent Executor Agent' },
                         { value: 'ba', label: t('commands.config.agentMenu.options.ba') },
                         { value: 'spec', label: t('commands.config.agentMenu.options.spec') },
                         { value: 'qa', label: t('commands.config.agentMenu.options.qa') },

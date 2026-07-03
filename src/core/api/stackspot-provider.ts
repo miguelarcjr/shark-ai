@@ -30,6 +30,9 @@ export class StackSpotProvider implements AIProvider {
             if (envSub) {
                 return envSub;
             }
+            if (config.agents?.subagent) {
+                return config.agents.subagent;
+            }
             if (config.stackspot?.subagentId) {
                 return config.stackspot.subagentId;
             }
@@ -53,6 +56,16 @@ export class StackSpotProvider implements AIProvider {
 
     private getAgentVersion(): string | undefined {
         const config = ConfigManager.getInstance().getConfig();
+        const isSubagent = !!process.env.SHARK_SUBAGENT_ROLE;
+        if (isSubagent) {
+            const envVer = process.env.STACKSPOT_SUBAGENT_VERSION;
+            if (envVer) {
+                return envVer;
+            }
+            if (config.agentVersions?.subagent) {
+                return config.agentVersions.subagent;
+            }
+        }
         return config.agentVersions?.dev || process.env.STACKSPOT_DEV_AGENT_VERSION;
     }
 
