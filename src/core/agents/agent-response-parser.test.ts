@@ -168,24 +168,6 @@ describe('AgentResponseParser', () => {
             expect((parsed.action as any).skill_name).toBe('brainstorming');
         });
 
-        it('parses define_subagent action correctly', () => {
-            const raw = JSON.stringify({
-                action: {
-                    type: 'define_subagent',
-                    name: 'code_reviewer',
-                    description: 'Reviews TypeScript code',
-                    system_prompt: 'You are a reviewer...',
-                    enable_write_tools: false,
-                    enable_subagent_tools: false
-                },
-                summary: 'Defining subagent'
-            });
-            const parsed = parseAgentResponse(raw);
-            expect(parsed.action?.type).toBe('define_subagent');
-            expect((parsed.action as any).name).toBe('code_reviewer');
-            expect((parsed.action as any).enable_write_tools).toBe(false);
-        });
-
         it('parses invoke_subagent action correctly', () => {
             const raw = JSON.stringify({
                 action: {
@@ -206,64 +188,6 @@ describe('AgentResponseParser', () => {
             expect((parsed.action as any).Subagents[0].TypeName).toBe('self');
         });
 
-        it('parses send_message action correctly', () => {
-            const raw = JSON.stringify({
-                action: {
-                    type: 'send_message',
-                    Recipient: 'conversation-id-abc',
-                    Message: 'I have completed the code review.'
-                },
-                summary: 'Sending message'
-            });
-            const parsed = parseAgentResponse(raw);
-            expect(parsed.action?.type).toBe('send_message');
-            expect((parsed.action as any).Recipient).toBe('conversation-id-abc');
-            expect((parsed.action as any).Message).toBe('I have completed the code review.');
-        });
-
-        it('parses manage_subagents action correctly', () => {
-            const raw = JSON.stringify({
-                action: {
-                    type: 'manage_subagents',
-                    Action: 'kill',
-                    ConversationIds: ['conversation-id-abc']
-                },
-                summary: 'Managing subagents'
-            });
-            const parsed = parseAgentResponse(raw);
-            expect(parsed.action?.type).toBe('manage_subagents');
-            expect((parsed.action as any).Action).toBe('kill');
-            expect((parsed.action as any).ConversationIds).toEqual(['conversation-id-abc']);
-        });
-
-        it('parses manage_subagents action with empty string Action as null', () => {
-            const raw = JSON.stringify({
-                action: {
-                    type: 'manage_subagents',
-                    Action: '',
-                    ConversationIds: ['conversation-id-abc']
-                },
-                summary: 'Managing subagents'
-            });
-            const parsed = parseAgentResponse(raw);
-            expect(parsed.action?.type).toBe('manage_subagents');
-            expect((parsed.action as any).Action).toBeNull();
-        });
-
-        it('parses manage_subagents action with trailing space Action as trimmed value', () => {
-            const raw = JSON.stringify({
-                action: {
-                    type: 'manage_subagents',
-                    Action: 'list ',
-                    ConversationIds: ['conversation-id-abc']
-                },
-                summary: 'Managing subagents'
-            });
-            const parsed = parseAgentResponse(raw);
-            expect(parsed.action?.type).toBe('manage_subagents');
-            expect((parsed.action as any).Action).toBe('list');
-        });
-
         it('parses action with leading/trailing spaces in type as trimmed type', () => {
             const raw = JSON.stringify({
                 action: {
@@ -274,21 +198,6 @@ describe('AgentResponseParser', () => {
             });
             const parsed = parseAgentResponse(raw);
             expect(parsed.action?.type).toBe('talk_with_user');
-        });
-
-        it('coerces Action to null if type is not manage_subagents', () => {
-            const raw = JSON.stringify({
-                action: {
-                    type: 'invoke_subagent',
-                    Action: 'invoke_subagent',
-                    Recipient: 'subagent',
-                    Message: 'do work'
-                },
-                summary: 'Invoking subagent'
-            });
-            const parsed = parseAgentResponse(raw);
-            expect(parsed.action?.type).toBe('invoke_subagent');
-            expect((parsed.action as any).Action).toBeNull();
         });
 
         it('repairs and parses truncated json successfully', () => {

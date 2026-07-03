@@ -431,20 +431,8 @@ describe('DeveloperAgent', () => {
         expect(result).toEqual({ success: true, summary: 'Done with skill' });
     });
 
-    it('should handle define_subagent, invoke_subagent, send_message, and manage_subagents actions', async () => {
+    it('should handle invoke_subagent action', async () => {
         vi.mocked(mockProvider.streamChat)
-            .mockResolvedValueOnce({
-                action: {
-                    type: 'define_subagent',
-                    name: 'test-writer',
-                    description: 'Writes test files',
-                    system_prompt: 'You write vitest files',
-                    enable_write_tools: true,
-                },
-                actions: [],
-                message: 'Defining a test writer',
-                conversation_id: 'conv-123',
-            })
             .mockResolvedValueOnce({
                 action: {
                     type: 'invoke_subagent',
@@ -459,25 +447,6 @@ describe('DeveloperAgent', () => {
                 conversation_id: 'conv-123',
             })
             .mockResolvedValueOnce({
-                action: {
-                    type: 'send_message',
-                    Recipient: 'subagent-abc',
-                    Message: 'Please proceed with writing tests',
-                },
-                actions: [],
-                message: 'Sending message to subagent',
-                conversation_id: 'conv-123',
-            })
-            .mockResolvedValueOnce({
-                action: {
-                    type: 'manage_subagents',
-                    Action: 'list',
-                },
-                actions: [],
-                message: 'Listing active subagents',
-                conversation_id: 'conv-123',
-            })
-            .mockResolvedValueOnce({
                 action: null,
                 actions: [],
                 message: 'TASK_COMPLETED: Finished testing subagent actions',
@@ -485,14 +454,11 @@ describe('DeveloperAgent', () => {
             });
 
         // Spy on subagentManager methods
-        const defineSpy = vi.spyOn(subagentManager, 'defineSubagentType');
         const invokeSpy = vi.spyOn(subagentManager, 'invokeSubagents').mockResolvedValue([{
             id: 'subagent-abc',
             TypeName: 'test-writer',
             Role: 'test code author',
         }]);
-        const sendSpy = vi.spyOn(subagentManager, 'sendMessage');
-        const getActiveSpy = vi.spyOn(subagentManager, 'getActiveSubagents');
 
         const result = await interactiveDeveloperAgent({
             taskId: 'subagent-flow-task',
@@ -500,84 +466,13 @@ describe('DeveloperAgent', () => {
             auto: true,
         });
 
-        expect(defineSpy).toHaveBeenCalledWith('test-writer', 'Writes test files', 'You write vitest files', {
-            enableWriteTools: true,
-            enableSubagentTools: undefined,
-            enableMcpTools: undefined,
-        });
         expect(invokeSpy).toHaveBeenCalledWith([{
             TypeName: 'test-writer',
             Role: 'test code author',
             Prompt: 'Write a unit test for subagent manager',
         }], 'subagent-flow-task', expect.any(MessageQueue));
-        expect(sendSpy).toHaveBeenCalledWith('subagent-abc', 'Please proceed with writing tests');
-        expect(getActiveSpy).toHaveBeenCalled();
 
         expect(result).toEqual({ success: true, summary: 'Finished testing subagent actions' });
-    });
-
-    it('should handle manage_subagents action with subAction read_logs', async () => {
-        vi.mocked(mockProvider.streamChat)
-            .mockResolvedValueOnce({
-                action: {
-                    type: 'manage_subagents',
-                    Action: 'read_logs',
-                    ConversationIds: ['subagent-abc'],
-                },
-                actions: [],
-                message: 'Reading subagent logs',
-                conversation_id: 'conv-123',
-            })
-            .mockResolvedValueOnce({
-                action: null,
-                actions: [],
-                message: 'TASK_COMPLETED: Finished reading subagent logs',
-                conversation_id: 'conv-123',
-            });
-
-        const getLogsSpy = vi.spyOn(subagentManager, 'getSubagentLogs').mockReturnValue('Line 1\nLine 2');
-
-        const result = await interactiveDeveloperAgent({
-            taskId: 'subagent-flow-task',
-            taskInstruction: 'Test subagent log reading flow',
-            auto: true,
-        });
-
-        expect(getLogsSpy).toHaveBeenCalledWith('subagent-abc');
-        expect(result).toEqual({ success: true, summary: 'Finished reading subagent logs' });
-    });
-
-    it('should handle manage_subagents action with subAction read_logs and catch errors thrown by getSubagentLogs', async () => {
-        vi.mocked(mockProvider.streamChat)
-            .mockResolvedValueOnce({
-                action: {
-                    type: 'manage_subagents',
-                    Action: 'read_logs',
-                    ConversationIds: ['subagent-invalid'],
-                },
-                actions: [],
-                message: 'Reading subagent logs',
-                conversation_id: 'conv-123',
-            })
-            .mockResolvedValueOnce({
-                action: null,
-                actions: [],
-                message: 'TASK_COMPLETED: Finished reading subagent logs with error',
-                conversation_id: 'conv-123',
-            });
-
-        const getLogsSpy = vi.spyOn(subagentManager, 'getSubagentLogs').mockImplementation(() => {
-            throw new Error('Subagent with ID subagent-invalid not found');
-        });
-
-        const result = await interactiveDeveloperAgent({
-            taskId: 'subagent-flow-task',
-            taskInstruction: 'Test subagent log reading flow with invalid subagent ID',
-            auto: true,
-        });
-
-        expect(getLogsSpy).toHaveBeenCalledWith('subagent-invalid');
-        expect(result).toEqual({ success: true, summary: 'Finished reading subagent logs with error' });
     });
 
     it('should support /skills interactive command and activate selection', async () => {

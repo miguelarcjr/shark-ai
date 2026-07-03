@@ -94,23 +94,7 @@ describe('SubagentManager', () => {
         expect(emptyMessages).toEqual([]);
     });
 
-    it('defines and retrieves custom subagent types', () => {
-        const name = 'code-writer';
-        const description = 'Writes code';
-        const systemPrompt = 'You are a code writer...';
-        subagentManager.defineSubagentType(name, description, systemPrompt, {
-            enableWriteTools: true,
-            enableSubagentTools: false
-        });
 
-        const customType = subagentManager.getCustomSubagentType(name);
-        expect(customType).toBeDefined();
-        expect(customType?.name).toBe(name);
-        expect(customType?.description).toBe(description);
-        expect(customType?.systemPrompt).toBe(systemPrompt);
-        expect(customType?.enableWriteTools).toBe(true);
-        expect(customType?.enableSubagentTools).toBe(false);
-    });
 
     it('lists and terminates active subagents', () => {
         const id1 = 'id-1';
@@ -347,38 +331,7 @@ describe('SubagentManager', () => {
         expect(instructionArg).toContain('Verify code');
     });
 
-    it('should inject custom type system prompt into customContext', async () => {
-        const { fork } = await import('node:child_process');
-        const forkMock = vi.mocked(fork);
-        forkMock.mockClear();
 
-        const name = 'code-writer-custom';
-        const description = 'Writes code';
-        const systemPrompt = 'You are a code writer...';
-        subagentManager.defineSubagentType(name, description, systemPrompt, {
-            enableWriteTools: true,
-            enableSubagentTools: false
-        });
-
-        const subagents = [{ TypeName: name, Role: 'Writer', Prompt: 'Write this code' }];
-        const parentId = 'parent-test-custom';
-
-        await subagentManager.invokeSubagents(subagents, parentId);
-
-        await new Promise(resolve => setTimeout(resolve, 10));
-
-        expect(forkMock).toHaveBeenCalled();
-        const args = forkMock.mock.calls[0][1];
-        const taskFileIndex = args.indexOf('--task-file');
-        expect(taskFileIndex).not.toBe(-1);
-        const briefFilePath = args[taskFileIndex + 1];
-
-        expect(fs.existsSync(briefFilePath)).toBe(true);
-        const instructionArg = fs.readFileSync(briefFilePath, 'utf-8');
-
-        expect(instructionArg).toContain('Custom Prompt: You are a code writer...');
-        expect(instructionArg).toContain('Write this code');
-    });
 
     it('writes real-time status and action updates to .shark/subagents.json', () => {
         const id = 'ledger-test-id';

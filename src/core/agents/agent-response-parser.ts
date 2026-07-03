@@ -7,34 +7,6 @@ import path from 'node:path';
 // Action Schema
 export const AgentActionSchema = z.preprocess((val: any) => {
     if (val && typeof val === 'object') {
-        // Map subagent/coordinator snake_case properties to PascalCase for internal code compatibility
-        if (val.recipient !== undefined && val.Recipient === undefined) {
-            val.Recipient = val.recipient;
-        }
-        if (val.message !== undefined && val.Message === undefined) {
-            val.Message = val.message;
-        }
-        if (Array.isArray(val.subagents)) {
-            val.Subagents = val.subagents.map((sub: any) => {
-                if (sub && typeof sub === 'object') {
-                    return {
-                        TypeName: sub.type_name !== undefined ? sub.type_name : sub.TypeName,
-                        Role: sub.role !== undefined ? sub.role : sub.Role,
-                        Prompt: sub.prompt !== undefined ? sub.prompt : sub.Prompt
-                    };
-                }
-                return sub;
-            });
-        } else if (val.subagents !== undefined && val.Subagents === undefined) {
-            val.Subagents = val.subagents;
-        }
-        if (val.conversation_ids !== undefined && val.ConversationIds === undefined) {
-            val.ConversationIds = val.conversation_ids;
-        }
-        if (val.action !== undefined && val.Action === undefined && typeof val.action === 'string') {
-            val.Action = val.action;
-        }
-
         if (val.type === 'invoke_subagent' && val.task_file !== undefined && val.Subagents === undefined) {
             let promptContent = '';
             try {
@@ -55,14 +27,6 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         if (typeof val.type === 'string') {
             val.type = val.type.trim();
         }
-        // Trim Action if it is a string
-        if (typeof val.Action === 'string') {
-            val.Action = val.Action.trim();
-        }
-        // If action type is not manage_subagents, coerce Action to null
-        if (val.Action !== undefined && (val.type !== 'manage_subagents' || val.Action === '')) {
-            val.Action = null;
-        }
     }
     return val;
 }, z.object({
@@ -70,7 +34,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
         'list_structure', 'modify_ast', 'search_ast', 'run_command',
         'talk_with_user', 'use_mcp_tool',
-        'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
+        'activate_skill', 'invoke_subagent',
         'complete_task',
         'wait',
         'notify_user',
@@ -132,22 +96,10 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         Role: z.string(),
         Prompt: z.string()
     })).nullable().optional(),
-    Recipient: z.string().nullable().optional(),
-    Message: z.string().nullable().optional(),
-    Action: z.enum(['list', 'kill', 'kill_all']).nullable().optional(),
-    ConversationIds: z.array(z.string()).nullable().optional(),
  
     type_name: z.string().nullable().optional(),
     role: z.string().nullable().optional(),
     task_file: z.string().nullable().optional(),
-
-    // define_subagent fields
-    name: z.string().nullable().optional(),
-    description: z.string().nullable().optional(),
-    system_prompt: z.string().nullable().optional(),
-    enable_write_tools: z.boolean().nullable().optional(),
-    enable_subagent_tools: z.boolean().nullable().optional(),
-    enable_mcp_tools: z.boolean().nullable().optional(),
 }));
 
 export type AgentAction = z.infer<typeof AgentActionSchema>;

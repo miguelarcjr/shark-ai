@@ -17,18 +17,8 @@ interface SubagentState {
     childProcess?: any;
 }
 
-export interface CustomSubagentType {
-    name: string;
-    description: string;
-    systemPrompt: string;
-    enableWriteTools?: boolean;
-    enableSubagentTools?: boolean;
-    enableMcpTools?: boolean;
-}
-
 export class SubagentManager {
     private subagents = new Map<string, SubagentState>();
-    private customTypes = new Map<string, CustomSubagentType>();
     private messageSeq = 0;
     private watchdogInterval: NodeJS.Timeout | null = null;
     private fileWatcher: fs.FSWatcher | null = null;
@@ -305,23 +295,7 @@ export class SubagentManager {
         return messages;
     }
 
-    defineSubagentType(
-        name: string,
-        description: string,
-        systemPrompt: string,
-        options: { enableWriteTools?: boolean; enableSubagentTools?: boolean; enableMcpTools?: boolean } = {}
-    ) {
-        this.customTypes.set(name, {
-            name,
-            description,
-            systemPrompt,
-            ...options
-        });
-    }
 
-    getCustomSubagentType(name: string): CustomSubagentType | undefined {
-        return this.customTypes.get(name);
-    }
 
     getSubagentLogs(id: string, maxLines: number = 50): string {
         if (!/^[a-zA-Z0-9-]+$/.test(id)) {
@@ -421,17 +395,12 @@ export class SubagentManager {
                     }
                     const pathToSharkJs = path.resolve(packageRoot, 'dist', 'bin', 'shark.js');
 
-                    const customType = this.customTypes.get(sub.TypeName);
                     let customContext = `Você está executando em modo SUBAGENTE.\n`;
                     customContext += `- Seu ID é: ${id}\n`;
                     customContext += `- O ID do seu Agente Pai é: ${parentId}\n`;
                     customContext += `- Você NÃO tem um terminal interativo com o usuário humano. Não use 'talk_with_user' para interagir.\n`;
-                    customContext += `- Para reportar progresso intermediário ou tirar dúvidas com seu pai, use a ação 'send_message' com recipient='${parentId}' e message='sua mensagem'.\n`;
                     customContext += `- Para concluir a tarefa e enviar o resultado detalhado em markdown, use obrigatoriamente a ação 'complete_task' com suas descobertas no campo 'content'.\n`;
                     
-                    if (customType) {
-                        customContext += `Custom Prompt: ${customType.systemPrompt}\n`;
-                    }
                     const instruction = customContext + '\n\n' + sub.Prompt;
 
                     const sddDir = path.resolve(projectRoot, '.shark', 'sdd');

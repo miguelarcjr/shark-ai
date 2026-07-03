@@ -28,7 +28,7 @@ Seu objetivo é ajudar o usuário a analisar, especificar e implementar código 
 SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "talk_with_user" | "use_mcp_tool" | "activate_skill" | "define_subagent" | "invoke_subagent" | "send_message" | "manage_subagents" | "complete_task" | "wait" | "notify_user",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "talk_with_user" | "use_mcp_tool" | "activate_skill" | "invoke_subagent" | "complete_task" | "wait" | "notify_user",
     "path": "caminho/relativo/do/arquivo (opcional)",
     "content": "conteúdo do arquivo ou mensagem para o usuário (opcional)",
     "start_anchor": "âncora de início de substituição (modify_file apenas)",
@@ -39,26 +39,7 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
     "tool_args": "argumentos em string JSON para MCP (use_mcp_tool apenas)",
     "skill_name": "nome da habilidade a ativar (activate_skill apenas)",
     "duration_seconds": "tempo máximo em segundos para aguardar atualizações (opcional, wait apenas)",
-    "subagents": [
-      {
-        "type_name": "tipo do subagente",
-        "role": "papel do subagente",
-        "prompt": "instruções de tarefa para o subagente"
-      }
-    ] (invoke_subagent apenas, opcional/legado),
-    "type_name": "tipo/id do subagente (invoke_subagent apenas, recomendado)",
-    "role": "papel do subagente (invoke_subagent apenas, recomendado)",
-    "task_file": "caminho do arquivo markdown de briefing da tarefa (invoke_subagent apenas, recomendado)",
-    "recipient": "ID da conversa de destino da mensagem (send_message apenas)",
-    "message": "conteúdo da mensagem a ser enviada (send_message apenas)",
-    "action": "list" | "kill" | "kill_all" (manage_subagents apenas),
-    "conversation_ids": ["lista de IDs de conversa para cancelar"] (manage_subagents apenas, opcional),
-    "name": "nome do subagente (define_subagent apenas)",
-    "description": "descrição do subagente (define_subagent apenas)",
-    "system_prompt": "prompt de sistema customizado (define_subagent apenas)",
-    "enable_write_tools": true | false (define_subagent apenas, opcional),
-    "enable_subagent_tools": true | false (define_subagent apenas, opcional),
-    "enable_mcp_tools": true | false (define_subagent apenas, opcional)
+    "task_file": "caminho do arquivo markdown de briefing da tarefa (invoke_subagent apenas)"
   },
   "summary": "Resumo de 1 frase do que você realizou nesta rodada."
 }`;
@@ -74,13 +55,12 @@ Você opera de forma Stateless: não mantém memória entre chamadas. Foque estr
 🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):
 - Você deve responder APENAS com um objeto JSON válido.
 - Você NÃO tem um terminal interativo com o usuário humano. Não tente falar com o usuário.
-- Para enviar uma dúvida ou atualização intermediária para o Coordenador, use a ação 'send_message' com 'recipient' (ID do pai) e 'message' (sua mensagem).
 - Para concluir a tarefa com sucesso e enviar os resultados detalhados em markdown, use obrigatoriamente a ação 'complete_task' com suas descobertas no campo 'content'.
 
 SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "use_mcp_tool" | "send_message" | "complete_task",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "use_mcp_tool" | "complete_task",
     "path": "caminho/relativo/do/arquivo (opcional)",
     "content": "conteúdo do arquivo ou relatório final em markdown (opcional)",
     "start_anchor": "âncora de início (modify_file apenas)",
@@ -88,9 +68,7 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
     "command": "comando a rodar (run_command apenas)",
     "query": "termo de busca (search_code apenas)",
     "tool_name": "ferramenta MCP (use_mcp_tool apenas)",
-    "tool_args": "argumentos em JSON (use_mcp_tool apenas)",
-    "recipient": "ID do Coordenador de destino (send_message apenas)",
-    "message": "mensagem para o Coordenador (send_message apenas)"
+    "tool_args": "argumentos em JSON (use_mcp_tool apenas)"
   },
   "summary": "Resumo de 1 frase do que você realizou nesta rodada."
 }`;
@@ -117,10 +95,7 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
             "talk_with_user",
             "use_mcp_tool",
             "activate_skill",
-            "define_subagent",
             "invoke_subagent",
-            "send_message",
-            "manage_subagents",
             "complete_task",
             "wait",
             "notify_user"
@@ -139,34 +114,7 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
           "type": ["integer", "null"],
           "description": "Tempo maximo em segundos para aguardar atualizacoes."
         },
-        "subagents": {
-          "type": ["array", "null"],
-          "items": {
-            "type": "object",
-            "properties": {
-              "type_name": { "type": "string" },
-              "role": { "type": "string" },
-              "prompt": { "type": "string" }
-            },
-            "required": ["type_name", "role", "prompt"]
-          }
-        },
-        "recipient": { "type": ["string", "null"] },
-        "message": { "type": ["string", "null"] },
-        "action": { "type": ["string", "null"], "enum": ["list", "kill", "kill_all"] },
-        "conversation_ids": {
-          "type": ["array", "null"],
-          "items": { "type": "string" }
-        },
-        "type_name": { "type": ["string", "null"] },
-        "role": { "type": ["string", "null"] },
-        "task_file": { "type": ["string", "null"] },
-        "name": { "type": ["string", "null"] },
-        "description": { "type": ["string", "null"] },
-        "system_prompt": { "type": ["string", "null"] },
-        "enable_write_tools": { "type": ["boolean", "null"] },
-        "enable_subagent_tools": { "type": ["boolean", "null"] },
-        "enable_mcp_tools": { "type": ["boolean", "null"] }
+        "task_file": { "type": ["string", "null"] }
       },
       "required": ["type"]
     },
@@ -198,7 +146,6 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
             "delete_file",
             "run_command",
             "use_mcp_tool",
-            "send_message",
             "complete_task"
           ]
         },
@@ -209,9 +156,7 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
         "command": { "type": ["string", "null"] },
         "query": { "type": ["string", "null"] },
         "tool_name": { "type": ["string", "null"] },
-        "tool_args": { "type": ["string", "null"] },
-        "recipient": { "type": ["string", "null"] },
-        "message": { "type": ["string", "null"] }
+        "tool_args": { "type": ["string", "null"] }
       },
       "required": ["type"]
     },
@@ -224,3 +169,4 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
 };
 
 export const AGENT_RESPONSE_JSON_SCHEMA = COORDINATOR_RESPONSE_JSON_SCHEMA;
+

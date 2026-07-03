@@ -796,64 +796,12 @@ Your goal is to address the user's request:
                         }
                     }
                 }
-                else if (action.type === 'define_subagent') {
-                    const name = action.name || '';
-                    const desc = action.description || '';
-                    const sysPrompt = action.system_prompt || '';
-                    const opts = {
-                        enableWriteTools: action.enable_write_tools ?? undefined,
-                        enableSubagentTools: action.enable_subagent_tools ?? undefined,
-                        enableMcpTools: action.enable_mcp_tools ?? undefined
-                    };
-                    log.info(`🛠️ Defining subagent type: ${colors.bold(name)}`);
-                    subagentManager.defineSubagentType(name, desc, sysPrompt, opts);
-                    resultMsg = `[Action define_subagent Success]: Defined subagent type '${name}'`;
-                }
                 else if (action.type === 'invoke_subagent') {
                     const subagentsToInvoke = action.Subagents || [];
                     log.info(`🚀 Invoking ${subagentsToInvoke.length} subagent(s)`);
                     const parentId = options.taskId || 'parent';
                     const invoked = await subagentManager.invokeSubagents(subagentsToInvoke, parentId, messageQueue);
                     resultMsg = `[Action invoke_subagent Success]: Invoked subagents:\n${invoked.map(s => `- ID: ${s.id}, Type: ${s.TypeName}, Role: ${s.Role}`).join('\n')}`;
-                }
-                else if (action.type === 'send_message') {
-                    const recipient = action.Recipient || '';
-                    const message = action.Message || '';
-                    log.info(`✉️ Sending message to ${colors.bold(recipient)}`);
-                    subagentManager.sendMessage(recipient, message);
-                    resultMsg = `[Action send_message Success]: Message sent to '${recipient}'`;
-                }
-                else if (action.type === 'manage_subagents') {
-                    const subAction = action.Action || '';
-                    const ids = action.ConversationIds || [];
-                    log.info(`⚙️ Managing subagents. Action: ${colors.bold(subAction)}`);
-
-                    if (subAction === 'list') {
-                        const active = subagentManager.getActiveSubagents();
-                        resultMsg = `[Action manage_subagents Success]: Active subagents:\n${active.map(s => `- ID: ${s.id}, Type: ${s.type}, Role: ${s.role}`).join('\n')}`;
-                    } else if (subAction === 'read_logs') {
-                        const id = ids[0];
-                        if (!id) {
-                            resultMsg = `[Action manage_subagents Failed]: No subagent ID provided in ConversationIds.`;
-                        } else {
-                            try {
-                                const logs = subagentManager.getSubagentLogs(id);
-                                resultMsg = `[Action manage_subagents Success]: Last log lines for subagent ${id}:\n\`\`\`\n${logs}\n\`\`\``;
-                            } catch (e: any) {
-                                resultMsg = `[Action manage_subagents Failed]: ${e.message}`;
-                            }
-                        }
-                    } else if (subAction === 'kill') {
-                        for (const id of ids) {
-                            subagentManager.killSubagent(id);
-                        }
-                        resultMsg = `[Action manage_subagents Success]: Terminated subagents: ${ids.join(', ')}`;
-                    } else if (subAction === 'kill_all') {
-                        subagentManager.killAllSubagents();
-                        resultMsg = `[Action manage_subagents Success]: Terminated all active subagents`;
-                    } else {
-                        resultMsg = `[Action manage_subagents Failed]: Unknown action '${subAction}'`;
-                    }
                 }
                 else if (action.type === 'complete_task') {
                     const detailedContent = action.content || '';
