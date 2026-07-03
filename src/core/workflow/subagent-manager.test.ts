@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { subagentManager } from './subagent-manager.js';
 import { interactiveDeveloperAgent } from '../agents/developer-agent.js';
 import fs from 'node:fs';
