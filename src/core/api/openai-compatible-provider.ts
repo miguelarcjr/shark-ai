@@ -1,7 +1,7 @@
 import { AIProvider, ChatOptions } from './provider.interface.js';
 import { AgentResponse, parseAgentResponse } from '../agents/agent-response-parser.js';
 import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
-import { UNIFIED_SYSTEM_PROMPT, AGENT_RESPONSE_JSON_SCHEMA } from './prompts.js';
+import { UNIFIED_SYSTEM_PROMPT, SUBAGENT_SYSTEM_PROMPT, COORDINATOR_RESPONSE_JSON_SCHEMA, SUBAGENT_RESPONSE_JSON_SCHEMA, AGENT_RESPONSE_JSON_SCHEMA } from './prompts.js';
 import crypto from 'node:crypto';
 import { FileLogger } from '../debug/file-logger.js';
 import { skillManager } from '../workflow/skill-manager.js';
@@ -114,7 +114,8 @@ export class OpenAICompatibleProvider implements AIProvider {
     constructor(private options: OpenAIConfig) {}
 
     private getAgentSystemPrompt(agentType: string): string {
-        return UNIFIED_SYSTEM_PROMPT;
+        const isSubagent = !!process.env.SHARK_SUBAGENT_ROLE;
+        return isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT;
     }
 
     async streamChat(prompt: string, options: ChatOptions): Promise<AgentResponse> {
@@ -186,12 +187,13 @@ export class OpenAICompatibleProvider implements AIProvider {
         };
 
         if (this.options.useStructuredOutputs) {
+            const isSubagent = !!process.env.SHARK_SUBAGENT_ROLE;
             requestPayload.response_format = {
                 type: 'json_schema',
                 json_schema: {
-                    name: 'agent_response',
+                    name: isSubagent ? 'subagent_response' : 'agent_response',
                     strict: true,
-                    schema: toStrictOpenAISchema(AGENT_RESPONSE_JSON_SCHEMA)
+                    schema: toStrictOpenAISchema(isSubagent ? SUBAGENT_RESPONSE_JSON_SCHEMA : COORDINATOR_RESPONSE_JSON_SCHEMA)
                 }
             };
         } else {

@@ -5,6 +5,23 @@ import { jsonrepair } from 'jsonrepair';
 // Action Schema
 export const AgentActionSchema = z.preprocess((val: any) => {
     if (val && typeof val === 'object') {
+        // Map subagent/coordinator snake_case properties to PascalCase for internal code compatibility
+        if (val.recipient !== undefined && val.Recipient === undefined) {
+            val.Recipient = val.recipient;
+        }
+        if (val.message !== undefined && val.Message === undefined) {
+            val.Message = val.message;
+        }
+        if (val.subagents !== undefined && val.Subagents === undefined) {
+            val.Subagents = val.subagents;
+        }
+        if (val.conversation_ids !== undefined && val.ConversationIds === undefined) {
+            val.ConversationIds = val.conversation_ids;
+        }
+        if (val.action !== undefined && val.Action === undefined && typeof val.action === 'string') {
+            val.Action = val.action;
+        }
+
         // Trim type if it is a string
         if (typeof val.type === 'string') {
             val.type = val.type.trim();

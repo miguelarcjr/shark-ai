@@ -5,7 +5,7 @@ import { sseClient } from './sse-client.js';
 import { tokenStorage } from '../auth/token-storage.js';
 import { getActiveRealm } from '../auth/get-active-realm.js';
 import { ConfigManager } from '../config-manager.js';
-import { UNIFIED_SYSTEM_PROMPT } from './prompts.js';
+import { UNIFIED_SYSTEM_PROMPT, SUBAGENT_SYSTEM_PROMPT } from './prompts.js';
 import { FileLogger } from '../debug/file-logger.js';
 import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
 import crypto from 'node:crypto';
@@ -24,6 +24,17 @@ export class StackSpotProvider implements AIProvider {
 
     private getAgentId(): string {
         const config = ConfigManager.getInstance().getConfig();
+        const isSubagent = !!process.env.SHARK_SUBAGENT_ROLE;
+        if (isSubagent) {
+            const envSub = process.env.STACKSPOT_SUBAGENT_ID;
+            if (envSub) {
+                return envSub;
+            }
+            if (config.stackspot?.subagentId) {
+                return config.stackspot.subagentId;
+            }
+        }
+
         if (config.agents?.dev) {
             return config.agents.dev;
         }
@@ -58,7 +69,8 @@ export class StackSpotProvider implements AIProvider {
             throw new Error(`No authentication token found for realm '${realm}'. Please run 'shark login'.`);
         }
 
-        let systemPrompt = UNIFIED_SYSTEM_PROMPT;
+        const isSubagent = !!process.env.SHARK_SUBAGENT_ROLE;
+        let systemPrompt = isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT;
         let retrievedContext = '';
         const isHelperCall = options.conversationId?.startsWith('membox-');
         if (!isHelperCall) {
@@ -81,13 +93,13 @@ export class StackSpotProvider implements AIProvider {
             if (history.length === 0) {
                 history.push({
                     role: 'system',
-                    content: UNIFIED_SYSTEM_PROMPT
+                    content: isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT
                 });
             }
             history.push({ role: 'user', content: prompt });
 
             const skillExtension = skillManager.getSystemInstructionExtension();
-            const staticSystem = history.find(m => m.role === 'system')?.content || UNIFIED_SYSTEM_PROMPT;
+            const staticSystem = history.find(m => m.role === 'system')?.content || (isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT);
             
             let compiledPrompt = `SYSTEM INSTRUCTIONS:\n${staticSystem}\n\n`;
             

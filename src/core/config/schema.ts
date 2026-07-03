@@ -9,6 +9,7 @@ export const ConfigSchema = z.object({
     }).default({}),
     stackspot: z.object({
         agentId: z.string().default('01KEQCGJ65YENRA4QBXVN1YFFX'),
+        subagentId: z.string().optional(),
         useServerConversation: z.boolean().default(true),
     }).optional().default({}),
     'openai-compatible': z.object({
