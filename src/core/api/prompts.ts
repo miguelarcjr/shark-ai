@@ -45,7 +45,10 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
         "role": "papel do subagente",
         "prompt": "instruções de tarefa para o subagente"
       }
-    ] (invoke_subagent apenas),
+    ] (invoke_subagent apenas, opcional/legado),
+    "type_name": "tipo/id do subagente (invoke_subagent apenas, recomendado)",
+    "role": "papel do subagente (invoke_subagent apenas, recomendado)",
+    "task_file": "caminho do arquivo markdown de briefing da tarefa (invoke_subagent apenas, recomendado)",
     "recipient": "ID da conversa de destino da mensagem (send_message apenas)",
     "message": "conteúdo da mensagem a ser enviada (send_message apenas)",
     "action": "list" | "kill" | "kill_all" (manage_subagents apenas),
@@ -155,6 +158,9 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
           "type": ["array", "null"],
           "items": { "type": "string" }
         },
+        "type_name": { "type": ["string", "null"] },
+        "role": { "type": ["string", "null"] },
+        "task_file": { "type": ["string", "null"] },
         "name": { "type": ["string", "null"] },
         "description": { "type": ["string", "null"] },
         "system_prompt": { "type": ["string", "null"] },

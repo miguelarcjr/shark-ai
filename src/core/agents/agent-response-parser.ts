@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { FileLogger } from '../debug/file-logger.js';
 import { jsonrepair } from 'jsonrepair';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // Action Schema
 export const AgentActionSchema = z.preprocess((val: any) => {
@@ -31,6 +33,22 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         }
         if (val.action !== undefined && val.Action === undefined && typeof val.action === 'string') {
             val.Action = val.action;
+        }
+
+        if (val.type === 'invoke_subagent' && val.task_file !== undefined && val.Subagents === undefined) {
+            let promptContent = '';
+            try {
+                const resolvedPath = path.resolve(process.cwd(), val.task_file);
+                if (fs.existsSync(resolvedPath)) {
+                    promptContent = fs.readFileSync(resolvedPath, 'utf-8');
+                }
+            } catch {}
+
+            val.Subagents = [{
+                TypeName: val.type_name || 'self',
+                Role: val.role || 'Subagent',
+                Prompt: promptContent || `Task File: ${val.task_file}`
+            }];
         }
 
         // Trim type if it is a string
@@ -119,6 +137,10 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     Action: z.enum(['list', 'kill', 'kill_all']).nullable().optional(),
     ConversationIds: z.array(z.string()).nullable().optional(),
  
+    type_name: z.string().nullable().optional(),
+    role: z.string().nullable().optional(),
+    task_file: z.string().nullable().optional(),
+
     // define_subagent fields
     name: z.string().nullable().optional(),
     description: z.string().nullable().optional(),

@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { parseAgentResponse, AgentResponseSchema } from './agent-response-parser.js';
 import { ZodError } from 'zod';
+import fs from 'node:fs';
+import path from 'node:path';
 
 describe('AgentResponseParser', () => {
     it('should parse complete response with all fields', () => {
@@ -333,6 +335,33 @@ describe('AgentResponseParser', () => {
             expect(parsed.commands).toHaveLength(1);
             expect(parsed.commands?.[0].command).toBe('npm run test');
             expect(parsed.commands?.[0].critical).toBe(false);
+        });
+
+        it('parses flat invoke_subagent action and maps task_file contents to Subagents array', () => {
+            const tempFile = path.resolve(process.cwd(), 'temp-test-brief.md');
+            fs.writeFileSync(tempFile, 'Task details content here', 'utf-8');
+
+            try {
+                const raw = JSON.stringify({
+                    action: {
+                        type: 'invoke_subagent',
+                        type_name: 'developer_agent',
+                        role: 'Implementer',
+                        task_file: 'temp-test-brief.md'
+                    },
+                    summary: 'Invoking subagent'
+                });
+                const parsed = parseAgentResponse(raw);
+                expect(parsed.action?.type).toBe('invoke_subagent');
+                expect(parsed.action?.Subagents).toHaveLength(1);
+                expect(parsed.action?.Subagents?.[0].TypeName).toBe('developer_agent');
+                expect(parsed.action?.Subagents?.[0].Role).toBe('Implementer');
+                expect(parsed.action?.Subagents?.[0].Prompt).toBe('Task details content here');
+            } finally {
+                if (fs.existsSync(tempFile)) {
+                    fs.unlinkSync(tempFile);
+                }
+            }
         });
     });
 });
