@@ -34,6 +34,7 @@ We will remove `define_subagent`, `manage_subagents`, `send_message`, and all as
 
 #### 2. System Prompt Content Updates
 * Clean up the instruction sections in both `UNIFIED_SYSTEM_PROMPT` and `SUBAGENT_SYSTEM_PROMPT` to remove all documentation, instructions, and examples for `define_subagent`, `manage_subagents`, and `send_message`.
+* Add a dedicated `🤖 ORQUESTRAÇÃO DE SUB-AGENTES (Subagent Orchestration)` section to `UNIFIED_SYSTEM_PROMPT` giving clear guidelines on how to delegate tasks to subagents via `create_file` (writing the briefing markdown file to `.shark/sdd/`), `invoke_subagent` (passing the `task_file`), reading notifications from mailbox (`✉️ NEW MAILBOX MESSAGES`), and using the `wait` action when no local work is pending.
 
 ---
 
