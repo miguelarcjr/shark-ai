@@ -12,7 +12,18 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         if (val.message !== undefined && val.Message === undefined) {
             val.Message = val.message;
         }
-        if (val.subagents !== undefined && val.Subagents === undefined) {
+        if (Array.isArray(val.subagents)) {
+            val.Subagents = val.subagents.map((sub: any) => {
+                if (sub && typeof sub === 'object') {
+                    return {
+                        TypeName: sub.type_name !== undefined ? sub.type_name : sub.TypeName,
+                        Role: sub.role !== undefined ? sub.role : sub.Role,
+                        Prompt: sub.prompt !== undefined ? sub.prompt : sub.Prompt
+                    };
+                }
+                return sub;
+            });
+        } else if (val.subagents !== undefined && val.Subagents === undefined) {
             val.Subagents = val.subagents;
         }
         if (val.conversation_ids !== undefined && val.ConversationIds === undefined) {

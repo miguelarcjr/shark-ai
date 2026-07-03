@@ -39,17 +39,17 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
     "tool_args": "argumentos em string JSON para MCP (use_mcp_tool apenas)",
     "skill_name": "nome da habilidade a ativar (activate_skill apenas)",
     "duration_seconds": "tempo máximo em segundos para aguardar atualizações (opcional, wait apenas)",
-    "Subagents": [
+    "subagents": [
       {
-        "TypeName": "tipo do subagente",
-        "Role": "papel do subagente",
-        "Prompt": "instruções de tarefa para o subagente"
+        "type_name": "tipo do subagente",
+        "role": "papel do subagente",
+        "prompt": "instruções de tarefa para o subagente"
       }
     ] (invoke_subagent apenas),
-    "Recipient": "ID da conversa de destino da mensagem (send_message apenas)",
-    "Message": "conteúdo da mensagem a ser enviada (send_message apenas)",
-    "Action": "list" | "kill" | "kill_all" (manage_subagents apenas),
-    "ConversationIds": ["lista de IDs de conversa para cancelar"] (manage_subagents apenas, opcional),
+    "recipient": "ID da conversa de destino da mensagem (send_message apenas)",
+    "message": "conteúdo da mensagem a ser enviada (send_message apenas)",
+    "action": "list" | "kill" | "kill_all" (manage_subagents apenas),
+    "conversation_ids": ["lista de IDs de conversa para cancelar"] (manage_subagents apenas, opcional),
     "name": "nome do subagente (define_subagent apenas)",
     "description": "descrição do subagente (define_subagent apenas)",
     "system_prompt": "prompt de sistema customizado (define_subagent apenas)",
@@ -136,22 +136,22 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
           "type": ["integer", "null"],
           "description": "Tempo maximo em segundos para aguardar atualizacoes."
         },
-        "Subagents": {
+        "subagents": {
           "type": ["array", "null"],
           "items": {
             "type": "object",
             "properties": {
-              "TypeName": { "type": "string" },
-              "Role": { "type": "string" },
-              "Prompt": { "type": "string" }
+              "type_name": { "type": "string" },
+              "role": { "type": "string" },
+              "prompt": { "type": "string" }
             },
-            "required": ["TypeName", "Role", "Prompt"]
+            "required": ["type_name", "role", "prompt"]
           }
         },
-        "Recipient": { "type": ["string", "null"] },
-        "Message": { "type": ["string", "null"] },
-        "Action": { "type": ["string", "null"], "enum": ["list", "kill", "kill_all"] },
-        "ConversationIds": {
+        "recipient": { "type": ["string", "null"] },
+        "message": { "type": ["string", "null"] },
+        "action": { "type": ["string", "null"], "enum": ["list", "kill", "kill_all"] },
+        "conversation_ids": {
           "type": ["array", "null"],
           "items": { "type": "string" }
         },
