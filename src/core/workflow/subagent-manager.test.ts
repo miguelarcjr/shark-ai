@@ -43,6 +43,10 @@ beforeEach(() => {
     }
 });
 
+afterEach(() => {
+    subagentManager.destroy();
+});
+
 describe('SubagentManager', () => {
     it('registers and manages subagent status', () => {
         const id = 'test-id';
@@ -375,6 +379,30 @@ describe('SubagentManager', () => {
         subagentManager.terminateSubagent(id, true);
         ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf-8'));
         expect(ledger.subagents[id].status).toBe('completed');
+    });
+
+    it('watchdog terminates a hung subagent after timeout', async () => {
+        const id = 'hung-id';
+        const parentId = 'parent-watchdog';
+        subagentManager.registerSubagent(id, 'self', 'Tester', parentId);
+
+        // Mock child process and kill method
+        const mockChild = { kill: vi.fn() };
+        const state = subagentManager.getSubagentState(id);
+        if (state) {
+            state.childProcess = mockChild;
+            // Fake lastActiveAt to be 6 minutes ago
+            (state as any).lastActiveAt = Date.now() - 6 * 60 * 1000;
+        }
+
+        // Trigger manual watchdog check
+        (subagentManager as any).checkWatchdog();
+
+        expect(mockChild.kill).toHaveBeenCalledWith('SIGKILL');
+        expect(subagentManager.getSubagentState(id)?.status).toBe('failed');
+
+        const msgs = subagentManager.retrieveMessages(parentId);
+        expect(msgs[0]).toContain('terminated by the Watchdog');
     });
 });
 

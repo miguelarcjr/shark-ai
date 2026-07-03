@@ -30,6 +30,123 @@ export class SubagentManager {
     private subagents = new Map<string, SubagentState>();
     private customTypes = new Map<string, CustomSubagentType>();
     private messageSeq = 0;
+    private watchdogInterval: NodeJS.Timeout | null = null;
+    private fileWatcher: fs.FSWatcher | null = null;
+
+    constructor() {
+        this.startWatchdog();
+        this.setupFileWatcher();
+    }
+
+    private startWatchdog() {
+        if (this.watchdogInterval) return;
+        this.watchdogInterval = setInterval(() => {
+            this.checkWatchdog();
+        }, 15000); // Check every 15 seconds
+        this.watchdogInterval.unref(); // Allow the process to exit when no work is pending
+    }
+
+    private setupFileWatcher() {
+        try {
+            const projectRoot = process.cwd();
+            const ledgerDir = path.resolve(projectRoot, '.shark');
+            fs.mkdirSync(ledgerDir, { recursive: true });
+            const ledgerFile = path.join(ledgerDir, 'subagents.json');
+
+            if (!fs.existsSync(ledgerFile)) {
+                fs.writeFileSync(ledgerFile, JSON.stringify({ lastUpdated: Date.now(), subagents: {} }), 'utf-8');
+            }
+
+            this.fileWatcher = fs.watch(ledgerDir, (eventType, filename) => {
+                if (filename === 'subagents.json') {
+                    this.reloadLedger();
+                }
+            });
+            if (this.fileWatcher && typeof this.fileWatcher.unref === 'function') {
+                this.fileWatcher.unref();
+            }
+        } catch (e) {
+            // Safe fallback if watch is not supported in the directory
+        }
+    }
+
+    private reloadLedger() {
+        try {
+            const projectRoot = process.cwd();
+            const ledgerFile = path.resolve(projectRoot, '.shark', 'subagents.json');
+            if (fs.existsSync(ledgerFile)) {
+                const data = JSON.parse(fs.readFileSync(ledgerFile, 'utf-8'));
+                if (data && data.subagents) {
+                    for (const [id, diskState] of Object.entries(data.subagents)) {
+                        const localState = this.subagents.get(id);
+                        if (localState) {
+                            const disk = diskState as any;
+                            if (disk.lastActiveAt) {
+                                (localState as any).lastActiveAt = disk.lastActiveAt;
+                            }
+                            if (disk.status && disk.status !== localState.status) {
+                                localState.status = disk.status;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch {
+            // Ignore parse errors from concurrent writes
+        }
+    }
+
+    private checkWatchdog() {
+        const timeoutMs = 5 * 60 * 1000; // 5 minutes
+        const now = Date.now();
+
+        for (const [id, state] of this.subagents.entries()) {
+            if (state.status === 'running') {
+                const lastActive = (state as any).lastActiveAt || (state as any).createdAt || now;
+                if (now - lastActive > timeoutMs) {
+                    this.terminateHungSubagent(id, `Subagent timed out after 5 minutes of inactivity.`);
+                }
+            }
+        }
+    }
+
+    private terminateHungSubagent(id: string, reason: string) {
+        const state = this.subagents.get(id);
+        if (state && state.status === 'running') {
+            state.status = 'failed';
+            state.summary = reason;
+
+            if (state.childProcess) {
+                try {
+                    state.childProcess.kill('SIGKILL');
+                } catch {}
+            }
+
+            this.writeLedger(id, {
+                status: 'failed',
+                lastSummary: reason,
+                endedAt: Date.now()
+            });
+
+            if (state.parentId) {
+                this.sendMessage(
+                    state.parentId,
+                    `[Subagent Notification] Subagent ${state.role} (${id}) has been terminated by the Watchdog. Reason: ${reason}`
+                );
+            }
+        }
+    }
+
+    destroy() {
+        if (this.watchdogInterval) {
+            clearInterval(this.watchdogInterval);
+            this.watchdogInterval = null;
+        }
+        if (this.fileWatcher) {
+            this.fileWatcher.close();
+            this.fileWatcher = null;
+        }
+    }
 
     private writeLedger(id: string, updates: Partial<any>) {
         try {
