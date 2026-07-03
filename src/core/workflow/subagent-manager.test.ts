@@ -303,7 +303,12 @@ describe('SubagentManager', () => {
 
         expect(forkMock).toHaveBeenCalled();
         const args = forkMock.mock.calls[0][1];
-        const instructionArg = args[args.indexOf('-t') + 1];
+        const taskFileIndex = args.indexOf('--task-file');
+        expect(taskFileIndex).not.toBe(-1);
+        const briefFilePath = args[taskFileIndex + 1];
+
+        expect(fs.existsSync(briefFilePath)).toBe(true);
+        const instructionArg = fs.readFileSync(briefFilePath, 'utf-8');
 
         expect(instructionArg).toContain('Você está executando em modo SUBAGENTE.');
         expect(instructionArg).toContain('Seu ID é:');
@@ -335,10 +340,41 @@ describe('SubagentManager', () => {
 
         expect(forkMock).toHaveBeenCalled();
         const args = forkMock.mock.calls[0][1];
-        const instructionArg = args[args.indexOf('-t') + 1];
+        const taskFileIndex = args.indexOf('--task-file');
+        expect(taskFileIndex).not.toBe(-1);
+        const briefFilePath = args[taskFileIndex + 1];
+
+        expect(fs.existsSync(briefFilePath)).toBe(true);
+        const instructionArg = fs.readFileSync(briefFilePath, 'utf-8');
 
         expect(instructionArg).toContain('Custom Prompt: You are a code writer...');
         expect(instructionArg).toContain('Write this code');
+    });
+
+    it('writes real-time status and action updates to .shark/subagents.json', () => {
+        const id = 'ledger-test-id';
+        subagentManager.registerSubagent(id, 'self', 'Tester', 'parent-ledger');
+        
+        const ledgerFile = path.resolve(process.cwd(), '.shark', 'subagents.json');
+        expect(fs.existsSync(ledgerFile)).toBe(true);
+        
+        let ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf-8'));
+        expect(ledger.subagents[id]).toBeDefined();
+        expect(ledger.subagents[id].status).toBe('running');
+        expect(ledger.subagents[id].type).toBe('self');
+
+        // Test action update
+        subagentManager.updateSubagentAction(id, 'read_file', { path: 'some-file.txt', type: 'read_file' });
+        ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf-8'));
+        expect(ledger.subagents[id].lastAction).toEqual({
+            tool: 'read_file',
+            params: { path: 'some-file.txt' }
+        });
+
+        // Test terminate
+        subagentManager.terminateSubagent(id, true);
+        ledger = JSON.parse(fs.readFileSync(ledgerFile, 'utf-8'));
+        expect(ledger.subagents[id].status).toBe('completed');
     });
 });
 

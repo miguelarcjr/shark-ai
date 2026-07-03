@@ -31,12 +31,58 @@ export class SubagentManager {
     private customTypes = new Map<string, CustomSubagentType>();
     private messageSeq = 0;
 
+    private writeLedger(id: string, updates: Partial<any>) {
+        try {
+            const projectRoot = process.cwd();
+            const ledgerDir = path.resolve(projectRoot, '.shark');
+            fs.mkdirSync(ledgerDir, { recursive: true });
+            const ledgerFile = path.join(ledgerDir, 'subagents.json');
+            
+            let data: any = { lastUpdated: Date.now(), subagents: {} };
+            if (fs.existsSync(ledgerFile)) {
+                try {
+                    const content = fs.readFileSync(ledgerFile, 'utf-8');
+                    data = JSON.parse(content);
+                } catch {
+                    // Ignore corrupted JSON
+                }
+            }
+
+            if (!data.subagents) {
+                data.subagents = {};
+            }
+
+            const existing = data.subagents[id] || {};
+            data.subagents[id] = {
+                id,
+                ...existing,
+                ...updates,
+                lastActiveAt: Date.now()
+            };
+            data.lastUpdated = Date.now();
+
+            fs.writeFileSync(ledgerFile, JSON.stringify(data, null, 2), 'utf-8');
+        } catch (e) {
+            // Ignore write errors to keep execution safe
+        }
+    }
+
     registerSubagent(id: string, type: string, role: string, parentId?: string) {
         this.subagents.set(id, { id, type, role, status: 'running', parentId });
+        this.writeLedger(id, {
+            id,
+            type,
+            role,
+            parentId,
+            status: 'running',
+            createdAt: Date.now(),
+            lastActiveAt: Date.now()
+        });
     }
 
     terminateSubagent(id: string, success: boolean = true, isCancelled: boolean = false) {
         const state = this.subagents.get(id);
+        let status: 'completed' | 'failed' | 'cancelled' = success ? 'completed' : 'failed';
         if (state) {
             if (state.status === 'cancelled') {
                 return;
@@ -46,7 +92,9 @@ export class SubagentManager {
             } else {
                 state.status = success ? 'completed' : 'failed';
             }
+            status = state.status as any;
         }
+        this.writeLedger(id, { status, endedAt: Date.now() });
     }
 
     isSubagentActive(id: string): boolean {
@@ -66,6 +114,18 @@ export class SubagentManager {
         if (state) {
             state.summary = summary;
         }
+        this.writeLedger(id, { lastSummary: summary });
+    }
+
+    updateSubagentAction(id: string, tool: string, params: any) {
+        const cleanParams = { ...params };
+        delete cleanParams.type;
+        this.writeLedger(id, {
+            lastAction: {
+                tool,
+                params: cleanParams
+            }
+        });
     }
 
     sendMessage(recipient: string, message: string) {

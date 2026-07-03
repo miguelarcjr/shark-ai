@@ -420,6 +420,7 @@ Your goal is to address the user's request:
                     
                     if (options.taskId) {
                         subagentManager.updateSubagentSummary(options.taskId, finalSummary);
+                        subagentManager.terminateSubagent(options.taskId, true);
                         if (process.env.SHARK_PARENT_ID) {
                             subagentManager.sendMessage(
                                 process.env.SHARK_PARENT_ID,
@@ -462,6 +463,7 @@ Your goal is to address the user's request:
                     log.error(`❌ Agent reported task failure: ${failureReason}`);
                     
                     if (options.taskId) {
+                        subagentManager.terminateSubagent(options.taskId, false);
                         if (process.env.SHARK_PARENT_ID) {
                             const parentId = process.env.SHARK_PARENT_ID;
                             const role = process.env.SHARK_SUBAGENT_ROLE || 'Subagent';
@@ -493,6 +495,10 @@ Your goal is to address the user's request:
                 }
 
                 const action = response.action;
+
+                if (action && options.taskId) {
+                    subagentManager.updateSubagentAction(options.taskId, action.type, action);
+                }
 
                 if (!action) {
                     if (isSubagent) {
