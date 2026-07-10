@@ -70,16 +70,12 @@ The dynamic orchestrator will construct the prompt payload at each turn using th
       * For all intermediate turns, compute raw BM25 scores against the query string using `EmbeddingService.scoreDocumentsBM25`.
       * Bounded Normalization: Max-Normalize the scores by dividing each score by the maximum score in the batch, yielding bounded values between `0.0` and `1.0`.
     * **Candidate State Classification (Before Budgeting):**
-      * **RAW Candidates:** Turns with a normalized score > 0.50, plus turns elevated via Thread Propagation.
+      * **RAW Candidates:** Turns with a normalized score > 0.50.
       * **Abstract:** Bounded score between 0.20 and 0.50:
         * For TS/JS code files: Compact to class/interface signatures only.
         * For Non-Code files (.md, .json, .yaml, .txt): Compact to metadata (file path, line count, file size) + the first 10 lines of the file.
         * For Command executions: Compact to a combination of the agent's parsed `summary` field (from the assistant's schema response) and the programmatic tool summary.
       * **Drop:** Bounded score < 0.20.
-    * **Thread Propagation (Cognitive Threads):**
-      * If a file path is active/modified (using `action.path` from the structured action metadata of Turn $T-1$ or Turn $T$), elevate intermediate turns referencing the same file path to RAW candidates, subject to:
-        * **Depth Limit:** Only check within the last 5 turns.
-        * **Count Limit:** Elevate at most 2 historical turns per active file path.
     * **Physical Token Budget Enforcement:**
       * Define the context token budget: `0.80 * compactionTokenLimit` (default budget of ~6,400 tokens if limit is 8,000).
       * Deduct the token usage of Turn 0 and Turn $T-1$ (which are always RAW) from the budget.
