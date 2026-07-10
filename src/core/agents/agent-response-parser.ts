@@ -113,6 +113,7 @@ export const AgentCommandSchema = z.object({
 
 // Full Structured Response Schema
 export const AgentResponseSchema = z.object({
+    thought: z.string().nullable().optional(),
     action: AgentActionSchema.nullable().optional(),
     actions: z.array(AgentActionSchema).default([]), // Maintain backward compatibility
     commands: z.array(AgentCommandSchema).optional(), // Maintain backward compatibility
@@ -339,6 +340,7 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
     }
 
     const result = {
+        thought: parsedObj.thought || '',
         action: normalizedAction,
         actions: normalizedActions,
         commands: normalizedCommands,

@@ -273,4 +273,15 @@ describe('AgentResponseParser', () => {
             }
         });
     });
+
+    it('should parse the thought field at root level correctly', () => {
+        const raw = JSON.stringify({
+            thought: "I need to read the test file.",
+            action: { type: "talk_with_user", content: "Hello" },
+            summary: "Greeting the user"
+        });
+        const parsed = parseAgentResponse(raw);
+        expect(parsed.thought).toBe("I need to read the test file.");
+    });
 });
+

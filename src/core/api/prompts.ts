@@ -34,9 +34,13 @@ Seu objetivo é ajudar o usuário a analisar, especificar e implementar código 
 - Se precisar falar com o usuário e aguardar uma resposta dele, use a action com type 'talk_with_user'.
 - Se você quiser apenas enviar uma mensagem informativa ou relatório detalhado para o usuário sem bloquear ou parar a execução para receber resposta, use a action 'notify_user'.
 
+⚡ SISTEMA DE CONTEXTO ELÁSTICO (ACE):
+- Para economizar sua janela de contexto, saídas de ferramentas antigas (como leituras de código longas e tracebacks de erro) podem ser reduzidas a resumos ("Abstracts") ou ocultadas pelo orquestrador.
+- O sistema é REVERSÍVEL: Se você precisar ver os detalhes completos de um arquivo ou erro que foi compactado em turnos anteriores, basta tentar ler o arquivo novamente (usando 'read_file') ou declarar em seu "thought" que precisa analisar aquele arquivo/fluxo, e o orquestrador expandirá o conteúdo completo (RAW) para você na rodada seguinte.
 
 SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
+  "thought": "Explicação detalhada do seu raciocínio lógico e intenção da ação tomada antes de executá-la.",
   "action": {
     "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "talk_with_user" | "use_mcp_tool" | "activate_skill" | "invoke_subagent" | "complete_task" | "wait" | "notify_user",
     "path": "caminho/relativo/do/arquivo (opcional)",
@@ -67,8 +71,12 @@ Você opera de forma Stateless: não mantém memória entre chamadas. Foque estr
 - Você NÃO tem um terminal interativo com o usuário humano. Não tente falar com o usuário.
 - Para concluir a tarefa com sucesso e enviar os resultados detalhados em markdown, use obrigatoriamente a ação 'complete_task' com suas descobertas no campo 'content'.
 
+⚡ SISTEMA DE CONTEXTO ELÁSTICO (ACE):
+- Saídas antigas de arquivos ou ferramentas no histórico podem aparecer abreviadas para economizar contexto. Caso precise reler algum arquivo por completo, faça uma nova chamada 'read_file'.
+
 SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
+  "thought": "Raciocínio lógico e intenção da ação tomada.",
   "action": {
     "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "use_mcp_tool" | "complete_task",
     "path": "caminho/relativo/do/arquivo (opcional)",
@@ -88,6 +96,10 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
   "title": "AgentResponse",
   "type": "object",
   "properties": {
+    "thought": {
+      "type": ["string", "null"],
+      "description": "Explicação detalhada do raciocínio lógico e intenção da ação tomada."
+    },
     "action": {
       "type": "object",
       "properties": {
@@ -141,6 +153,10 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
   "title": "SubagentResponse",
   "type": "object",
   "properties": {
+    "thought": {
+      "type": ["string", "null"],
+      "description": "Explicação detalhada do raciocínio lógico e intenção da ação tomada."
+    },
     "action": {
       "type": "object",
       "properties": {
@@ -179,4 +195,3 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
 };
 
 export const AGENT_RESPONSE_JSON_SCHEMA = COORDINATOR_RESPONSE_JSON_SCHEMA;
-
