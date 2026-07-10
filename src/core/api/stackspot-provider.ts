@@ -11,6 +11,7 @@ import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
 import crypto from 'node:crypto';
 import { skillManager } from '../workflow/skill-manager.js';
 import { compactToolOutputRetroactively, cleanResponseObject } from './openai-compatible-provider.js';
+import { orchestrateContext } from './ace-context-orchestrator.js';
 
 export class StackSpotProvider implements AIProvider {
     public agentId?: string;
@@ -102,14 +103,20 @@ export class StackSpotProvider implements AIProvider {
         let history: ChatMessage[] = [];
 
         if (!this.useServerConversation) {
-            history = await HistoryManager.getHistory(conversationId);
-            if (history.length === 0) {
-                history.push({
+            const rawHistory = [...await HistoryManager.getRawHistory(conversationId)];
+            if (rawHistory.length === 0) {
+                rawHistory.push({
                     role: 'system',
                     content: isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT
                 });
             }
-            history.push({ role: 'user', content: prompt });
+            rawHistory.push({ role: 'user', content: prompt });
+            await HistoryManager.saveRawHistory(conversationId, rawHistory);
+
+            const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 8000;
+            const orchestratedHistory = await orchestrateContext(rawHistory, prompt, compactionTokenLimit);
+
+            history = orchestratedHistory;
 
             const skillExtension = skillManager.getSystemInstructionExtension();
             const staticSystem = history.find(m => m.role === 'system')?.content || (isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT);
@@ -222,14 +229,12 @@ export class StackSpotProvider implements AIProvider {
         if (!this.useServerConversation) {
             parsedResponse.conversation_id = conversationId;
             const cleanedResponse = cleanResponseObject(parsedResponse);
+            
+            const rawHistory = [...await HistoryManager.getRawHistory(conversationId)];
+            rawHistory.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+            await HistoryManager.saveRawHistory(conversationId, rawHistory);
+
             history.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
-
-            // Retroactive Tool Output Compaction (Micro-cycle Cleanup)
-            const lastUserMsg = history[history.length - 2];
-            if (lastUserMsg && lastUserMsg.role === 'user') {
-                lastUserMsg.content = compactToolOutputRetroactively(lastUserMsg.content);
-            }
-
             await HistoryManager.saveHistory(conversationId, history);
         }
 

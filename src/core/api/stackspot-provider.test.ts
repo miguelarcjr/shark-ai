@@ -37,7 +37,9 @@ vi.mock('../agents/agent-response-parser.js', () => ({
 vi.mock('../workflow/history-manager.js', () => ({
     HistoryManager: {
         getHistory: vi.fn().mockResolvedValue([]),
-        saveHistory: vi.fn().mockResolvedValue(undefined)
+        saveHistory: vi.fn().mockResolvedValue(undefined),
+        getRawHistory: vi.fn().mockResolvedValue([]),
+        saveRawHistory: vi.fn().mockResolvedValue(undefined)
     }
 }));
 
@@ -63,6 +65,8 @@ describe('StackSpotProvider', () => {
         }));
         vi.mocked(HistoryManager.getHistory).mockResolvedValue([]);
         vi.mocked(HistoryManager.saveHistory).mockResolvedValue(undefined);
+        vi.mocked(HistoryManager.getRawHistory).mockResolvedValue([]);
+        vi.mocked(HistoryManager.saveRawHistory).mockResolvedValue(undefined);
         vi.mocked(skillManager.getSystemInstructionExtension).mockReturnValue('');
         vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
             stackspot: {
@@ -235,11 +239,13 @@ describe('StackSpotProvider', () => {
         } as any);
         const provider = new StackSpotProvider('developer_agent');
 
-        vi.mocked(HistoryManager.getHistory).mockResolvedValue([
+        const mockHistory = [
             { role: 'system', content: 'Base system prompt' },
             { role: 'user', content: 'First message' },
             { role: 'assistant', content: '{"actions":[]}' }
-        ]);
+        ];
+        vi.mocked(HistoryManager.getHistory).mockResolvedValue(mockHistory);
+        vi.mocked(HistoryManager.getRawHistory).mockResolvedValue(mockHistory);
 
         vi.mocked(sseClient.streamAgentResponse).mockImplementation(
             async (url, payload, headers, callbacks) => {
@@ -254,7 +260,7 @@ describe('StackSpotProvider', () => {
             conversationId: 'local-session-id'
         });
 
-        expect(HistoryManager.getHistory).toHaveBeenCalledWith('local-session-id');
+        expect(HistoryManager.getRawHistory).toHaveBeenCalledWith('local-session-id');
         expect(sseClient.streamAgentResponse).toHaveBeenCalled();
         const [, payload] = vi.mocked(sseClient.streamAgentResponse).mock.calls[0] as any;
         expect(payload.use_conversation).toBe(false);
@@ -287,9 +293,11 @@ describe('StackSpotProvider', () => {
         } as any);
         const provider = new StackSpotProvider('developer_agent');
 
-        vi.mocked(HistoryManager.getHistory).mockResolvedValue([
+        const mockHistory = [
             { role: 'system', content: 'Base system prompt' }
-        ]);
+        ];
+        vi.mocked(HistoryManager.getHistory).mockResolvedValue(mockHistory);
+        vi.mocked(HistoryManager.getRawHistory).mockResolvedValue(mockHistory);
 
         vi.mocked(skillManager.getSystemInstructionExtension).mockReturnValue('\n\n--- ACTIVE SKILL: my-skill ---\nMy Skill Prompt Content\n');
 

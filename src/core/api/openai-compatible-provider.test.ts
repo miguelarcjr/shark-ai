@@ -25,6 +25,8 @@ describe('OpenAICompatibleProvider', () => {
     beforeEach(() => {
         vi.restoreAllMocks();
         vi.unstubAllGlobals();
+        vi.spyOn(HistoryManager, 'getRawHistory').mockResolvedValue([]);
+        vi.spyOn(HistoryManager, 'saveRawHistory').mockResolvedValue(undefined);
     });
 
     it('should be instantiable with parameters', () => {
@@ -151,6 +153,7 @@ describe('OpenAICompatibleProvider', () => {
 
         const mockHistoryGet = vi.spyOn(HistoryManager, 'getHistory').mockResolvedValue(mockHistory);
         const mockHistorySave = vi.spyOn(HistoryManager, 'saveHistory').mockResolvedValue(undefined);
+        const mockRawHistoryGet = vi.spyOn(HistoryManager, 'getRawHistory').mockResolvedValue(mockHistory);
 
         const mockFetch = vi.fn().mockResolvedValue({
             ok: true,
@@ -168,7 +171,7 @@ describe('OpenAICompatibleProvider', () => {
             agentType: 'developer_agent'
         });
 
-        expect(mockHistoryGet).toHaveBeenCalledWith('test-convo-123');
+        expect(mockRawHistoryGet).toHaveBeenCalledWith('test-convo-123');
         const fetchOptions = mockFetch.mock.calls[0][1];
         const payload = JSON.parse(fetchOptions.body);
         
@@ -315,12 +318,15 @@ describe('OpenAICompatibleProvider', () => {
             useStructuredOutputs: false
         });
 
-        // Mock HistoryManager
         const mockHistoryGet = vi.spyOn(HistoryManager, 'getHistory').mockResolvedValue([
             { role: 'system', content: 'Base system prompt' },
             { role: 'user', content: 'Hello' }
         ]);
         const mockHistorySave = vi.spyOn(HistoryManager, 'saveHistory').mockResolvedValue(undefined);
+        const mockRawHistoryGet = vi.spyOn(HistoryManager, 'getRawHistory').mockResolvedValue([
+            { role: 'system', content: 'Base system prompt' },
+            { role: 'user', content: 'Hello' }
+        ]);
 
         // Mock skillManager
         vi.spyOn(skillManager, 'getSystemInstructionExtension').mockReturnValue('\n\n--- ACTIVE SKILL: test-skill ---\nTest skill prompt\n');
@@ -341,7 +347,7 @@ describe('OpenAICompatibleProvider', () => {
             agentType: 'developer_agent'
         });
 
-        expect(mockHistoryGet).toHaveBeenCalledWith('test-convo-456');
+        expect(mockRawHistoryGet).toHaveBeenCalledWith('test-convo-456');
         expect(mockFetch).toHaveBeenCalled();
         const fetchOptions = mockFetch.mock.calls[0][1];
         const payload = JSON.parse(fetchOptions.body);

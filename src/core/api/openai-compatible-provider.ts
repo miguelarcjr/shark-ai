@@ -6,6 +6,8 @@ import crypto from 'node:crypto';
 import { FileLogger } from '../debug/file-logger.js';
 import { skillManager } from '../workflow/skill-manager.js';
 import { encode } from 'gpt-tokenizer';
+import { ConfigManager } from '../config-manager.js';
+import { orchestrateContext } from './ace-context-orchestrator.js';
 
 export function compactToolOutputRetroactively(content: string): string {
     // 1. run_command output
@@ -121,21 +123,25 @@ export class OpenAICompatibleProvider implements AIProvider {
     async streamChat(prompt: string, options: ChatOptions): Promise<AgentResponse> {
         const conversationId = options.conversationId || crypto.randomUUID();
 
-        const history = await HistoryManager.getHistory(conversationId);
-        if (history.length === 0) {
-            history.push({
+        const rawHistory = [...await HistoryManager.getRawHistory(conversationId)];
+        if (rawHistory.length === 0) {
+            rawHistory.push({
                 role: 'system',
                 content: this.getAgentSystemPrompt(options.agentType)
             });
         }
 
-        history.push({ role: 'user', content: prompt });
+        rawHistory.push({ role: 'user', content: prompt });
+        await HistoryManager.saveRawHistory(conversationId, rawHistory);
+
+        const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 8000;
+        const orchestratedHistory = await orchestrateContext(rawHistory, prompt, compactionTokenLimit);
 
         const requestMessages: ChatMessage[] = [];
         let systemPrompt = this.getAgentSystemPrompt(options.agentType);
         
         // Clone history to avoid mutating the original array
-        const historyCopy = history.map(msg => ({ ...msg }));
+        const historyCopy = orchestratedHistory.map(msg => ({ ...msg }));
         
         // Extract and remove the system message from historyCopy to place it strictly at the beginning
         const systemIndex = historyCopy.findIndex(m => m.role === 'system');
@@ -159,7 +165,7 @@ export class OpenAICompatibleProvider implements AIProvider {
             const { MemboxManager } = await import('../workflow/membox-manager.js');
             const memboxManager = new MemboxManager();
             const query = options?.searchQuery || prompt;
-            const retrievedContext = await memboxManager.retrieveContext(query, history);
+            const retrievedContext = await memboxManager.retrieveContext(query, orchestratedHistory);
             const skillExtension = skillManager.getSystemInstructionExtension();
             
             if (retrievedContext || skillExtension) {
@@ -311,15 +317,13 @@ export class OpenAICompatibleProvider implements AIProvider {
 
             // Save LLM response to history
             const cleanedResponse = cleanResponseObject(parsedResponse);
-            history.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+            
+            const rawHistory = [...await HistoryManager.getRawHistory(conversationId)];
+            rawHistory.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+            await HistoryManager.saveRawHistory(conversationId, rawHistory);
 
-            // Retroactive Tool Output Compaction (Micro-cycle Cleanup)
-            const lastUserMsg = history[history.length - 2];
-            if (lastUserMsg && lastUserMsg.role === 'user') {
-                lastUserMsg.content = compactToolOutputRetroactively(lastUserMsg.content);
-            }
-
-            await HistoryManager.saveHistory(conversationId, history);
+            orchestratedHistory.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+            await HistoryManager.saveHistory(conversationId, orchestratedHistory);
 
             if (options.onComplete) {
                 options.onComplete(parsedResponse);
