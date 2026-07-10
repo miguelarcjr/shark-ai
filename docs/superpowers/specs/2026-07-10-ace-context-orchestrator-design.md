@@ -60,26 +60,34 @@ The dynamic orchestrator will construct the prompt payload at each turn using th
 #### [MODIFY] [openai-compatible-provider.ts](file:///d:/projetos/bmadspot/src/core/api/openai-compatible-provider.ts) and [stackspot-provider.ts](file:///d:/projetos/bmadspot/src/core/api/stackspot-provider.ts)
 * Remove the destructive call to `compactToolOutputRetroactively` inside the stream callback.
 * In `streamChat`, load the RAW history: `const rawHistory = await HistoryManager.getRawHistory(conversationId)`.
-* Run the **Elasticizer Algorithm** to construct the message context for the API payload:
-  * **Golden Rule - Pinned Items (Always RAW):**
-    * Turn 0 (System Prompt / Tasks) is always kept `RAW`.
-    * Turn $T-1$ (the immediate previous turn, which contains the last action and tool output) is always kept `RAW` to anchor the agent in immediate reality.
-  * **Dynamic Query Composition for Search:**
-    * Create a query string by concatenating: `[First User Message (if available)] + [Turn T-1 Thoughts] + [Current Turn T Prompt]`.
-  * **Semantic Scoring & Max-Normalization:**
-    * For all intermediate turns, compute raw BM25 scores against the query string using `EmbeddingService.scoreDocumentsBM25`.
-    * Bounded Normalization: Max-Normalize the scores by dividing each score by the maximum score in the batch, yielding bounded values between `0.0` and `1.0`.
-  * **State Classification:**
-    * **RAW** (Normalized Score > 0.50): Injected fully.
-    * **Abstract** (Normalized Score 0.20 - 0.50):
-      * For TS/JS code files: Compact to class/interface signatures only.
-      * For Non-Code files (.md, .json, .yaml, .txt): Compact to metadata (file path, line count, file size) + the first 10 lines of the file.
-      * For Command executions: Compact to a combination of the agent's parsed `summary` field (from the assistant's schema response) and the programmatic tool summary.
-    * **Drop** (Normalized Score < 0.20): Omitted entirely from the active API messages array.
-  * **Thread Propagation (Cognitive Threads):**
-    * If a file path is active/modified (using `action.path` from the structured action metadata), automatically elevate any other intermediate turn referencing the same file path to `RAW`.
-  * **Debugger/UI Mirroring:**
-    * After constructing the orchestrated history, save it to the standard `.json` file using `HistoryManager.saveHistory` so that legacy log viewers, debugger UIs, and dashboards remain synchronized in real-time.
+  * Run the **Elasticizer Algorithm** to construct the message context for the API payload:
+    * **Golden Rule - Pinned Items (Always RAW):**
+      * Turn 0 (System Prompt / Tasks) is always kept `RAW`.
+      * Turn $T-1$ (the immediate previous turn, which contains the last action and tool output) is always kept `RAW` to anchor the agent in immediate reality.
+    * **Dynamic Query Composition for Search:**
+      * Create a query string by concatenating: `[First User Message (if available)] + [Turn T-1 Thoughts] + [Current Turn T Prompt]`.
+    * **Semantic Scoring & Max-Normalization:**
+      * For all intermediate turns, compute raw BM25 scores against the query string using `EmbeddingService.scoreDocumentsBM25`.
+      * Bounded Normalization: Max-Normalize the scores by dividing each score by the maximum score in the batch, yielding bounded values between `0.0` and `1.0`.
+    * **Candidate State Classification (Before Budgeting):**
+      * **RAW Candidates:** Turns with a normalized score > 0.50, plus turns elevated via Thread Propagation.
+      * **Abstract:** Bounded score between 0.20 and 0.50:
+        * For TS/JS code files: Compact to class/interface signatures only.
+        * For Non-Code files (.md, .json, .yaml, .txt): Compact to metadata (file path, line count, file size) + the first 10 lines of the file.
+        * For Command executions: Compact to a combination of the agent's parsed `summary` field (from the assistant's schema response) and the programmatic tool summary.
+      * **Drop:** Bounded score < 0.20.
+    * **Thread Propagation (Cognitive Threads):**
+      * If a file path is active/modified (using `action.path` from the structured action metadata of Turn $T-1$ or Turn $T$), elevate intermediate turns referencing the same file path to RAW candidates, subject to:
+        * **Depth Limit:** Only check within the last 5 turns.
+        * **Count Limit:** Elevate at most 2 historical turns per active file path.
+    * **Physical Token Budget Enforcement:**
+      * Define the context token budget: `0.80 * compactionTokenLimit` (default budget of ~6,400 tokens if limit is 8,000).
+      * Deduct the token usage of Turn 0 and Turn $T-1$ (which are always RAW) from the budget.
+      * Sort all other RAW candidates by **Semantic Score (descending)** and **Recency (descending)**.
+      * Add them as RAW to the payload one by one. For each addition, count/estimate the tokens.
+      * If adding a turn exceeds the remaining token budget, immediately downgrade that turn and all remaining candidate turns to `Abstract` (or `Drop` if their score is < 0.20).
+    * **Debugger/UI Mirroring:**
+      * After constructing the orchestrated history, save it to the standard `.json` file using `HistoryManager.saveHistory` so that legacy log viewers, debugger UIs, and dashboards remain synchronized in real-time.
 
 ---
 
