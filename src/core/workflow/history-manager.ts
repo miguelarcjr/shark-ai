@@ -51,15 +51,31 @@ export class HistoryManager {
         await this.saveHistory(conversationId, history);
     }
 
+    private static getRawFilePath(conversationId: string): string {
+        return path.resolve(this.getHistoryDir(), `${conversationId}.raw.json`);
+    }
+
     static getRawHistoryPath(conversationId: string): string {
-        return this.getFilePath(conversationId);
+        return this.getRawFilePath(conversationId);
     }
 
     static async getRawHistory(conversationId: string): Promise<ChatMessage[]> {
-        return this.getHistory(conversationId);
+        const filePath = this.getRawFilePath(conversationId);
+        if (!fs.existsSync(filePath)) {
+            return [];
+        }
+        try {
+            const raw = fs.readFileSync(filePath, 'utf-8');
+            const parsed = JSON.parse(raw);
+            return Array.isArray(parsed) ? (parsed as ChatMessage[]) : [];
+        } catch {
+            return [];
+        }
     }
 
     static async saveRawHistory(conversationId: string, history: ChatMessage[]): Promise<void> {
-        await this.saveHistory(conversationId, history);
+        const filePath = this.getRawFilePath(conversationId);
+        fs.writeFileSync(filePath, JSON.stringify(history, null, 2), 'utf-8');
     }
+
 }

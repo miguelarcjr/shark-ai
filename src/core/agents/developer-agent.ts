@@ -643,8 +643,7 @@ Your goal is to address the user's request:
                     }
 
                     // Immediate Safety Truncation if the command output is colossally large
-                    const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 8000;
-                    const safetyLimit = Math.max(1500, compactionTokenLimit - 2500);
+                    const safetyLimit = 100000; // Increased to ensure MML is lossless
                     if (encode(resultMsg).length > safetyLimit) {
                         resultMsg = truncateToolOutput(resultMsg, safetyLimit);
                     }

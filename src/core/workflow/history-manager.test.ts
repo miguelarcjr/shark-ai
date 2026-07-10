@@ -47,4 +47,26 @@ describe('HistoryManager', () => {
         const history = await HistoryManager.getHistory(testId);
         expect(history).toEqual([]);
     });
+
+    it('should save raw history to a raw.json file distinct from standard history', async () => {
+        const testRawId = 'test-raw-session';
+        const messages = [{ role: 'user', content: 'hello raw' } as const];
+        
+        const rawPath = path.resolve(process.cwd(), '_sharkrc', 'history', `${testRawId}.raw.json`);
+        const stdPath = path.resolve(process.cwd(), '_sharkrc', 'history', `${testRawId}.json`);
+        if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+        if (fs.existsSync(stdPath)) fs.unlinkSync(stdPath);
+
+        await HistoryManager.saveRawHistory(testRawId, messages);
+        
+        const rawExists = fs.existsSync(rawPath);
+        const stdExists = fs.existsSync(stdPath);
+        
+        expect(rawExists).toBe(true);
+        expect(stdExists).toBe(false);
+        
+        // Cleanup
+        if (rawExists) fs.unlinkSync(rawPath);
+    });
 });
+
