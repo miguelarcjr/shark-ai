@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { orchestrateContext } from './ace-context-orchestrator.js';
+import { orchestrateContext, generateAbstract } from './ace-context-orchestrator.js';
 import { ChatMessage } from '../workflow/history-manager.js';
 import { EmbeddingService } from '../workflow/embedding-service.js';
 
@@ -17,85 +17,158 @@ vi.mock('../workflow/embedding-service.js', () => {
     };
 });
 
-describe('ACE Context Orchestrator', () => {
+describe('ACE Context Orchestrator & Parser', () => {
     beforeEach(() => {
         vi.clearAllMocks();
     });
 
-    it('should always keep Turn 0 (system prompt) and Turn T-1 as RAW', async () => {
-        const rawHistory: ChatMessage[] = [
-            { role: 'system', content: 'You are Shark Dev.' },
-            { role: 'user', content: 'Read auth.ts' },
-            { role: 'assistant', content: JSON.stringify({ thought: 'Read file', action: { type: 'read_file', path: 'auth.ts' }, summary: 'Reading auth.ts' }) },
-            { role: 'user', content: '[Action read_file(auth.ts) Success]:\nconst x = 10;' }
-        ];
+    describe('Universal Signature Extractor', () => {
+        it('should extract TypeScript signatures using AST parser', () => {
+            const code = `
+                import { x } from './x';
+                // Comment here
+                export class MyClass {
+                    constructor(public a: number) {}
+                    public test() {
+                        console.log("hello");
+                    }
+                }
+                export function add(a: number, b: number): number {
+                    return a + b;
+                }
+            `;
+            const msg: ChatMessage = {
+                role: 'user',
+                content: '[Action read_file(src/index.ts) Success]:\n' + code
+            };
+            const abstract = generateAbstract(msg);
+            expect(abstract).toContain('import { x } from');
+            expect(abstract).toContain('export class MyClass {');
+            expect(abstract).toContain('constructor(public a: number);');
+            expect(abstract).toContain('public test();');
+            expect(abstract).toContain('export function add(a: number, b: number): number;');
+            expect(abstract).not.toContain('console.log');
+        });
 
-        // Mock BM25 scores to return very low scores (so they would normally be dropped)
-        mockScoreDocumentsBM25.mockReturnValue([0.01, 0.01]);
-
-        const result = await orchestrateContext(rawHistory, 'new prompt', 8000);
-
-        // Turn 0 (system) and Turn T-1 (last user msg) must remain RAW
-        expect(result[0]).toEqual(rawHistory[0]);
-        expect(result[result.length - 1]).toEqual(rawHistory[rawHistory.length - 1]);
+        it('should extract Python signatures using lexical fallback scanner', () => {
+            const code = `
+                # A python comment
+                import sys
+                class Calculator:
+                    """docstring"""
+                    def add(self, x, y):
+                        return x + y
+                def test_func():
+                    pass
+            `;
+            const msg: ChatMessage = {
+                role: 'user',
+                content: '[Action read_file(main.py) Success]:\n' + code
+            };
+            const abstract = generateAbstract(msg);
+            expect(abstract).toContain('import sys');
+            expect(abstract).toContain('class Calculator:');
+            expect(abstract).toContain('def add(self, x, y):');
+            expect(abstract).toContain('def test_func():');
+            expect(abstract).not.toContain('docstring');
+        });
     });
 
-    it('should expand intermediate turns to RAW if normalized score is high (> 0.5)', async () => {
-        const rawHistory: ChatMessage[] = [
-            { role: 'system', content: 'System' },
-            { role: 'user', content: 'Touch auth.ts' },
-            { role: 'assistant', content: JSON.stringify({ thought: 'Touch auth', action: { type: 'modify_file', path: 'auth.ts' }, summary: 'Modifying auth' }) },
-            { role: 'user', content: '[Action modify_file(auth.ts) Success]' },
-            { role: 'user', content: 'new prompt' }
-        ];
+    describe('Orchestration and Pinning', () => {
+        it('should always pin Turn 0, Turn 1, Turn T, and Turn T-1 as RAW', async () => {
+            const rawHistory: ChatMessage[] = [
+                { role: 'system', content: 'System Prompt' }, // 0: Pinned (Turn 0)
+                { role: 'user', content: 'Original Task Instruction' }, // 1: Pinned (Turn 1)
+                { role: 'assistant', content: '{"thought":"t1","summary":"s1"}' }, // 2: Intermediate
+                { role: 'user', content: '[Action read_file(x) Success]' }, // 3: Intermediate
+                { role: 'assistant', content: '{"thought":"t2","summary":"s2"}' }, // 4: Intermediate
+                { role: 'user', content: '[Action run_command Success]' }, // 5: Pinned (Turn T-1)
+                { role: 'user', content: 'current prompt' } // 6: Pinned (Turn T)
+            ];
 
-        // Mock BM25 scores: turn 1 has 10.0, turn 2 has 1.0 (max is 10.0, so turn 1 normalizes to 1.0, turn 2 to 0.1)
-        mockScoreDocumentsBM25.mockReturnValue([10.0, 1.0, 0.1]);
+            // Mock BM25 scores to return very low scores for intermediates
+            mockScoreDocumentsBM25.mockReturnValue([0.01, 0.01, 0.01]);
 
-        const result = await orchestrateContext(rawHistory, 'new prompt', 10);
+            // Pass a small token limit (10) to force orchestration
+            const result = await orchestrateContext(rawHistory, 'current prompt', 10);
 
-        // Turn 1 (idx 1) is raw
-        expect(result[1].content).toBe('Touch auth.ts');
-        // Turn 2 (idx 2) is abstracted/dropped because it normalizes to 0.1
-        expect(result[2].content).not.toContain('Touch auth');
-    });
+            // Turn 0, Turn 1, Turn T-1 (5), and Turn T (6) must remain RAW
+            expect(result[0]).toEqual(rawHistory[0]);
+            expect(result[1]).toEqual(rawHistory[1]);
+            
+            // Check that T-1 and T are present as raw
+            const tMinus1 = result.find(m => m.content === '[Action run_command Success]');
+            const tTurn = result[result.length - 1];
+            expect(tMinus1).toBeDefined();
+            expect(tTurn.content).toBe('current prompt');
+        });
 
-    it('should compact intermediate turns to Abstract if normalized score is medium (0.2 - 0.5)', async () => {
-        const rawHistory: ChatMessage[] = [
-            { role: 'system', content: 'System' },
-            { role: 'user', content: 'Read code' },
-            { role: 'assistant', content: JSON.stringify({ thought: 'Read file', action: { type: 'read_file', path: 'src/main.ts' }, summary: 'Read main' }) },
-            { role: 'user', content: '[Action read_file(src/main.ts) Success]:\nimport { foo } from "./foo";\nexport class Bar {}' },
-            { role: 'user', content: 'new prompt' }
-        ];
+        it('should expand intermediate turns to RAW if normalized score is high (> 0.5)', async () => {
+            const rawHistory: ChatMessage[] = [
+                { role: 'system', content: 'System Prompt' }, // 0
+                { role: 'user', content: 'Original Task' }, // 1
+                { role: 'assistant', content: '{"thought":"Keep me RAW","summary":"important"}' }, // 2: Intermediate
+                { role: 'user', content: 'Drop me' }, // 3: Intermediate
+                { role: 'assistant', content: 'Drop me too' }, // 4: Intermediate
+                { role: 'user', content: 'last action' }, // 5
+                { role: 'user', content: 'current prompt' } // 6
+            ];
 
-        // Normalizes to 0.3 (medium)
-        mockScoreDocumentsBM25.mockReturnValue([1.0, 3.0, 1.0]);
+            // Mock BM25 scores: turn 2 gets 10.0, turn 3 gets 1.0, turn 4 gets 0.5 (max is 10.0)
+            // Normalized: turn 2 is 1.0 (>0.5), turn 3 is 0.1 (<0.2), turn 4 is 0.05 (<0.2)
+            mockScoreDocumentsBM25.mockReturnValue([10.0, 1.0, 0.5]);
 
-        const result = await orchestrateContext(rawHistory, 'new prompt', 10);
+            // Pass limit = 10 to force orchestration
+            const result = await orchestrateContext(rawHistory, 'current prompt', 10);
 
-        // Turn 2 (assistant) is Abstract
-        expect(result[2].content).toContain('Read main');
-    });
+            const importantTurn = result.find(m => m.content.includes('Keep me RAW'));
+            expect(importantTurn).toBeDefined();
+            expect(importantTurn?.content).toContain('Keep me RAW'); // RAW
 
-    it('should drop intermediate turns if normalized score is low (< 0.2)', async () => {
-        const rawHistory: ChatMessage[] = [
-            { role: 'system', content: 'System' },
-            { role: 'user', content: 'Unrelated action' },
-            { role: 'assistant', content: JSON.stringify({ thought: 'Unrelated thought', action: { type: 'list_files' }, summary: 'List' }) },
-            { role: 'user', content: '[Action list_files Success]:\na.ts\nb.ts' },
-            { role: 'user', content: 'new prompt' }
-        ];
+            const droppedTurn = result.find(m => m.content.includes('Drop me'));
+            expect(droppedTurn).toBeUndefined(); // Dropped
+        });
 
-        // Normalizes to 0.05 (low)
-        mockScoreDocumentsBM25.mockReturnValue([0.1, 0.1, 0.1]);
+        it('should compact intermediate turns to Abstract if normalized score is medium (0.2 - 0.5)', async () => {
+            const rawHistory: ChatMessage[] = [
+                { role: 'system', content: 'System' }, // 0
+                { role: 'user', content: 'Task' }, // 1
+                { role: 'assistant', content: '{"thought":"Compact me","summary":"medium relevance","action":{"type":"read_file","path":"x.ts","content":"long details here"}}' }, // 2: Intermediate
+                { role: 'user', content: 'last action' }, // 3
+                { role: 'user', content: 'current prompt' } // 4
+            ];
 
-        const result = await orchestrateContext(rawHistory, 'new prompt', 10);
+            // Turn 2 is the only intermediate
+            // Score 3.0, Max 10.0 -> Normalized score is 0.3 (medium)
+            mockScoreDocumentsBM25.mockReturnValue([3.0]);
 
-        // Turn 1 (user) and Turn 2 (assistant) and Turn 3 (tool) are dropped
-        // Only Turn 0 (system) and last prompt (user) are kept (since T-1 is user, and Turn 0 is system)
-        expect(result).toHaveLength(2);
-        expect(result[0].role).toBe('system');
-        expect(result[1].content).toBe('new prompt');
+            // Pass limit = 10 to force orchestration
+            const result = await orchestrateContext(rawHistory, 'current prompt', 10);
+
+            const compacted = result.find(m => m.role === 'assistant' && m.content.includes('Compact me'));
+            expect(compacted).toBeDefined();
+            // It should be abstracted/compacted JSON
+            expect(compacted?.content).toContain('Compact me');
+            expect(compacted?.content).not.toContain('long details here'); // Abstract format of assistant reduces details
+        });
+
+        it('should drop intermediate turns if normalized score is low (< 0.2)', async () => {
+            const rawHistory: ChatMessage[] = [
+                { role: 'system', content: 'System' }, // 0
+                { role: 'user', content: 'Task' }, // 1
+                { role: 'assistant', content: '{"thought":"Irrelevant","summary":"low"}' }, // 2
+                { role: 'user', content: 'last action' }, // 3
+                { role: 'user', content: 'current prompt' } // 4
+            ];
+
+            mockScoreDocumentsBM25.mockReturnValue([0.1]);
+
+            // Pass limit = 10 to force orchestration
+            const result = await orchestrateContext(rawHistory, 'current prompt', 10);
+
+            // Turn 2 is dropped. Only pinned turns remain: 0, 1, 3, 4
+            expect(result).toHaveLength(4);
+            expect(result.find(m => m.content.includes('Irrelevant'))).toBeUndefined();
+        });
     });
 });
