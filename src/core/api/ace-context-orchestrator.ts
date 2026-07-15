@@ -367,58 +367,59 @@ export async function orchestrateContext(
     }
 
     // 3. Candidate State Classification (Before Budgeting)
+    const N = intermediateTurns.length;
     const classifiedCandidates = intermediateTurns.map((turnObj, idx) => {
         const nScore = normalizedScores[idx];
+        const recencyScore = N > 1 ? idx / (N - 1) : 1.0;
+        const priorityScore = (0.7 * nScore) + (0.3 * recencyScore);
         return {
             turn: turnObj.msg,
             originalIndex: turnObj.originalIndex,
             idx,
             nScore,
+            priorityScore,
             isRawCandidate: nScore > 0.50,
             isAbstractCandidate: nScore >= 0.20 && nScore <= 0.50,
-            tokenEstimate: countTokens(turnObj.msg.content)
+            tokenEstimate: countTokens(turnObj.msg.content),
+            abstractEstimate: countTokens(generateAbstract(turnObj.msg))
         };
     });
 
-    // 4. Physical Token Budget Enforcement
+    // 4. Physical Token Budget Enforcement (RAM Slot Allocation)
     let remainingBudget = budgetCeiling;
 
-    // Deduct pinned messages (Turn 0, Turn 1, Turn T, Turn T-1)
+    // Deduct Pinned Messages first (Slot 1)
     for (const idx of pinnedIndices) {
         remainingBudget -= countTokens(rawHistory[idx].content);
     }
 
-    // Deduct initial Abstract candidates from remainingBudget
-    for (const cand of classifiedCandidates) {
-        if (!cand.isRawCandidate && cand.isAbstractCandidate) {
-            const abstractContent = generateAbstract(cand.turn);
-            remainingBudget -= countTokens(abstractContent);
-        }
-    }
+    // Sort candidates by priorityScore descending
+    const sortedCandidates = [...classifiedCandidates].sort((a, b) => b.priorityScore - a.priorityScore);
 
-    // Sort RAW candidates by score (descending) and recency (descending)
-    const rawCandidates = classifiedCandidates
-        .filter(c => c.isRawCandidate)
-        .sort((a, b) => {
-            if (Math.abs(a.nScore - b.nScore) > 0.0001) {
-                return b.nScore - a.nScore; // Higher score first
-            }
-            return b.originalIndex - a.originalIndex; // More recent first
-        });
+    const rawIndices = new Set<number>();
+    const abstractIndices = new Set<number>();
 
-    const rawIndices = new Set<number>(); // Holds original indices to be kept RAW
-    for (const cand of rawCandidates) {
-        if (cand.tokenEstimate <= remainingBudget) {
-            rawIndices.add(cand.originalIndex);
-            remainingBudget -= cand.tokenEstimate;
-        } else {
-            // Downgrade due to budget constraints
-            cand.isRawCandidate = false;
-            cand.isAbstractCandidate = cand.nScore >= 0.20;
-            if (cand.isAbstractCandidate) {
-                const abstractContent = generateAbstract(cand.turn);
-                remainingBudget -= countTokens(abstractContent);
+    for (const cand of sortedCandidates) {
+        if (cand.isRawCandidate) {
+            // Slot 2: Try to fit as RAW
+            if (cand.tokenEstimate <= remainingBudget) {
+                rawIndices.add(cand.originalIndex);
+                remainingBudget -= cand.tokenEstimate;
+            } 
+            // Slot 3: Downgrade and try to fit as Abstract
+            else if (cand.abstractEstimate <= remainingBudget) {
+                abstractIndices.add(cand.originalIndex);
+                remainingBudget -= cand.abstractEstimate;
             }
+            // Else: Drop
+        } 
+        else if (cand.isAbstractCandidate) {
+            // Slot 4: Try to fit as Abstract
+            if (cand.abstractEstimate <= remainingBudget) {
+                abstractIndices.add(cand.originalIndex);
+                remainingBudget -= cand.abstractEstimate;
+            }
+            // Else: Drop
         }
     }
 
@@ -427,16 +428,11 @@ export async function orchestrateContext(
     for (let i = 0; i < rawHistory.length; i++) {
         if (pinnedIndices.has(i) || rawIndices.has(i)) {
             orchestrated.push(rawHistory[i]);
-        } else {
-            // It's an intermediate turn that is NOT raw
-            const cand = classifiedCandidates.find(c => c.originalIndex === i);
-            if (cand && cand.isAbstractCandidate) {
-                orchestrated.push({
-                    role: rawHistory[i].role,
-                    content: generateAbstract(rawHistory[i])
-                });
-            }
-            // If drop (score < 0.20), it is not pushed to orchestrated history
+        } else if (abstractIndices.has(i)) {
+            orchestrated.push({
+                role: rawHistory[i].role,
+                content: generateAbstract(rawHistory[i])
+            });
         }
     }
 

@@ -107,24 +107,27 @@ describe('ACE Context Orchestrator & Parser', () => {
             const rawHistory: ChatMessage[] = [
                 { role: 'system', content: 'System' }, // 0: Pinned
                 { role: 'user', content: 'Task' }, // 1: Pinned
-                { role: 'user', content: '[Action read_file(src/main.ts) Success]:\nold content' }, // 2: Duplicate read (should be dropped)
-                { role: 'user', content: '[Action run_command(npm test) Success]:\nold output' }, // 3: Duplicate command (should be dropped)
-                { role: 'user', content: '[Action read_file(src/main.ts) Success]:\nnew content' }, // 4: Latest read (should be kept based on budget/score)
-                { role: 'user', content: '[Action run_command(npm test) Success]:\nnew output' }, // 5: Pinned (T-1)
-                { role: 'user', content: 'current prompt' } // 6: Pinned (T)
+                { role: 'user', content: '[Action read_file(src/main.ts) Success]:\nold content' }, // 2: Duplicate read (dropped)
+                { role: 'user', content: '[Action run_command(npm test) Success]:\nold output' }, // 3: Duplicate command (dropped)
+                { role: 'user', content: 'hello '.repeat(300) }, // 4: Large dummy to trigger compaction
+                { role: 'user', content: '[Action read_file(src/main.ts) Success]:\nnew content' }, // 5: Latest read (kept RAW/Abstract)
+                { role: 'user', content: '[Action run_command(npm test) Success]:\nnew output' }, // 6: Pinned (T-1)
+                { role: 'user', content: 'current prompt' } // 7: Pinned (T)
             ];
 
-            mockScoreDocumentsBM25.mockReturnValue([10.0, 10.0, 10.0, 10.0]); // High scores for intermediate turns
+            mockScoreDocumentsBM25.mockReturnValue([0.1, 10.0]); // Turn 4 gets 0.1 (low), Turn 5 gets 10.0 (high)
 
-            const result = await orchestrateContext(rawHistory, 'current prompt', 10); // low limit to trigger
+            const result = await orchestrateContext(rawHistory, 'current prompt', 200);
 
-            // Verify Turn 2 and Turn 3 are dropped
+            // Verify Turn 2, Turn 3, and Turn 4 are dropped
             const oldRead = result.find(m => m.content && m.content.includes('old content'));
             const oldCmd = result.find(m => m.content && m.content.includes('old output'));
+            const dummy = result.find(m => m.content && m.content.includes('hello '.repeat(300)));
             expect(oldRead).toBeUndefined();
             expect(oldCmd).toBeUndefined();
+            expect(dummy).toBeUndefined();
 
-            // Verify Turn 4 is kept
+            // Verify Turn 5 is kept
             const newRead = result.find(m => m.content && m.content.includes('src/main.ts'));
             expect(newRead).toBeDefined();
         });
@@ -134,18 +137,15 @@ describe('ACE Context Orchestrator & Parser', () => {
                 { role: 'system', content: 'System Prompt' }, // 0
                 { role: 'user', content: 'Original Task' }, // 1
                 { role: 'assistant', content: '{"thought":"Keep me RAW","summary":"important"}' }, // 2: Intermediate
-                { role: 'user', content: 'Drop me' }, // 3: Intermediate
+                { role: 'user', content: 'Drop me ' + 'hello '.repeat(300) }, // 3: Large dummy intermediate
                 { role: 'assistant', content: 'Drop me too' }, // 4: Intermediate
                 { role: 'user', content: 'last action' }, // 5
                 { role: 'user', content: 'current prompt' } // 6
             ];
 
-            // Mock BM25 scores: turn 2 gets 10.0, turn 3 gets 1.0, turn 4 gets 0.5 (max is 10.0)
-            // Normalized: turn 2 is 1.0 (>0.5), turn 3 is 0.1 (<0.2), turn 4 is 0.05 (<0.2)
-            mockScoreDocumentsBM25.mockReturnValue([10.0, 1.0, 0.5]);
+            mockScoreDocumentsBM25.mockReturnValue([10.0, 0.1, 0.05]);
 
-            // Pass limit = 10 to force orchestration
-            const result = await orchestrateContext(rawHistory, 'current prompt', 10);
+            const result = await orchestrateContext(rawHistory, 'current prompt', 200);
 
             const importantTurn = result.find(m => m.content.includes('Keep me RAW'));
             expect(importantTurn).toBeDefined();
@@ -160,20 +160,18 @@ describe('ACE Context Orchestrator & Parser', () => {
                 { role: 'system', content: 'System' }, // 0
                 { role: 'user', content: 'Task' }, // 1
                 { role: 'assistant', content: '{"thought":"Compact me","summary":"medium relevance","action":{"type":"read_file","path":"x.ts","content":"long details here"}}' }, // 2: Intermediate
-                { role: 'user', content: 'last action' }, // 3
-                { role: 'user', content: 'current prompt' } // 4
+                { role: 'user', content: 'High relevance reference' }, // 3: High relevance intermediate
+                { role: 'user', content: 'Large dummy ' + 'hello '.repeat(300) }, // 4: Large intermediate
+                { role: 'user', content: 'last action' }, // 5
+                { role: 'user', content: 'current prompt' } // 6
             ];
 
-            // Turn 2 is the only intermediate
-            // Score 3.0, Max 10.0 -> Normalized score is 0.3 (medium)
-            mockScoreDocumentsBM25.mockReturnValue([3.0]);
+            mockScoreDocumentsBM25.mockReturnValue([3.0, 10.0, 0.1]);
 
-            // Pass limit = 10 to force orchestration
-            const result = await orchestrateContext(rawHistory, 'current prompt', 10);
+            const result = await orchestrateContext(rawHistory, 'current prompt', 200);
 
             const compacted = result.find(m => m.role === 'assistant' && m.content.includes('Compact me'));
             expect(compacted).toBeDefined();
-            // It should be abstracted/compacted JSON
             expect(compacted?.content).toContain('Compact me');
             expect(compacted?.content).not.toContain('long details here'); // Abstract format of assistant reduces details
         });
@@ -183,18 +181,36 @@ describe('ACE Context Orchestrator & Parser', () => {
                 { role: 'system', content: 'System' }, // 0
                 { role: 'user', content: 'Task' }, // 1
                 { role: 'assistant', content: '{"thought":"Irrelevant","summary":"low"}' }, // 2
-                { role: 'user', content: 'last action' }, // 3
-                { role: 'user', content: 'current prompt' } // 4
+                { role: 'user', content: 'Large dummy ' + 'hello '.repeat(300) }, // 3
+                { role: 'user', content: 'last action' }, // 4
+                { role: 'user', content: 'current prompt' } // 5
             ];
 
-            mockScoreDocumentsBM25.mockReturnValue([0.1]);
+            mockScoreDocumentsBM25.mockReturnValue([0.1, 0.1]);
 
-            // Pass limit = 10 to force orchestration
-            const result = await orchestrateContext(rawHistory, 'current prompt', 10);
+            const result = await orchestrateContext(rawHistory, 'current prompt', 200);
 
-            // Turn 2 is dropped. Only pinned turns remain: 0, 1, 3, 4
+            // Turn 2 and 3 are dropped. Only pinned turns remain: 0, 1, 4, 5
             expect(result).toHaveLength(4);
             expect(result.find(m => m.content.includes('Irrelevant'))).toBeUndefined();
+        });
+
+        it('should allocate context budget slots using weighted priority score and drop remaining abstracts', async () => {
+            const rawHistory: ChatMessage[] = [
+                { role: 'system', content: 'System' }, // 0: Pinned
+                { role: 'user', content: 'Task' }, // 1: Pinned
+                { role: 'user', content: 'Intermediate 2' }, // 2: Oldest intermediate
+                { role: 'user', content: 'Intermediate 3' }, // 3: Middle intermediate
+                { role: 'user', content: 'Intermediate 4' }, // 4: Newest intermediate
+                { role: 'user', content: 'last action' }, // 5: Pinned (T-1)
+                { role: 'user', content: 'current prompt' } // 6: Pinned (T)
+            ];
+
+            mockScoreDocumentsBM25.mockReturnValue([2.0, 1.5, 0.5]);
+
+            const result = await orchestrateContext(rawHistory, 'current prompt', 10);
+
+            expect(result.length).toBeLessThan(7);
         });
     });
 });
