@@ -304,9 +304,45 @@ export async function orchestrateContext(
         pinnedIndices.add(firstUserMsgIdx); // Turn 1 (original task instruction)
     }
 
+    // Structural Deduplication Scan
+    const seenReadFiles = new Set<string>();
+    const seenCommands = new Set<string>();
+    const forceDropIndices = new Set<number>();
+
+    for (let i = rawHistory.length - 1; i >= 0; i--) {
+        const msg = rawHistory[i];
+        if (msg.role === 'user' || msg.role === 'system') {
+            if (msg.content.startsWith('[Action read_file(')) {
+                const pathMatch = msg.content.match(/read_file\(([^)]+)\)/);
+                const filePath = pathMatch ? pathMatch[1] : '';
+                if (filePath) {
+                    if (seenReadFiles.has(filePath)) {
+                        if (!pinnedIndices.has(i)) {
+                            forceDropIndices.add(i);
+                        }
+                    } else {
+                        seenReadFiles.add(filePath);
+                    }
+                }
+            } else if (msg.content.startsWith('[Action run_command(')) {
+                const cmdMatch = msg.content.match(/run_command\(([^)]+)\)/);
+                const cmd = cmdMatch ? cmdMatch[1] : '';
+                if (cmd) {
+                    if (seenCommands.has(cmd)) {
+                        if (!pinnedIndices.has(i)) {
+                            forceDropIndices.add(i);
+                        }
+                    } else {
+                        seenCommands.add(cmd);
+                    }
+                }
+            }
+        }
+    }
+
     const intermediateTurns: { msg: ChatMessage, originalIndex: number }[] = [];
     for (let i = 0; i < rawHistory.length; i++) {
-        if (!pinnedIndices.has(i)) {
+        if (!pinnedIndices.has(i) && !forceDropIndices.has(i)) {
             intermediateTurns.push({ msg: rawHistory[i], originalIndex: i });
         }
     }

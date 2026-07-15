@@ -103,6 +103,32 @@ describe('ACE Context Orchestrator & Parser', () => {
             expect(tTurn.content).toBe('current prompt');
         });
 
+        it('should drop duplicate read_file and run_command executions, keeping only the latest', async () => {
+            const rawHistory: ChatMessage[] = [
+                { role: 'system', content: 'System' }, // 0: Pinned
+                { role: 'user', content: 'Task' }, // 1: Pinned
+                { role: 'user', content: '[Action read_file(src/main.ts) Success]:\nold content' }, // 2: Duplicate read (should be dropped)
+                { role: 'user', content: '[Action run_command(npm test) Success]:\nold output' }, // 3: Duplicate command (should be dropped)
+                { role: 'user', content: '[Action read_file(src/main.ts) Success]:\nnew content' }, // 4: Latest read (should be kept based on budget/score)
+                { role: 'user', content: '[Action run_command(npm test) Success]:\nnew output' }, // 5: Pinned (T-1)
+                { role: 'user', content: 'current prompt' } // 6: Pinned (T)
+            ];
+
+            mockScoreDocumentsBM25.mockReturnValue([10.0, 10.0, 10.0, 10.0]); // High scores for intermediate turns
+
+            const result = await orchestrateContext(rawHistory, 'current prompt', 10); // low limit to trigger
+
+            // Verify Turn 2 and Turn 3 are dropped
+            const oldRead = result.find(m => m.content && m.content.includes('old content'));
+            const oldCmd = result.find(m => m.content && m.content.includes('old output'));
+            expect(oldRead).toBeUndefined();
+            expect(oldCmd).toBeUndefined();
+
+            // Verify Turn 4 is kept
+            const newRead = result.find(m => m.content && m.content.includes('src/main.ts'));
+            expect(newRead).toBeDefined();
+        });
+
         it('should expand intermediate turns to RAW if normalized score is high (> 0.5)', async () => {
             const rawHistory: ChatMessage[] = [
                 { role: 'system', content: 'System Prompt' }, // 0
