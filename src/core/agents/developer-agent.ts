@@ -167,6 +167,26 @@ export async function interactiveDeveloperAgent(options: {
     const isSubagent = !!options.taskId && (options.taskId.startsWith('subagent-') || subagentManager.hasSubagent(options.taskId));
     const projectRoot = process.cwd();
     const messageQueue = new MessageQueue();
+
+    let mailboxInterval: NodeJS.Timeout | null = null;
+    if (options.taskId || !isSubagent) {
+        const myId = options.taskId || 'parent';
+        mailboxInterval = setInterval(() => {
+            try {
+                const newMsgs = subagentManager.retrieveMessages(myId);
+                for (const msg of newMsgs) {
+                    const formatted = `<mailbox>\n  <message from="subagent" status="info">\n${msg}\n  </message>\n</mailbox>`;
+                    messageQueue.push({
+                        type: 'subagent_notification',
+                        content: formatted,
+                        timestamp: Date.now()
+                    });
+                }
+            } catch (e) {
+                // Ignore error during background polling
+            }
+        }, 2000);
+    }
     
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
     let activeConversationId = await conversationManager.getConversationId(conversationKey);
@@ -1009,6 +1029,9 @@ Your goal is to address the user's request:
         log.success('✅ Task Scope Completed');
         return finalResult;
     } finally {
+        if (mailboxInterval) {
+            clearInterval(mailboxInterval);
+        }
         activeOnCommandHandler = undefined;
         process.off('SIGINT', sigIntHandler);
         process.off('SIGTERM', sigTermHandler);

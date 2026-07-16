@@ -1327,5 +1327,36 @@ describe('DeveloperAgent', () => {
         loadSpy.mockRestore();
         getRawHistorySpy.mockRestore();
     });
+
+    it('should start a mailbox polling interval and push messages to message queue', async () => {
+        vi.useFakeTimers();
+        
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: {
+                type: 'complete_task',
+                summary: 'Finished successfully'
+            },
+            actions: [],
+            message: 'Done',
+            conversation_id: 'conv-polling-123'
+        });
+
+        const retrieveSpy = vi.spyOn(subagentManager, 'retrieveMessages').mockReturnValue(['Hello from subagent!']);
+
+        // Start the agent run in a promise
+        const agentPromise = interactiveDeveloperAgent({
+            taskId: 'polling-parent-task',
+            auto: true
+        });
+
+        // Fast-forward time to trigger the interval
+        await vi.advanceTimersByTimeAsync(2000);
+
+        // Resolve the agent promise
+        await agentPromise;
+
+        expect(retrieveSpy).toHaveBeenCalledWith('polling-parent-task');
+        vi.useRealTimers();
+    });
 });
 

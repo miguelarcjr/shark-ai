@@ -248,7 +248,7 @@ export class SubagentManager {
         if (!fs.existsSync(mailboxDir)) {
             return [];
         }
-        const files = fs.readdirSync(mailboxDir);
+        const files = fs.readdirSync(mailboxDir).filter(f => !f.endsWith('.processed'));
         // Sort files to process them in deterministic order (chronologically by filename prefix)
         files.sort();
         const messages: string[] = [];
@@ -264,9 +264,24 @@ export class SubagentManager {
                 // Ignore read/parse errors
             }
             try {
-                fs.unlinkSync(filePath);
+                // Rename to .processed (Ack) with Windows retry safety
+                const destPath = filePath + '.processed';
+                let retries = 3;
+                while (retries > 0) {
+                    try {
+                        fs.renameSync(filePath, destPath);
+                        break;
+                    } catch (err) {
+                        retries--;
+                        if (retries === 0) throw err;
+                        // small pause for Windows locks
+                        const waitTill = new Date(new Date().getTime() + 50);
+                        while (waitTill > new Date()) {}
+                    }
+                }
             } catch (e) {
-                // Ignore unlink errors
+                // Ignore rename errors but delete as fallback if rename fails persistently
+                try { fs.unlinkSync(filePath); } catch {}
             }
         }
         return messages;
@@ -277,7 +292,7 @@ export class SubagentManager {
         if (!fs.existsSync(mailboxDir)) {
             return [];
         }
-        const files = fs.readdirSync(mailboxDir);
+        const files = fs.readdirSync(mailboxDir).filter(f => !f.endsWith('.processed'));
         files.sort();
         const messages: string[] = [];
         for (const file of files) {
