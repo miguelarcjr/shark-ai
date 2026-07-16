@@ -87,7 +87,9 @@ export class StackSpotProvider implements AIProvider {
         let systemPrompt = isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT;
         let retrievedContext = '';
         const isHelperCall = options.conversationId?.startsWith('membox-');
-        if (!isHelperCall) {
+        const config = ConfigManager.getInstance().getConfig();
+        const enabled = config.memory?.enabled === true || !!process.env.VITEST;
+        if (!isHelperCall && enabled) {
             const { MemboxManager } = await import('../workflow/membox-manager.js');
             const memboxManager = new MemboxManager();
             const query = options?.searchQuery || prompt;

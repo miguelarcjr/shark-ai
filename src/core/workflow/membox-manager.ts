@@ -271,6 +271,10 @@ export class MemboxManager {
     }
 
     public async retrieveContext(query: string, rawTail: any[], traceEventTopN: number = 5): Promise<string> {
+        const config = ConfigManager.getInstance().getConfig();
+        const enabled = config.memory?.enabled === true || !!process.env.VITEST;
+        if (!enabled) return '';
+
         const boxes = this.loadBoxes();
         if (boxes.length === 0) return '';
 
@@ -343,7 +347,6 @@ export class MemboxManager {
         const topEvents = scoredEvents.slice(0, traceEventTopN);
 
         // Recuperar as traces correspondentes a esses eventos selecionados com orçamento de tokens
-        const config = ConfigManager.getInstance().getConfig();
         const compactionTokenLimit = config.memory?.compactionTokenLimit ?? 8000;
         const budget = Math.floor(compactionTokenLimit * 0.3); // 30% of compaction limit
 
@@ -463,8 +466,9 @@ export class MemboxManager {
         return prompt;
     }
     public async compactHistory(rawMessages: any[], apiProvider: any, conversationId: string, force: boolean = false): Promise<any[]> {
-        if (!process.env.VITEST) {
-            // Temporarily disabled memorybox compaction as requested by user
+        const config = ConfigManager.getInstance().getConfig();
+        const enabled = config.memory?.enabled === true || !!process.env.VITEST;
+        if (!enabled) {
             return rawMessages;
         }
         if (rawMessages.length < 10 && !force) return rawMessages;

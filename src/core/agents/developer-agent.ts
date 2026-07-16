@@ -193,6 +193,12 @@ export async function interactiveDeveloperAgent(options: {
 
     const onCommandHandler = async (command: string): Promise<boolean> => {
         if (command === '/compact') {
+            const config = ConfigManager.getInstance().getConfig();
+            const enabled = config.memory?.enabled === true || !!process.env.VITEST;
+            if (!enabled) {
+                tui.log.warning('🦈 A compactação de memória está desabilitada nas configurações.');
+                return true;
+            }
             tui.log.info('🦈 Compactando memória de forma manual...');
             const memboxManager = new MemboxManager();
             if (activeConversationId) {
@@ -455,9 +461,16 @@ Your goal is to address the user's request:
 
                 if (activeConversationId) {
                     const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
-                    const memboxManager = new MemboxManager();
-                    const searchQuery = nextPrompt || '';
-                    const retrievedContext = await memboxManager.retrieveContext(searchQuery, rawHistory);
+                    const config = ConfigManager.getInstance().getConfig();
+                    const enabled = config.memory?.enabled === true || !!process.env.VITEST;
+                    
+                    let retrievedContext = '';
+                    if (enabled) {
+                        const memboxManager = new MemboxManager();
+                        const searchQuery = nextPrompt || '';
+                        retrievedContext = await memboxManager.retrieveContext(searchQuery, rawHistory);
+                    }
+                    
                     const skillExtension = skillManager.getSystemInstructionExtension();
                     
                     let fullTextForEstimation = UNIFIED_SYSTEM_PROMPT;
@@ -475,13 +488,14 @@ Your goal is to address the user's request:
                     }
 
                     const totalTokens = encode(fullTextForEstimation).length;
-                    const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 8000;
+                    const compactionTokenLimit = config.memory?.compactionTokenLimit ?? 8000;
                     const effectiveLimit = compactionTokenLimit - 1000; // 1000 token output margin
 
-                    if (totalTokens >= effectiveLimit * 0.85) {
+                    if (enabled && totalTokens >= effectiveLimit * 0.85) {
                         if (rawHistory.length >= 10) {
                             try {
                                 log.info('🦈 Limite de context/tokens atingido. Iniciando compactação automática...');
+                                const memboxManager = new MemboxManager();
                                 const providerInstance = ProviderResolver.getProvider('developer_agent');
                                 const truncatedHistory = await memboxManager.compactHistory(rawHistory, providerInstance, activeConversationId);
                                 await HistoryManager.saveRawHistory(activeConversationId, truncatedHistory);

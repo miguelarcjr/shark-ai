@@ -161,7 +161,9 @@ export class OpenAICompatibleProvider implements AIProvider {
         
         // 3. Message N-1: Dynamic support context (RAG + Skill Extensions)
         const isHelperCall = conversationId.startsWith('membox-');
-        if (!isHelperCall) {
+        const config = ConfigManager.getInstance().getConfig();
+        const enabled = config.memory?.enabled === true || !!process.env.VITEST;
+        if (!isHelperCall && enabled) {
             const { MemboxManager } = await import('../workflow/membox-manager.js');
             const memboxManager = new MemboxManager();
             const query = options?.searchQuery || prompt;
@@ -177,6 +179,11 @@ export class OpenAICompatibleProvider implements AIProvider {
                     dynamicContent += '\n' + skillExtension;
                 }
                 requestMessages.push({ role: 'system', content: dynamicContent });
+            }
+        } else if (!isHelperCall) {
+            const skillExtension = skillManager.getSystemInstructionExtension();
+            if (skillExtension) {
+                requestMessages.push({ role: 'system', content: `--- DADOS E MEMÓRIA DE SUPORTE ---\n${skillExtension}` });
             }
         }
         

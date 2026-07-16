@@ -21,6 +21,7 @@ export const ConfigSchema = z.object({
     preferredStack: z.array(z.string()).default([]),
     memory: z.object({
         compactionTokenLimit: z.number().default(8000),
+        enabled: z.boolean().default(false),
     }).default({}),
     apiBaseUrl: z.string().optional(),
     language: z.enum(['pt-br', 'en-us', 'es-es']).default('pt-br'),
