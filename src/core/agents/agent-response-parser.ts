@@ -100,6 +100,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     type_name: z.string().nullable().optional(),
     role: z.string().nullable().optional(),
     task_file: z.string().nullable().optional(),
+    isSynthetic: z.boolean().nullable().optional(),
 }));
 
 export type AgentAction = z.infer<typeof AgentActionSchema>;
@@ -151,12 +152,14 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
                     action: {
                         type: 'talk_with_user',
                         content: systemMsg,
-                        path: ''
+                        path: '',
+                        isSynthetic: true
                     },
                     actions: [{
                         type: 'talk_with_user',
                         content: systemMsg,
-                        path: ''
+                        path: '',
+                        isSynthetic: true
                     }],
                     message: systemMsg
                 };
@@ -170,12 +173,14 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
                     action: {
                         type: 'talk_with_user',
                         content: rawResponse,
-                        path: ''
+                        path: '',
+                        isSynthetic: true
                     },
                     actions: [{
                         type: 'talk_with_user',
                         content: rawResponse,
-                        path: ''
+                        path: '',
+                        isSynthetic: true
                     }],
                     message: rawResponse
                 };
@@ -191,12 +196,14 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
                 action: {
                     type: 'talk_with_user',
                     content: systemMsg,
-                    path: ''
+                    path: '',
+                    isSynthetic: true
                 },
                 actions: [{
                     type: 'talk_with_user',
                     content: systemMsg,
-                    path: ''
+                    path: '',
+                    isSynthetic: true
                 }],
                 message: systemMsg
             };
@@ -245,12 +252,14 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
                         action: {
                             type: 'talk_with_user',
                             content: systemMsg,
-                            path: ''
+                            path: '',
+                            isSynthetic: true
                         },
                         actions: [{
                             type: 'talk_with_user',
                             content: systemMsg,
-                            path: ''
+                            path: '',
+                            isSynthetic: true
                         }],
                         summary: 'Parsing failed due to truncated JSON response'
                     };
@@ -311,7 +320,8 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         normalizedAction = {
             type: 'talk_with_user',
             content,
-            path: ''
+            path: '',
+            isSynthetic: true
         };
         normalizedActions = [normalizedAction];
     }

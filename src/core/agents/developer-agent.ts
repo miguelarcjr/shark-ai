@@ -519,7 +519,7 @@ Your goal is to address the user's request:
                 }
 
                 // Handle completion/failure messages
-                if (response.message && response.message.includes('TASK_COMPLETED:')) {
+                if (response.message && response.message.includes('TASK_COMPLETED:') && !isSubagent) {
                     const mainContent = response.message.split('TASK_COMPLETED:')[0].trim();
                     if (mainContent) {
                         log.info(colors.primary('🤖 Shark Dev:'));
@@ -613,9 +613,17 @@ Your goal is to address the user's request:
 
                 if (!action) {
                     if (isSubagent) {
-                        log.warning('No action returned by the subagent. Exiting loop.');
-                        keepGoing = false;
-                        break;
+                        const summary = 'No action returned by the subagent.';
+                        log.warning('No action returned by the subagent. Exiting loop with FAILED status.');
+                        subagentManager.updateSubagentSummary(options.taskId!, summary);
+                        subagentManager.terminateSubagent(options.taskId!, false);
+                        if (process.env.SHARK_PARENT_ID) {
+                            subagentManager.sendMessage(
+                                process.env.SHARK_PARENT_ID,
+                                `[Subagent Notification] Subagent ${process.env.SHARK_SUBAGENT_ROLE || 'Subagent'} (${options.taskId}) failed. Reason: No action returned in response.`
+                            );
+                        }
+                        return { success: false, summary };
                     }
 
                     if (response.message) {
@@ -841,19 +849,19 @@ Your goal is to address the user's request:
                         const hasCompleted = contentStr.includes('TASK_COMPLETED:');
                         
                         if (isSubagent) {
-                            // Subagents cannot prompt the user. Treat talk_with_user as completion
-                            const summary = hasCompleted ? contentStr.split('TASK_COMPLETED:')[1].trim() : contentStr;
+                            // Subagents cannot use talk_with_user or return raw text/invalid formats. Abort as FAILED.
+                            const summary = `Subagent returned invalid response format or tried to talk with user. Content: ${contentStr}`;
                             subagentManager.updateSubagentSummary(options.taskId!, summary);
+                            subagentManager.terminateSubagent(options.taskId!, false);
                             if (process.env.SHARK_PARENT_ID) {
-                                const mainContent = hasCompleted ? contentStr.split('TASK_COMPLETED:')[0].trim() : contentStr;
                                 subagentManager.sendMessage(
                                     process.env.SHARK_PARENT_ID,
-                                    `[Subagent Notification] Subagent ${process.env.SHARK_SUBAGENT_ROLE || 'Subagent'} (${options.taskId}) completed.\nResult Details:\n${mainContent}`
+                                    `[Subagent Notification] Subagent ${process.env.SHARK_SUBAGENT_ROLE || 'Subagent'} (${options.taskId}) failed. Reason: Returned raw text or unsupported action instead of valid JSON.`
                                 );
                             }
                             finalSummary = summary;
                             keepGoing = false;
-                            break;
+                            return { success: false, summary };
                         }
 
                         if (hasCompleted) {
@@ -924,7 +932,7 @@ Your goal is to address the user's request:
                 }
                 else if (action.type === 'complete_task') {
                     const detailedContent = action.content || '';
-                    const taskSummary = action.summary || 'Task completed successfully.';
+                    const taskSummary = action.summary || response.summary || 'Task completed successfully.';
                     
                     if (isSubagent) {
                         subagentManager.updateSubagentSummary(options.taskId!, taskSummary);

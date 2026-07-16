@@ -467,9 +467,13 @@ describe('DeveloperAgent', () => {
                 conversation_id: 'conv-123',
             })
             .mockResolvedValueOnce({
-                action: null,
+                action: {
+                    type: 'complete_task',
+                    content: 'Detailed finish',
+                    summary: 'Finished testing subagent actions',
+                },
                 actions: [],
-                message: 'TASK_COMPLETED: Finished testing subagent actions',
+                message: 'Task completed',
                 conversation_id: 'conv-123',
             });
 
@@ -644,14 +648,15 @@ describe('DeveloperAgent', () => {
         );
     });
 
-    it('should complete and return summary without prompting if subagent receives talk_with_user', async () => {
+    it('should complete and return summary without prompting if subagent receives complete_task', async () => {
         vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
             action: {
-                type: 'talk_with_user',
-                content: 'TASK_COMPLETED: Final subagent result',
+                type: 'complete_task',
+                content: 'Some details',
+                summary: 'Final subagent result',
             },
             actions: [],
-            message: 'Talk to user',
+            message: 'Complete task',
             conversation_id: 'conv-sub-talk-1',
         });
 
@@ -680,7 +685,7 @@ describe('DeveloperAgent', () => {
 
         // Verify tui.text was never called
         expect(tui.text).not.toHaveBeenCalled();
-        expect(result).toEqual({ success: true, summary: 'Task completed without summary.' });
+        expect(result).toEqual({ success: false, summary: 'No action returned by the subagent.' });
     });
 
     it('should auto-approve error recovery without prompting if subagent receives talk_with_user with [SYSTEM ERROR]', async () => {
@@ -696,11 +701,12 @@ describe('DeveloperAgent', () => {
             })
             .mockResolvedValueOnce({
                 action: {
-                    type: 'talk_with_user',
-                    content: 'TASK_COMPLETED: Recovered successfully',
+                    type: 'complete_task',
+                    content: 'recovered details',
+                    summary: 'Recovered successfully',
                 },
                 actions: [],
-                message: 'Talk to user completion',
+                message: 'Complete task completion',
                 conversation_id: 'conv-sub-error-1',
             });
 
@@ -786,9 +792,13 @@ describe('DeveloperAgent', () => {
         });
 
         vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
-            action: null,
+            action: {
+                type: 'complete_task',
+                content: 'some details',
+                summary: 'Done with long roles',
+            },
             actions: [],
-            message: 'TASK_COMPLETED: Done with long roles',
+            message: 'Complete task',
             conversation_id: 'conv-subagent-long-role',
         });
 
@@ -1054,8 +1064,9 @@ describe('DeveloperAgent', () => {
             })
             .mockResolvedValueOnce({
                 action: {
-                    type: 'talk_with_user',
-                    content: 'TASK_COMPLETED: Recovered successfully',
+                    type: 'complete_task',
+                    content: 'recovered details',
+                    summary: 'Recovered successfully',
                 },
                 actions: [],
                 message: 'Turn 2 success',
@@ -1136,11 +1147,12 @@ describe('DeveloperAgent', () => {
             auto: true,
         });
 
-        expect(result).toEqual({ success: true, summary: 'Respondi ao cumprimento' });
-        expect(updateSummarySpy).toHaveBeenCalledWith('subagent-talk-task', 'Respondi ao cumprimento');
+        expect(result.success).toBe(false);
+        expect(result.summary).toContain('Subagent returned invalid response format');
+        expect(updateSummarySpy).toHaveBeenCalledWith('subagent-talk-task', expect.stringContaining('Subagent returned invalid response format'));
         expect(sendMessageSpy).toHaveBeenCalledWith(
             'parent-agent-id',
-            expect.stringContaining('[Subagent Notification] Subagent Developer (subagent-talk-task) completed.\nResult Details:\nBom dia! Estou pronto.')
+            expect.stringContaining('[Subagent Notification] Subagent Developer (subagent-talk-task) failed. Reason: Returned raw text or unsupported action')
         );
 
         // Clean up environment variables
@@ -1168,11 +1180,12 @@ describe('DeveloperAgent', () => {
             auto: true,
         });
 
-        expect(result).toEqual({ success: true, summary: 'Done raw task' });
-        expect(updateSummarySpy).toHaveBeenCalledWith('subagent-raw-task', 'Done raw task');
+        expect(result.success).toBe(false);
+        expect(result.summary).toContain('No action returned by the subagent.');
+        expect(updateSummarySpy).toHaveBeenCalledWith('subagent-raw-task', expect.stringContaining('No action returned by the subagent.'));
         expect(sendMessageSpy).toHaveBeenCalledWith(
             'parent-agent-id',
-            expect.stringContaining('[Subagent Notification] Subagent Developer (subagent-raw-task) completed.\nResult Details:\nDoing raw task.')
+            expect.stringContaining('[Subagent Notification] Subagent Developer (subagent-raw-task) failed. Reason: No action returned in response.')
         );
 
         // Clean up environment variables

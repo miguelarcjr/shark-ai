@@ -136,7 +136,8 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
           "type": ["integer", "null"],
           "description": "Tempo maximo em segundos para aguardar atualizacoes."
         },
-        "task_file": { "type": ["string", "null"] }
+        "task_file": { "type": ["string", "null"] },
+        "summary": { "type": ["string", "null"] }
       },
       "required": ["type"]
     },
@@ -182,7 +183,8 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
         "command": { "type": ["string", "null"] },
         "query": { "type": ["string", "null"] },
         "tool_name": { "type": ["string", "null"] },
-        "tool_args": { "type": ["string", "null"] }
+        "tool_args": { "type": ["string", "null"] },
+        "summary": { "type": ["string", "null"] }
       },
       "required": ["type"]
     },
