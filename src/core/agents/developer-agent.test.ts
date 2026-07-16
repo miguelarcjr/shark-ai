@@ -3,6 +3,8 @@ import { interactiveDeveloperAgent, waitForInputOrNotification } from './develop
 import { MessageQueue } from '../workflow/message-queue.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
+import { workflowManager } from '../workflow/workflow-manager.js';
+import { HistoryManager } from '../workflow/history-manager.js';
 import { AIProvider } from '../api/provider.interface.js';
 import { AnchorStateManager } from '../workflow/anchor-state-manager.js';
 import { tui } from '../../ui/tui.js';
@@ -34,6 +36,28 @@ vi.mock('../workflow/conversation-manager.js', () => ({
         saveConversationId: vi.fn(),
     },
 }));
+
+vi.mock('node:fs', async (importOriginal) => {
+    const original = await importOriginal<typeof import('node:fs')>();
+    const mockExistsSync = vi.fn(original.default.existsSync);
+    const mockReaddirSync = vi.fn(original.default.readdirSync);
+    const mockStatSync = vi.fn(original.default.statSync);
+    const mockReadFileSync = vi.fn(original.default.readFileSync);
+    return {
+        ...original,
+        existsSync: mockExistsSync,
+        readdirSync: mockReaddirSync,
+        statSync: mockStatSync,
+        readFileSync: mockReadFileSync,
+        default: {
+            ...original.default,
+            existsSync: mockExistsSync,
+            readdirSync: mockReaddirSync,
+            statSync: mockStatSync,
+            readFileSync: mockReadFileSync,
+        }
+    };
+});
 
 vi.mock('../../ui/tui.js', () => {
     const mockSpinner = {
@@ -1238,6 +1262,68 @@ describe('DeveloperAgent', () => {
 
         expect(tui.text).toHaveBeenCalledTimes(1);
         expect(result).toEqual({ success: true, summary: 'Finished successfully' });
+    });
+
+    it('should handle /chat command, list conversations and switch conversation key', async () => {
+        const fsMock = await import('node:fs');
+        vi.mocked(fsMock.default.existsSync).mockReturnValue(true);
+        vi.mocked(fsMock.default.readdirSync).mockReturnValue([
+            'test-convo-123.raw.json' as any
+        ]);
+        vi.mocked(fsMock.default.statSync).mockReturnValue({
+            mtime: new Date('2026-07-16T12:00:00Z')
+        } as any);
+        vi.mocked(fsMock.default.readFileSync).mockReturnValue(
+            JSON.stringify([
+                { role: 'system', content: 'system instructions' },
+                { role: 'user', content: 'hello agent' },
+                { role: 'assistant', content: 'hello user' }
+            ])
+        );
+
+        const loadSpy = vi.spyOn(workflowManager, 'load').mockResolvedValue({
+            projectId: '938a7487-8061-46dc-b592-2b655989c1e7',
+            projectName: 'Test Project',
+            techStack: 'nextjs',
+            currentStage: 'business_analysis',
+            stageStatus: 'pending',
+            lastUpdated: '2026-01-09T19:48:58.866Z',
+            conversations: {
+                developer_agent: 'test-convo-123'
+            },
+            artifacts: []
+        });
+
+        const getRawHistorySpy = vi.spyOn(HistoryManager, 'getRawHistory').mockResolvedValue([
+            { role: 'system', content: 'system instructions' },
+            { role: 'user', content: 'hello agent' },
+            { role: 'assistant', content: 'hello user' }
+        ]);
+
+        vi.mocked(tui.text)
+            .mockResolvedValueOnce('/chat')
+            .mockResolvedValueOnce('cancel'); // cancel prompt loop after command
+
+        vi.mocked(tui.select).mockResolvedValueOnce('test-convo-123');
+        vi.mocked(tui.isCancel).mockReturnValue(false);
+
+        await interactiveDeveloperAgent({
+            taskInstruction: undefined,
+            auto: false
+        });
+
+        expect(tui.select).toHaveBeenCalled();
+        expect(conversationManager.saveConversationId).toHaveBeenCalledWith(
+            expect.any(String),
+            'test-convo-123'
+        );
+
+        vi.mocked(fsMock.default.existsSync).mockReset();
+        vi.mocked(fsMock.default.readdirSync).mockReset();
+        vi.mocked(fsMock.default.statSync).mockReset();
+        vi.mocked(fsMock.default.readFileSync).mockReset();
+        loadSpy.mockRestore();
+        getRawHistorySpy.mockRestore();
     });
 });
 

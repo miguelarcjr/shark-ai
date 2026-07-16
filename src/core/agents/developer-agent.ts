@@ -1,5 +1,6 @@
 import { ProviderResolver } from '../api/provider-resolver.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
+import { workflowManager } from '../workflow/workflow-manager.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
 import { AnchorStateManager } from '../workflow/anchor-state-manager.js';
@@ -167,6 +168,127 @@ export async function interactiveDeveloperAgent(options: {
     const projectRoot = process.cwd();
     const messageQueue = new MessageQueue();
     
+    const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
+    let activeConversationId = await conversationManager.getConversationId(conversationKey);
+
+    const onCommandHandler = async (command: string): Promise<boolean> => {
+        if (command === '/compact') {
+            tui.log.info('🦈 Compactando memória de forma manual...');
+            const memboxManager = new MemboxManager();
+            if (activeConversationId) {
+                try {
+                    const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                    const provider = ProviderResolver.getProvider('developer_agent');
+                    const truncatedHistory = await memboxManager.compactHistory(rawHistory, provider, activeConversationId, true);
+                    await HistoryManager.saveRawHistory(activeConversationId, truncatedHistory);
+                    tui.log.success('✔ Memória compactada e truncated com sucesso!');
+                } catch (error: any) {
+                    tui.log.error(`Erro durante a compactação: ${error.message}`);
+                }
+            } else {
+                tui.log.warning('Nenhuma conversação ativa para compactar.');
+            }
+            return true;
+        }
+        if (command === '/context') {
+            if (activeConversationId) {
+                const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                const totalTokensEst = Math.ceil(JSON.stringify(rawHistory).length / 4);
+                tui.log.info(`📊 Histórico ativo: ${rawHistory.length} mensagens`);
+                tui.log.info(`📊 Tamanho estimado: ${totalTokensEst} / 8000 tokens (${Math.round((totalTokensEst / 8000) * 100)}% do limite)`);
+            } else {
+                tui.log.warning('Nenhuma conversação ativa para analisar.');
+            }
+            return true;
+        }
+        if (command === '/chat') {
+            const historyDir = path.resolve(process.cwd(), '_sharkrc', 'history');
+            if (fs.existsSync(historyDir)) {
+                const files = fs.readdirSync(historyDir);
+                const rawFiles = files.filter(f => f.endsWith('.raw.json') || f.endsWith('.json'));
+                const conversationIds = Array.from(new Set(rawFiles.map(f => f.replace('.raw.json', '').replace('.json', ''))));
+
+                if (conversationIds.length === 0) {
+                    tui.log.warning('Nenhuma conversa encontrada em _sharkrc/history.');
+                    return true;
+                }
+
+                const state = await workflowManager.load();
+                const conversationsMap = state?.conversations || {};
+                const idToAgentMap: Record<string, string> = {};
+                for (const [key, id] of Object.entries(conversationsMap)) {
+                    if (typeof id === 'string') {
+                        idToAgentMap[id] = key;
+                    }
+                }
+
+                const items = [];
+                for (const id of conversationIds) {
+                    const rawPath = path.resolve(historyDir, `${id}.raw.json`);
+                    const jsonPath = path.resolve(historyDir, `${id}.json`);
+                    const filePath = fs.existsSync(rawPath) ? rawPath : jsonPath;
+
+                    try {
+                        const stats = fs.statSync(filePath);
+                        const content = fs.readFileSync(filePath, 'utf-8');
+                        const messages = JSON.parse(content);
+                        if (Array.isArray(messages)) {
+                            const firstUser = messages.find((m: any) => m.role === 'user')?.content || '';
+                            const agentKey = idToAgentMap[id] || 'standalone';
+                            items.push({
+                                id,
+                                agentKey,
+                                mtime: stats.mtime,
+                                firstUser
+                            });
+                        }
+                    } catch {}
+                }
+
+                items.sort((a, b) => b.mtime.getTime() - a.mtime.getTime());
+
+                const options = items.map(item => {
+                    const shortId = item.id.substring(0, 8);
+                    const dateStr = item.mtime.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + ' ' + item.mtime.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                    const snippet = item.firstUser.replace(/\n/g, ' ').substring(0, 60);
+                    const topic = snippet ? ` | Assunto: "${snippet}"` : '';
+                    return {
+                        value: item.id,
+                        label: `[${shortId}...] (${item.agentKey}) | ${dateStr}${topic}`
+                    };
+                });
+
+                const selectedId = await tui.select({
+                    message: 'Selecione a conversa para carregar:',
+                    options
+                });
+
+                if (!tui.isCancel(selectedId) && selectedId) {
+                    activeConversationId = selectedId as string;
+                    await conversationManager.saveConversationId(conversationKey, activeConversationId);
+                    tui.log.success(`✔ Alternado para a conversa: ${activeConversationId.substring(0, 8)}...`);
+
+                    const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                    const nonSystem = rawHistory.filter(m => m.role !== 'system');
+                    const lastMsgs = nonSystem.slice(-4);
+
+                    tui.log.info(colors.dim('\n--- HISTÓRICO RECENTE ---'));
+                    for (const msg of lastMsgs) {
+                        const sender = msg.role === 'user' ? colors.warning('👤 [Você]') : colors.primary('🤖 [Shark Dev]');
+                        const text = msg.content.substring(0, 300) + (msg.content.length > 300 ? '...' : '');
+                        console.log(`${sender}: ${text}`);
+                    }
+                    tui.log.info(colors.dim('------------------------\n'));
+                }
+            } else {
+                tui.log.warning('Diretório de histórico não encontrado.');
+            }
+            return true;
+        }
+        return false;
+    };
+    activeOnCommandHandler = onCommandHandler;
+
     let currentTask = options.taskInstruction;
     if (!currentTask) {
         if (isSubagent) {
@@ -243,44 +365,7 @@ Your goal is to address the user's request:
     let nextPrompt = basePrompt;
     let keepGoing = true;
     let finalSummary = "";
-    const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
     const anchorManager = new AnchorStateManager();
-
-    const onCommandHandler = async (command: string): Promise<boolean> => {
-        if (command === '/compact') {
-            tui.log.info('🦈 Compactando memória de forma manual...');
-            const memboxManager = new MemboxManager();
-            const existingConversationId = await conversationManager.getConversationId(conversationKey);
-            if (existingConversationId) {
-                try {
-                    const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
-                    const provider = ProviderResolver.getProvider('developer_agent');
-                    const truncatedHistory = await memboxManager.compactHistory(rawHistory, provider, existingConversationId, true);
-                    await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
-                    tui.log.success('✔ Memória compactada e truncada com sucesso!');
-                } catch (error: any) {
-                    tui.log.error(`Erro durante a compactação: ${error.message}`);
-                }
-            } else {
-                tui.log.warning('Nenhuma conversação ativa para compactar.');
-            }
-            return true;
-        }
-        if (command === '/context') {
-            const existingConversationId = await conversationManager.getConversationId(conversationKey);
-            if (existingConversationId) {
-                const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
-                const totalTokensEst = Math.ceil(JSON.stringify(rawHistory).length / 4);
-                tui.log.info(`📊 Histórico ativo: ${rawHistory.length} mensagens`);
-                tui.log.info(`📊 Tamanho estimado: ${totalTokensEst} / 8000 tokens (${Math.round((totalTokensEst / 8000) * 100)}% do limite)`);
-            } else {
-                tui.log.warning('Nenhuma conversação ativa para analisar.');
-            }
-            return true;
-        }
-        return false;
-    };
-    activeOnCommandHandler = onCommandHandler;
 
     const spinner = tui.spinner();
 
@@ -341,10 +426,8 @@ Your goal is to address the user's request:
                     : '🦈 Shark Dev working...';
                 spinner.start(spinnerText);
 
-                const existingConversationId = await conversationManager.getConversationId(conversationKey);
-                
-                if (existingConversationId) {
-                    const rawHistory = await HistoryManager.getRawHistory(existingConversationId);
+                if (activeConversationId) {
+                    const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
                     const memboxManager = new MemboxManager();
                     const searchQuery = nextPrompt || '';
                     const retrievedContext = await memboxManager.retrieveContext(searchQuery, rawHistory);
@@ -373,8 +456,8 @@ Your goal is to address the user's request:
                             try {
                                 log.info('🦈 Limite de context/tokens atingido. Iniciando compactação automática...');
                                 const providerInstance = ProviderResolver.getProvider('developer_agent');
-                                const truncatedHistory = await memboxManager.compactHistory(rawHistory, providerInstance, existingConversationId);
-                                await HistoryManager.saveRawHistory(existingConversationId, truncatedHistory);
+                                const truncatedHistory = await memboxManager.compactHistory(rawHistory, providerInstance, activeConversationId);
+                                await HistoryManager.saveRawHistory(activeConversationId, truncatedHistory);
                                 log.success('✔ Compactação automática concluída!');
                             } catch (error: any) {
                                 log.error(`⚠️ Falha na compactação automática: ${error.message}. Prosseguindo sem compactação.`);
@@ -388,13 +471,14 @@ Your goal is to address the user's request:
 
                 const provider = ProviderResolver.getProvider('developer_agent');
                 const response = await provider.streamChat(promptToSend, {
-                    conversationId: existingConversationId,
+                    conversationId: activeConversationId,
                     agentType: 'developer_agent',
                     searchQuery: nextPrompt,
                     onChunk: () => {}
                 });
 
                 if (response.conversation_id) {
+                    activeConversationId = response.conversation_id;
                     await conversationManager.saveConversationId(conversationKey, response.conversation_id);
                 }
 
