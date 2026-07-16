@@ -538,6 +538,39 @@ export class SubagentManager {
 
         return invoked;
     }
+
+    parseTaskBrief(filePath: string): { type: string, role: string, prompt: string } {
+        if (!fs.existsSync(filePath)) {
+            throw new Error(`Briefing file not found at ${filePath}`);
+        }
+        const content = fs.readFileSync(filePath, 'utf-8');
+        const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n([\s\S]*)$/);
+        if (!match) {
+            throw new Error('Briefing file does not contain valid YAML frontmatter delimiters (---)');
+        }
+        const yamlStr = match[1];
+        const prompt = match[2].trim();
+
+        const lines = yamlStr.split('\n');
+        let type = '';
+        let role = '';
+        for (const line of lines) {
+            const parts = line.split(':');
+            if (parts.length >= 2) {
+                const key = parts[0].trim();
+                const value = parts.slice(1).join(':').trim();
+                if (key === 'type') type = value;
+                if (key === 'role') role = value;
+            }
+        }
+
+        if (!type || !role) {
+            throw new Error('Briefing YAML frontmatter must define both "type" and "role" properties');
+        }
+
+        return { type, role, prompt };
+    }
 }
 
 export const subagentManager = new SubagentManager();
+

@@ -382,5 +382,29 @@ describe('SubagentManager', () => {
         const msgs = subagentManager.retrieveMessages(parentId);
         expect(msgs[0]).toContain('terminated by the Watchdog');
     });
+
+    describe('parseTaskBrief', () => {
+        it('should parse valid frontmatter and return metadata and body', () => {
+            const filePath = path.resolve(process.cwd(), 'test-brief.md');
+            fs.writeFileSync(filePath, '---\ntype: developer_agent\nrole: Reviewer\n---\n# Prompt\nExecute review', 'utf-8');
+            
+            const result = (subagentManager as any).parseTaskBrief(filePath);
+            expect(result).toEqual({
+                type: 'developer_agent',
+                role: 'Reviewer',
+                prompt: '# Prompt\nExecute review'
+            });
+            fs.unlinkSync(filePath);
+        });
+
+        it('should throw error for invalid frontmatter', () => {
+            const filePath = path.resolve(process.cwd(), 'test-brief-invalid.md');
+            fs.writeFileSync(filePath, 'no frontmatter here', 'utf-8');
+            
+            expect(() => (subagentManager as any).parseTaskBrief(filePath)).toThrow();
+            fs.unlinkSync(filePath);
+        });
+    });
 });
+
 

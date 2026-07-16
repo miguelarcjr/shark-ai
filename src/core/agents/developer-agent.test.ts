@@ -460,11 +460,7 @@ describe('DeveloperAgent', () => {
             .mockResolvedValueOnce({
                 action: {
                     type: 'invoke_subagent',
-                    Subagents: [{
-                        TypeName: 'test-writer',
-                        Role: 'test code author',
-                        Prompt: 'Write a unit test for subagent manager',
-                    }],
+                    task_file: '.shark/sdd/task-brief.md'
                 },
                 actions: [],
                 message: 'Invoking test writer subagent',
@@ -478,6 +474,11 @@ describe('DeveloperAgent', () => {
             });
 
         // Spy on subagentManager methods
+        const parseSpy = vi.spyOn(subagentManager, 'parseTaskBrief').mockReturnValue({
+            type: 'test-writer',
+            role: 'test code author',
+            prompt: 'Write a unit test for subagent manager',
+        });
         const invokeSpy = vi.spyOn(subagentManager, 'invokeSubagents').mockResolvedValue([{
             id: 'subagent-abc',
             TypeName: 'test-writer',
@@ -490,6 +491,7 @@ describe('DeveloperAgent', () => {
             auto: true,
         });
 
+        expect(parseSpy).toHaveBeenCalledWith(expect.stringContaining('task-brief.md'));
         expect(invokeSpy).toHaveBeenCalledWith([{
             TypeName: 'test-writer',
             Role: 'test code author',

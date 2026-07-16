@@ -880,11 +880,20 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'invoke_subagent') {
-                    const subagentsToInvoke = action.Subagents || [];
-                    log.info(`🚀 Invoking ${subagentsToInvoke.length} subagent(s)`);
+                    const taskFile = action.task_file;
+                    if (!taskFile) {
+                        throw new Error('Action invoke_subagent requires "task_file" parameter');
+                    }
+                    const resolvedPath = path.resolve(process.cwd(), taskFile);
+                    log.info(`🚀 Invoking subagent from brief: ${resolvedPath}`);
+                    const parsed = subagentManager.parseTaskBrief(resolvedPath);
                     const parentId = options.taskId || 'parent';
-                    const invoked = await subagentManager.invokeSubagents(subagentsToInvoke, parentId, messageQueue);
-                    resultMsg = `[Action invoke_subagent Success]: Invoked subagents:\n${invoked.map(s => `- ID: ${s.id}, Type: ${s.TypeName}, Role: ${s.Role}`).join('\n')}`;
+                    const invoked = await subagentManager.invokeSubagents(
+                        [{ TypeName: parsed.type, Role: parsed.role, Prompt: parsed.prompt }],
+                        parentId,
+                        messageQueue
+                    );
+                    resultMsg = `[Action invoke_subagent Success]: Invoked subagent:\n${invoked.map(s => `- ID: ${s.id}, Type: ${s.TypeName}, Role: ${s.Role}`).join('\n')}`;
                 }
                 else if (action.type === 'complete_task') {
                     const detailedContent = action.content || '';
