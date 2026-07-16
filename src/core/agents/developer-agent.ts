@@ -342,6 +342,13 @@ export async function interactiveDeveloperAgent(options: {
         message: (msg: string) => tui.log.message(`${subagentPrefix}${msg}`),
     };
 
+    if (isSubagent && process.send) {
+        process.on('disconnect', () => {
+            log.warning('Parent process disconnected. Exiting to prevent zombie process...');
+            process.exit(1);
+        });
+    }
+
     // Load context if available
     let contextContent = '';
     const defaultContextPath = path.resolve(projectRoot, '_sharkrc', 'project-context.md');

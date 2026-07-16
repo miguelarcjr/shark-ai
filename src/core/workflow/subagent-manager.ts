@@ -408,7 +408,23 @@ export class SubagentManager {
                         }
                         packageRoot = parent;
                     }
-                    const pathToSharkJs = path.resolve(packageRoot, 'dist', 'bin', 'shark.js');
+                    let pathToSharkJs = path.resolve(packageRoot, 'dist', 'bin', 'shark.js');
+                    if (!fs.existsSync(pathToSharkJs)) {
+                        // Fallback relative to current module directory
+                        const fallbackRelativeDist = path.resolve(__dirname, '..', '..', 'dist', 'bin', 'shark.js');
+                        const fallbackRelative = path.resolve(__dirname, '..', '..', 'bin', 'shark.js');
+                        if (fs.existsSync(fallbackRelativeDist)) {
+                            pathToSharkJs = fallbackRelativeDist;
+                        } else if (fs.existsSync(fallbackRelative)) {
+                            pathToSharkJs = fallbackRelative;
+                        } else {
+                            // Fallback relative to project root
+                            const fallbackProject = path.resolve(projectRoot, 'dist', 'bin', 'shark.js');
+                            if (fs.existsSync(fallbackProject)) {
+                                pathToSharkJs = fallbackProject;
+                            }
+                        }
+                    }
 
                     let customContext = `Você está executando em modo SUBAGENTE.\n`;
                     customContext += `- Seu ID é: ${id}\n`;
@@ -434,6 +450,11 @@ export class SubagentManager {
                             SHARK_PARENT_ID: parentId,
                             SHARK_SUBAGENT_ROLE: sub.Role
                         }
+                    });
+
+                    child.on('error', (err) => {
+                        this.updateSubagentSummary(id, `Spawn Error: ${err.message}`);
+                        this.sendMessage(parentId, `[Subagent Notification] Subagent ${sub.Role} (${id}) failed to start. Error: ${err.message}`);
                     });
 
                     // Store child process reference to allow termination (kill/kill_all)
@@ -473,7 +494,8 @@ export class SubagentManager {
                         tui.log.message(`\nSubagent ${sub.Role} (${id}) cancelled.`);
                     } else if (!success) {
                         this.updateSubagentSummary(id, 'Failed');
-                        const fallbackMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) has finished with status: FAILED. Summary: Subagent process exited with code ${exitCode}`;
+                        const lastLogs = this.getSubagentLogs(id, 15);
+                        const fallbackMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) failed (Exit Code: ${exitCode}). Last console logs:\n${lastLogs}`;
                         const mailboxDir = path.resolve(projectRoot, '.shark', 'mailbox', parentId);
                         const hasMessages = fs.existsSync(mailboxDir) && fs.readdirSync(mailboxDir).length > 0;
                         if (!hasMessages) {
@@ -488,7 +510,9 @@ export class SubagentManager {
                         if (subagentMsg) {
                             tui.log.message(`\n${subagentMsg}`);
                         } else {
-                            tui.log.success(`Subagent ${sub.Role} (${id}) completed successfully.`);
+                            const completedMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) completed successfully but did not return detailed results.`;
+                            this.sendMessage(parentId, completedMsg);
+                            tui.log.success(completedMsg);
                         }
                     }
 
