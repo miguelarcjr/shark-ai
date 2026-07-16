@@ -101,6 +101,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     role: z.string().nullable().optional(),
     task_file: z.string().nullable().optional(),
     isSynthetic: z.boolean().nullable().optional(),
+    summary: z.string().nullable().optional(),
 }));
 
 export type AgentAction = z.infer<typeof AgentActionSchema>;
