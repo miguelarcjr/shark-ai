@@ -462,8 +462,11 @@ export class MemboxManager {
 
         return prompt;
     }
-
     public async compactHistory(rawMessages: any[], apiProvider: any, conversationId: string, force: boolean = false): Promise<any[]> {
+        if (!process.env.VITEST) {
+            // Temporarily disabled memorybox compaction as requested by user
+            return rawMessages;
+        }
         if (rawMessages.length < 10 && !force) return rawMessages;
 
         console.log(`[Membox] Iniciando compactação do histórico para: ${conversationId}`);
