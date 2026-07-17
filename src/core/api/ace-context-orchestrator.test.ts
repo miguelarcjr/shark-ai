@@ -212,5 +212,24 @@ describe('ACE Context Orchestrator & Parser', () => {
 
             expect(result.length).toBeLessThan(7);
         });
+
+        it('should always pin the latest human user message as RAW', async () => {
+            const rawHistory: ChatMessage[] = [
+                { role: 'system', content: 'System Prompt' }, // 0: Pinned (Turn 0)
+                { role: 'user', content: 'Original Task' }, // 1: Pinned (Turn 1)
+                { role: 'user', content: 'Please modify the X function' }, // 2: Latest human user message (must be pinned!)
+                { role: 'assistant', content: '{"thought":"t1","summary":"s1"}' }, // 3: Intermediate assistant thought (subject to drop/abstract)
+                { role: 'user', content: '[Action read_file(x) Success]' }, // 4: Tool output (Pinned Turn T-1)
+                { role: 'user', content: '[Action run_command(npm test) Success]' } // 5: Tool output (Pinned Turn T)
+            ];
+
+            mockScoreDocumentsBM25.mockReturnValue([0.01, 0.01]);
+
+            const result = await orchestrateContext(rawHistory, '[Action run_command(npm test) Success]', 10);
+
+            // Verify Turn 2 (latest human message) remains RAW
+            const latestHuman = result.find(m => m.content === 'Please modify the X function');
+            expect(latestHuman).toBeDefined();
+        });
     });
 });

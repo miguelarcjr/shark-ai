@@ -299,9 +299,22 @@ export async function orchestrateContext(
     if (rawHistory.length > 2) {
         pinnedIndices.add(rawHistory.length - 2); // Turn T-1 (previous tool output or assistant thought)
     }
-    const firstUserMsgIdx = rawHistory.findIndex((m, idx) => m.role === 'user' && idx > 0);
+    const firstUserMsgIdx = rawHistory.findIndex((m, idx) => m.role === 'user' && !m.content.startsWith('[Action ') && idx > 0);
     if (firstUserMsgIdx !== -1) {
         pinnedIndices.add(firstUserMsgIdx); // Turn 1 (original task instruction)
+    }
+
+    // Pin the latest human user message (actual user instruction, not a tool result)
+    let latestHumanUserMsgIdx = -1;
+    for (let i = rawHistory.length - 1; i >= 0; i--) {
+        const msg = rawHistory[i];
+        if (msg.role === 'user' && !msg.content.startsWith('[Action ')) {
+            latestHumanUserMsgIdx = i;
+            break;
+        }
+    }
+    if (latestHumanUserMsgIdx !== -1) {
+        pinnedIndices.add(latestHumanUserMsgIdx);
     }
 
     // Structural Deduplication Scan
