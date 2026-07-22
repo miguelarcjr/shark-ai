@@ -950,6 +950,7 @@ Your goal is to address the user's request:
                     
                     if (isSubagent) {
                         subagentManager.updateSubagentSummary(options.taskId!, taskSummary);
+                        subagentManager.terminateSubagent(options.taskId!, true);
                         // Send the detailed markdown content to parent mailbox instead of just a 1-sentence summary
                         if (process.env.SHARK_PARENT_ID) {
                             subagentManager.sendMessage(
@@ -1047,6 +1048,7 @@ Your goal is to address the user's request:
 
         const finalResult = { success: true, summary: finalSummary || "Task completed without summary." };
         if (options.taskId && process.env.SHARK_PARENT_ID) {
+            subagentManager.terminateSubagent(options.taskId, true);
             const parentId = process.env.SHARK_PARENT_ID;
             const role = process.env.SHARK_SUBAGENT_ROLE || 'Subagent';
             subagentManager.sendMessage(

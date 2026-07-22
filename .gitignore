@@ -122,3 +122,9 @@ pnpm-lock.yaml
 .env.test.local
 .env.production.local
 .env.local
+
+
+# Shark AI Runtime & Logs
+.shark/
+_sharkrc/
+shark-debug.log

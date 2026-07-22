@@ -1,9 +1,33 @@
+import fs from 'fs';
+import path from 'path';
 import { Command } from 'commander';
 import { tui } from '../ui/tui.js';
 import { workflowManager } from '../core/workflow/workflow-manager.js';
 import { TechStackEnum } from '../core/workflow/shark-workflow.schema.js';
 import { randomUUID } from 'crypto';
 import { colors } from '../ui/colors.js';
+
+export function ensureGitignore(projectRoot: string = process.cwd()): void {
+    const gitignorePath = path.join(projectRoot, '.gitignore');
+    const sharkEntries = [
+        '# Shark AI Runtime & Logs',
+        '.shark/',
+        '_sharkrc/',
+        'shark-debug.log'
+    ];
+
+    let content = '';
+    if (fs.existsSync(gitignorePath)) {
+        content = fs.readFileSync(gitignorePath, 'utf-8');
+    }
+
+    const missingEntries = sharkEntries.filter(entry => entry.startsWith('#') ? false : !content.includes(entry));
+
+    if (missingEntries.length > 0) {
+        const appendix = '\n\n' + sharkEntries.join('\n') + '\n';
+        fs.appendFileSync(gitignorePath, appendix, 'utf-8');
+    }
+}
 
 export const initAction = async () => {
     tui.intro('Shark Project Initialization');
@@ -96,10 +120,12 @@ export const initAction = async () => {
         };
 
         await workflowManager.save(newState);
+        ensureGitignore();
         spinner.stop('Project workflow created!');
 
         tui.log.success(`Project ${colors.primary(projectName as string)} initialized successfully.`);
         tui.log.message(`Your Project ID: ${colors.dim(newState.projectId)}`);
+        tui.log.success(`Configured ${colors.primary('.gitignore')} to exclude Shark AI runtime logs.`);
         tui.outro('Ready to start! Run "shark dev" to begin developing features.'); // Hint updated
     } catch (error: any) {
         spinner.stop('Initialization failed.', 1);
