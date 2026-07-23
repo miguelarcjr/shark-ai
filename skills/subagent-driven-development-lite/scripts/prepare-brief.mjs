@@ -148,6 +148,32 @@ function extractAllTasks(planFile) {
 const sddDir = path.resolve('.shark', 'sdd');
 fs.mkdirSync(sddDir, { recursive: true });
 
+function getLatestSubagentReportContent(role) {
+    const subagentsFile = path.resolve('.shark', 'subagents.json');
+    if (!fs.existsSync(subagentsFile)) return null;
+    try {
+        const data = JSON.parse(fs.readFileSync(subagentsFile, 'utf8'));
+        let latestTime = 0;
+        let content = null;
+        let subagentId = null;
+        for (const id in data.subagents) {
+            const sa = data.subagents[id];
+            const isMatch = sa.role === role || (role === 'Implementer' && sa.role === 'Fixer');
+            if (isMatch && sa.status === 'completed' && sa.endedAt > latestTime) {
+                const saContent = sa.lastAction?.params?.content;
+                if (saContent) {
+                    content = saContent;
+                    latestTime = sa.endedAt;
+                    subagentId = id;
+                }
+            }
+        }
+        return { content, subagentId };
+    } catch {
+        return null;
+    }
+}
+
 if (mode === 'init') {
     const [_, planFile] = args;
     if (!fs.existsSync(planFile)) {
@@ -282,9 +308,24 @@ if (mode === 'init') {
     const globalConstraints = extractGlobalConstraints(planFile);
 
     // Replace placeholders
+    // Archive static Implementer report to unique filename if it exists
+    let implementerReportFile = path.join(sddDir, `task-${taskNum}-report.md`);
+    const latestImplementer = getLatestSubagentReportContent('Implementer');
+    if (latestImplementer && latestImplementer.subagentId) {
+        const uniqueReportFile = path.join(sddDir, `task-subagent-${latestImplementer.subagentId}-report.md`);
+        if (fs.existsSync(implementerReportFile)) {
+            fs.renameSync(implementerReportFile, uniqueReportFile);
+            console.log(`ARCHIVED: Renamed ${implementerReportFile} to ${uniqueReportFile}`);
+        } else if (!fs.existsSync(uniqueReportFile) && latestImplementer.content) {
+            fs.writeFileSync(uniqueReportFile, latestImplementer.content, 'utf8');
+            console.log(`RECOVERED: Created missing report ${uniqueReportFile} from subagents.json`);
+        }
+        implementerReportFile = uniqueReportFile;
+    }
+
     template = template.replace(/\[MODEL\]/g, '');
     template = template.replace(/\[BRIEF_FILE\]/g, `.shark/sdd/task-${taskNum}-brief.md`);
-    template = template.replace(/\[REPORT_FILE\]/g, `.shark/sdd/task-${taskNum}-report.md`);
+    template = template.replace(/\[REPORT_FILE\]/g, implementerReportFile.replace(/\\/g, '/'));
     template = template.replace(/\[GLOBAL_CONSTRAINTS\]/g, globalConstraints);
     template = template.replace(/\[BASE_SHA\]/g, base);
     template = template.replace(/\[HEAD_SHA\]/g, head);
@@ -298,6 +339,21 @@ if (mode === 'init') {
     console.log(`[INSTRUCTION] Reviewer briefing prepared successfully. Now, you MUST call 'invoke_subagent' with role="Reviewer", type_name="self", and task_file=".shark/sdd/task-${taskNum}-review-run.md". Then call 'wait' without duration_seconds (or set to null) to await the review verdict.`);
 } else if (mode === 'complete') {
     const [_, planFile, taskNum] = args;
+    
+    // Archive static Reviewer report on completion
+    const latestReviewer = getLatestSubagentReportContent('Reviewer');
+    if (latestReviewer && latestReviewer.subagentId) {
+        const staticReviewReport = path.join(sddDir, `task-${taskNum}-review-report.md`);
+        const uniqueReviewReport = path.join(sddDir, `task-subagent-${latestReviewer.subagentId}-review-report.md`);
+        if (fs.existsSync(staticReviewReport)) {
+            fs.renameSync(staticReviewReport, uniqueReviewReport);
+            console.log(`ARCHIVED: Renamed ${staticReviewReport} to ${uniqueReviewReport}`);
+        } else if (!fs.existsSync(uniqueReviewReport) && latestReviewer.content) {
+            fs.writeFileSync(uniqueReviewReport, latestReviewer.content, 'utf8');
+            console.log(`RECOVERED: Created missing review report ${uniqueReviewReport} from subagents.json`);
+        }
+    }
+
     const baseFile = path.join(sddDir, `task-${taskNum}-base.txt`);
     let baseHash = 'initial';
     if (fs.existsSync(baseFile)) {
@@ -335,14 +391,35 @@ if (mode === 'init') {
 
 } else if (mode === 'fix') {
     const [_, planFile, taskNum] = args;
-    const reviewReportFile = path.join(sddDir, `task-${taskNum}-review-report.md`);
+    
+    // Archive static Reviewer report to unique filename if it exists
+    let reviewReportFile = path.join(sddDir, `task-${taskNum}-review-report.md`);
+    const latestReviewer = getLatestSubagentReportContent('Reviewer');
+    if (latestReviewer && latestReviewer.subagentId) {
+        const uniqueReviewReport = path.join(sddDir, `task-subagent-${latestReviewer.subagentId}-review-report.md`);
+        if (fs.existsSync(reviewReportFile)) {
+            fs.renameSync(reviewReportFile, uniqueReviewReport);
+            console.log(`ARCHIVED: Renamed ${reviewReportFile} to ${uniqueReviewReport}`);
+        } else if (!fs.existsSync(uniqueReviewReport) && latestReviewer.content) {
+            fs.writeFileSync(uniqueReviewReport, latestReviewer.content, 'utf8');
+            console.log(`RECOVERED: Created missing review report ${uniqueReviewReport} from subagents.json`);
+        }
+        reviewReportFile = uniqueReviewReport;
+    }
+
     let findings = "Please address all Critical and Important review issues reported by the reviewer.";
     if (fs.existsSync(reviewReportFile)) {
         findings = fs.readFileSync(reviewReportFile, 'utf8').trim();
     }
 
     const taskBriefFile = path.join(sddDir, `task-${taskNum}-brief.md`);
-    const implementerReportFile = path.join(sddDir, `task-${taskNum}-report.md`);
+    
+    // Resolve dynamic path for Implementer/Fixer report to show in context
+    let implementerReportFile = path.join(sddDir, `task-${taskNum}-report.md`);
+    const latestImplementer = getLatestSubagentReportContent('Implementer');
+    if (latestImplementer && latestImplementer.subagentId) {
+        implementerReportFile = path.join(sddDir, `task-subagent-${latestImplementer.subagentId}-report.md`);
+    }
 
     const fixBrief = [
         'You are the Fixer subagent. Your task is to resolve issues identified by the Quality Reviewer.',
