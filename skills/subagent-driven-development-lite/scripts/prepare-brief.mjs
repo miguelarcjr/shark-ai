@@ -371,7 +371,7 @@ if (mode === 'init') {
     }
     let ledgerContent = fs.readFileSync(ledgerFile, 'utf8');
     const lines = ledgerContent.split(/\r?\n/);
-    const taskRegex = new RegExp(`^-\\s*\\[[^\\]]*\\]\\s*(Task\\s+${taskNum}(?:$|[^0-9]).*)`, 'i');
+    const taskRegex = new RegExp(`^(?:\\w+§)?-\\s*\\[[^\\]]*\\]\\s*(Task\\s+${taskNum}(?:$|[^0-9]).*)`, 'i');
     let found = false;
     for (let i = 0; i < lines.length; i++) {
         const match = lines[i].match(taskRegex);
