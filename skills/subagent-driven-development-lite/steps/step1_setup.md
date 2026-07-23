@@ -17,8 +17,8 @@ Initialize the progress ledger and dispatch the first task.
      - `type_name`: "self"
      - `role`: "Implementer"
      - `task_file`: ".shark/sdd/task-N-run-brief.md"
-4. **Update Ledger & Wait:** Once dispatched:
-   * Action: Use the `modify_file` action to update the task state in `.shark/progress.md` to `[/]` (in progress), then use the `wait` action without `duration_seconds` (or set to `null`) to wait indefinitely.
+4. **Start Waiting:** Once dispatched:
+   * Action: Use the `wait` action without `duration_seconds` (or set to `null`) to wait indefinitely.
 
 ---
 

@@ -233,8 +233,23 @@ if (mode === 'init') {
     } catch {}
     fs.writeFileSync(path.join(sddDir, `task-${taskNum}-base.txt`), currentHead, 'utf8');
 
+    const ledgerFile = path.resolve('.shark', 'progress.md');
+    if (fs.existsSync(ledgerFile)) {
+        let ledgerContent = fs.readFileSync(ledgerFile, 'utf8');
+        const lines = ledgerContent.split(/\r?\n/);
+        const taskRegex = new RegExp(`^-\\s*\\[[^\\]]*\\]\\s*(Task\\s+${taskNum}(?:$|[^0-9]).*)`, 'i');
+        for (let i = 0; i < lines.length; i++) {
+            const match = lines[i].match(taskRegex);
+            if (match) {
+                lines[i] = `- [/] ${match[1]}`;
+                break;
+            }
+        }
+        fs.writeFileSync(ledgerFile, lines.join('\n'), 'utf8');
+    }
+
     console.log(`SUCCESS: Wrote implementer brief to: ${runBriefFile}`);
-    console.log(`[INSTRUCTION] Implementer briefing prepared successfully. Now, you MUST call 'invoke_subagent' with role="Implementer", type_name="self", and task_file=".shark/sdd/task-${taskNum}-run-brief.md". Then modify '.shark/progress.md' to mark the task as in-progress '[/]', and call 'wait' without duration_seconds (or set to null) to wait indefinitely.`);
+    console.log(`[INSTRUCTION] Implementer briefing prepared successfully. Now, you MUST call 'invoke_subagent' with role="Implementer", type_name="self", and task_file=".shark/sdd/task-${taskNum}-run-brief.md". Then call 'wait' without duration_seconds (or set to null) to wait indefinitely.`);
 
 } else if (mode === 'reviewer') {
     let baseArg = null;
@@ -371,7 +386,7 @@ if (mode === 'init') {
     }
     let ledgerContent = fs.readFileSync(ledgerFile, 'utf8');
     const lines = ledgerContent.split(/\r?\n/);
-    const taskRegex = new RegExp(`^(?:\\w+§)?-\\s*\\[[^\\]]*\\]\\s*(Task\\s+${taskNum}(?:$|[^0-9]).*)`, 'i');
+    const taskRegex = new RegExp(`^-\\s*\\[[^\\]]*\\]\\s*(Task\\s+${taskNum}(?:$|[^0-9]).*)`, 'i');
     let found = false;
     for (let i = 0; i < lines.length; i++) {
         const match = lines[i].match(taskRegex);
