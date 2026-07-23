@@ -53,6 +53,15 @@ independently testable deliverable.
 
 ## Plan Document Header
 
+<IMPORTANT>
+**Parser Compatibility Requirement:**
+Even when writing implementation plans in Portuguese or other languages, you MUST preserve the following structural keywords verbatim in English:
+- Section header: `## Global Constraints`
+- Task headers: `### Task N: [Component Name]` (e.g. `### Task 1: Component`, `### Task 2: Component`)
+
+Never translate these to `## Restrições Globais`, `### 1.`, or `### Tarefa 1:`. These exact English keywords are required by execution parsers (`prepare-brief.mjs`) to identify tasks and global constraints.
+</IMPORTANT>
+
 **Every plan MUST start with this header:**
 
 ```markdown
