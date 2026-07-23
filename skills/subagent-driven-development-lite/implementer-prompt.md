@@ -112,7 +112,7 @@ Subagent (general-purpose):
 
     ## Report Format
 
-    You MUST write your full report to [REPORT_FILE]. You must use the file writing tool (e.g. `write_to_file`) with the `TargetFile` parameter set exactly to "[REPORT_FILE]" and the markdown contents in `CodeContent`. Do NOT use shell commands (like `echo`, `cat`, etc.) to write or create files.
+    You MUST write your full report to [REPORT_FILE]. You must use the `create_file` action with the `path` parameter set exactly to "[REPORT_FILE]" and the markdown contents in `content`. Do NOT use shell commands (like `echo`, `cat`, etc.) to write or create files.
 
     Format:
     - What you implemented (or what you attempted, if blocked)
