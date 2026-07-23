@@ -112,7 +112,9 @@ Subagent (general-purpose):
     "yes." A tight report that cites lines gives the controller everything
     it needs.
 
-    First, write your full review report to [REVIEW_REPORT_FILE]. Then report back by calling the `complete_task` action. Put your final review report directly in the `content` field of the action. Begin directly with the spec-compliance verdict. Every line in `content` must be a verdict, a finding with file:line, or a check you ran — no preamble, no process narration, no closing summary.
+    First, you MUST write your full review report to [REVIEW_REPORT_FILE]. You must use the file writing tool (e.g. `write_to_file`) with the `TargetFile` parameter set exactly to "[REVIEW_REPORT_FILE]" and the markdown contents in `CodeContent`. Do NOT use shell commands (like `mkdir`, `echo`, `cat`, etc.) to write or create directories/files.
+    
+    Once the file has been successfully written, call the `complete_task` action with the summary in the `content` field. Begin directly with the spec-compliance verdict. Every line in `content` must be a verdict, a finding with file:line, or a check you ran — no preamble, no process narration, no closing summary.
 
     ## Calibration
 
