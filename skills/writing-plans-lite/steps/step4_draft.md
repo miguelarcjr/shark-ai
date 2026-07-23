@@ -16,7 +16,10 @@ Outline the implementation plan tasks following TDD and modularity.
    - [ ] 7/7 Handoff
    -->
    ```
-2. Propose a high-level list of tasks (typically 3-5 tasks).
+2. **Propose Task List (Scope-Based Dynamic Sizing):**
+   - Propose a list of tasks where each task represents an independent, testable deliverable with its own TDD cycle.
+   - Do NOT artificially restrict the plan to "3-5 tasks". Create as many tasks as needed so that no task becomes a broad, vague "catch-all" or groups multiple subsystems together.
+   - If the total task count exceeds 4 tasks, note that Step 5 will use a 2-stage chunked writing flow (Tasks 1-3 first, then Tasks 4+).
 3. Ensure each task structure is ready to follow TDD:
    - Write failing test.
    - Run and verify failure.
