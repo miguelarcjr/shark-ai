@@ -35,8 +35,16 @@ Write the full implementation plan using the standard format.
    - [ ] Step 4: Run test to verify pass [command and expected pass output]
    - [ ] Step 5: Commit [git commands]
    ```
-5. **No Placeholders:** Ensure there are no "TODO", "TBD", or general instructions like "add error handling". Provide concrete code blocks/tests.
-6. Use the `modify_file` action to update the state block to mark Step 5 as `[x]` and Step 6 as `[/]`.
+5. **No Placeholders & Equal Task Granularity:**
+   - **Zero Placeholders:** Never write "TODO", "TBD", "implement later", "add error handling", or "similar to Task 1".
+   - **Concrete Code & Commands:** Every step across every task must show exact file paths, complete code blocks (failing test and minimal implementation), exact execution commands, and expected PASS/FAIL output.
+   - **Equal Detail Rule:** Task N must be written with the same depth and specificity as Task 1. Do NOT simplify or compress final tasks into vague summaries.
+6. **Chunked Document Writing (for plans > 4 tasks):**
+   - **Single Pass ($\le 4$ tasks):** Write Header + Global Constraints + All Tasks in a single `modify_file` operation.
+   - **Two-Stage Chunking ($> 4$ tasks):**
+     - *Stage 1:* Use `modify_file` to write Header + `## Global Constraints` + **Tasks 1 to 3**.
+     - *Stage 2:* Use `modify_file` to append **Tasks 4 through N** without dropping detail or code snippets.
+7. Use the `modify_file` action to update the state block to mark Step 5 as `[x]` and Step 6 as `[/]`.
 
 ---
 
