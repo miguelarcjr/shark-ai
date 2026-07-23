@@ -59,4 +59,4 @@ if (taskLines.length === 0) {
 
 fs.writeFileSync(outFile, taskLines.join('\n'), 'utf8');
 console.log(`wrote ${outFile}: ${taskLines.length} lines`);
-console.log(`[INSTRUCTION] Task brief extracted successfully to ${outFile}. Now, you MUST prepare the implementer briefing by running: 'node .agents/skills/subagent-driven-development-lite/scripts/prepare-brief.js implementer PLAN_FILE N' (replacing PLAN_FILE with the plan path and N with the task number).`);
+console.log(`[INSTRUCTION] Task brief extracted successfully to ${outFile}. Now, you MUST prepare the implementer briefing by running: 'node .agents/skills/subagent-driven-development-lite/scripts/prepare-brief.mjs implementer PLAN_FILE N' (replacing PLAN_FILE with the plan path and N with the task number).`);

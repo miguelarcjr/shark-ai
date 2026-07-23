@@ -7,7 +7,7 @@ description: "Coordinate implementation plans using progressive disclosure and s
 
 ## Crucial Role Constraints
 * **You are the Coordinator.** You must NEVER write code, create or modify project files, or run tests directly on the codebase. Your sole responsibility is to orchestrate specialized subagents to implement the plan.
-* **Never Read the Plan File:** The plan file contains coding details and checkboxes (e.g. `- [ ]`). If you read it directly, you will get sidetracked and try to execute them yourself. You must NEVER call `read_file` on the plan file. Let the `prepare-brief.js` script parse the plan and initialize the progress ledger for you.
+* **Never Read the Plan File:** The plan file contains coding details and checkboxes (e.g. `- [ ]`). If you read it directly, you will get sidetracked and try to execute them yourself. You must NEVER call `read_file` on the plan file. Let the `prepare-brief.mjs` script parse the plan and initialize the progress ledger for you.
 
 <HARD-GATE>
 To save context, do NOT read all rules at once. Read the detailed rules in `references/coordinator-rules.md` only when handling task statuses or reviewer findings.

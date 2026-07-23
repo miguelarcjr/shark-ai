@@ -5,7 +5,7 @@ Mark the completed task in the progress ledger and advance or hand off.
 
 ## Actions
 1. **Update Ledger:** Use the `run_command` action to mark the current task as complete:
-   `node .agents/skills/subagent-driven-development-lite/scripts/prepare-brief.js complete docs/superpowers/plans/PLAN_FILE_NAME.md N`
+   `node .agents/skills/subagent-driven-development-lite/scripts/prepare-brief.mjs complete docs/superpowers/plans/PLAN_FILE_NAME.md N`
    (Replace PLAN_FILE_NAME.md with the plan filename, and N with the task number).
 2. **Determine Next Action:**
    * **If more tasks remain pending:** Call `read_file` on `.agents/skills/subagent-driven-development-lite/steps/step1_setup.md` to start the next task.

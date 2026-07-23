@@ -5,34 +5,34 @@ import { execSync } from 'node:child_process';
 const args = process.argv.slice(2);
 if (args.length < 2) {
     console.error("usage:");
-    console.error("  node prepare-brief.js init PLAN_FILE");
-    console.error("  node prepare-brief.js implementer PLAN_FILE TASK_NUMBER");
-    console.error("  node prepare-brief.js reviewer HEAD PLAN_FILE TASK_NUMBER");
-    console.error("  node prepare-brief.js complete PLAN_FILE TASK_NUMBER");
-    console.error("  node prepare-brief.js fix PLAN_FILE TASK_NUMBER");
+    console.error("  node prepare-brief.mjs init PLAN_FILE");
+    console.error("  node prepare-brief.mjs implementer PLAN_FILE TASK_NUMBER");
+    console.error("  node prepare-brief.mjs reviewer HEAD PLAN_FILE TASK_NUMBER");
+    console.error("  node prepare-brief.mjs complete PLAN_FILE TASK_NUMBER");
+    console.error("  node prepare-brief.mjs fix PLAN_FILE TASK_NUMBER");
     process.exit(2);
 }
 
 const mode = args[0];
 
 if (mode === 'init' && args.length < 2) {
-    console.error("usage: node prepare-brief.js init PLAN_FILE");
+    console.error("usage: node prepare-brief.mjs init PLAN_FILE");
     process.exit(2);
 }
 if (mode === 'implementer' && args.length < 3) {
-    console.error("usage: node prepare-brief.js implementer PLAN_FILE TASK_NUMBER");
+    console.error("usage: node prepare-brief.mjs implementer PLAN_FILE TASK_NUMBER");
     process.exit(2);
 }
 if (mode === 'reviewer' && args.length < 4) {
-    console.error("usage: node prepare-brief.js reviewer HEAD PLAN_FILE TASK_NUMBER");
+    console.error("usage: node prepare-brief.mjs reviewer HEAD PLAN_FILE TASK_NUMBER");
     process.exit(2);
 }
 if (mode === 'complete' && args.length < 3) {
-    console.error("usage: node prepare-brief.js complete PLAN_FILE TASK_NUMBER");
+    console.error("usage: node prepare-brief.mjs complete PLAN_FILE TASK_NUMBER");
     process.exit(2);
 }
 if (mode === 'fix' && args.length < 3) {
-    console.error("usage: node prepare-brief.js fix PLAN_FILE TASK_NUMBER");
+    console.error("usage: node prepare-brief.mjs fix PLAN_FILE TASK_NUMBER");
     process.exit(2);
 }
 
@@ -208,7 +208,7 @@ if (mode === 'init') {
     fs.writeFileSync(path.join(sddDir, `task-${taskNum}-base.txt`), currentHead, 'utf8');
 
     console.log(`SUCCESS: Wrote implementer brief to: ${runBriefFile}`);
-    console.log(`[INSTRUCTION] Implementer briefing prepared successfully. Now, you MUST call 'invoke_subagent' with role="Implementer", type_name="self", and task_file=".shark/sdd/task-${taskNum}-run-brief.md". Then modify '.shark/progress.md' to mark the task as in-progress '[/]', and call 'wait' for 60 seconds.`);
+    console.log(`[INSTRUCTION] Implementer briefing prepared successfully. Now, you MUST call 'invoke_subagent' with role="Implementer", type_name="self", and task_file=".shark/sdd/task-${taskNum}-run-brief.md". Then modify '.shark/progress.md' to mark the task as in-progress '[/]', and call 'wait' without duration_seconds (or set to null) to wait indefinitely.`);
 
 } else if (mode === 'reviewer') {
     let baseArg = null;
@@ -250,9 +250,10 @@ if (mode === 'init') {
     const diffFile = path.join(sddDir, `review-${baseShort}..${headShort}.diff`);
 
     const excludes = '":(exclude)_sharkrc" ":(exclude).shark" ":(exclude)shark-debug.log" ":(exclude)node_modules"';
-    const commits = execSync(`git log --oneline "${base}..${head}"`, { encoding: 'utf8' });
-    const stat = execSync(`git diff --stat "${base}..${head}" -- . ${excludes}`, { encoding: 'utf8' });
-    const diff = execSync(`git diff -U10 "${base}..${head}" -- . ${excludes}`, { encoding: 'utf8' });
+    let commits = '';
+    try { commits = execSync(`git log --oneline "${base}..HEAD"`, { encoding: 'utf8' }); } catch {}
+    const stat = execSync(`git diff --stat "${base}" -- . ${excludes}`, { encoding: 'utf8' });
+    const diff = execSync(`git diff -U10 "${base}" -- . ${excludes}`, { encoding: 'utf8' });
 
     const diffReport = [
         `# Review package: ${base}..${head}`,
@@ -294,7 +295,7 @@ if (mode === 'init') {
     const reviewContent = `---\ntype: self\nrole: Reviewer\n---\n\n${template}`;
     fs.writeFileSync(runReviewFile, reviewContent, 'utf8');
     console.log(`SUCCESS: Wrote reviewer brief to: ${runReviewFile}`);
-    console.log(`[INSTRUCTION] Reviewer briefing prepared successfully. Now, you MUST call 'invoke_subagent' with role="Reviewer", type_name="self", and task_file=".shark/sdd/task-${taskNum}-review-run.md". Then call 'wait' for 60 seconds to await the review verdict.`);
+    console.log(`[INSTRUCTION] Reviewer briefing prepared successfully. Now, you MUST call 'invoke_subagent' with role="Reviewer", type_name="self", and task_file=".shark/sdd/task-${taskNum}-review-run.md". Then call 'wait' without duration_seconds (or set to null) to await the review verdict.`);
 } else if (mode === 'complete') {
     const [_, planFile, taskNum] = args;
     const baseFile = path.join(sddDir, `task-${taskNum}-base.txt`);
@@ -358,8 +359,9 @@ if (mode === 'init') {
         '1. Carefully read the task brief and the reviewer findings.',
         '2. Modify the files needing fixes to address the Critical and Important findings.',
         '3. Re-run tests to ensure that everything passes and no regressions are introduced.',
-        '4. Document what you fixed, how you verified it, and write your report to the implementer report file.',
-        '5. Call the `complete_task` action when done.'
+        `4. Commit your fixes with a descriptive commit message (e.g. \`git commit -m "fix(task-${taskNum}): address reviewer findings"\`).`,
+        '5. Document what you fixed, how you verified it, and write your report to the implementer report file.',
+        '6. Call the `complete_task` action when done.'
     ].join('\n');
 
     const runFixFile = path.join(sddDir, `task-${taskNum}-fix-run.md`);
@@ -367,7 +369,7 @@ if (mode === 'init') {
     fs.writeFileSync(runFixFile, fixContent, 'utf8');
 
     console.log(`SUCCESS: Wrote fixer brief to: ${runFixFile}`);
-    console.log(`[INSTRUCTION] Fixer briefing prepared successfully. Now, you MUST call 'invoke_subagent' with role="Fixer", type_name="self", and task_file=".shark/sdd/task-${taskNum}-fix-run.md". Then call 'wait' for 60 seconds to await fixer completion.`);
+    console.log(`[INSTRUCTION] Fixer briefing prepared successfully. Now, you MUST call 'invoke_subagent' with role="Fixer", type_name="self", and task_file=".shark/sdd/task-${taskNum}-fix-run.md". Then call 'wait' without duration_seconds (or set to null) to await fixer completion.`);
 
 } else {
     console.error(`unknown mode: ${mode}`);

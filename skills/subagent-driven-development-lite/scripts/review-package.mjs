@@ -54,4 +54,4 @@ const report = [
 fs.writeFileSync(outFile, report, 'utf8');
 const count = execSync(`git rev-list --count "${base}..${head}"`, { encoding: 'utf8' }).trim();
 console.log(`wrote ${outFile}: ${count} commit(s)`);
-console.log(`[INSTRUCTION] Review package written successfully to ${outFile}. Now, you MUST prepare the reviewer briefing by running: 'node .agents/skills/subagent-driven-development-lite/scripts/prepare-brief.js reviewer BASE HEAD PLAN_FILE N' (replacing BASE/HEAD with commit hashes, PLAN_FILE with the plan path, and N with the task number).`);
+console.log(`[INSTRUCTION] Review package written successfully to ${outFile}. Now, you MUST prepare the reviewer briefing by running: 'node .agents/skills/subagent-driven-development-lite/scripts/prepare-brief.mjs reviewer BASE HEAD PLAN_FILE N' (replacing BASE/HEAD with commit hashes, PLAN_FILE with the plan path, and N with the task number).`);
