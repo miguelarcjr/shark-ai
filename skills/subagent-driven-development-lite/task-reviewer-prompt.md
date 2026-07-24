@@ -42,6 +42,7 @@ Subagent (general-purpose):
     Você usa o diff incorporado como sua visão primária da tarefa. Você DEVE e TEM PERMISSÃO para usar a ação `read_file` nos arquivos do código do projeto quando:
     1. Um trecho ou função estiver cortado no meio do diff.
     2. Houver um risco concreto transversal (ex: alteração em contratos de API/função, interfaces exportadas ou estado compartilhado) e você precisar validar se o restante do código continua compatível.
+    3. Se o git diff estiver vazio (0 arquivos alterados no disco), a tarefa DEVE ser REPROVADA imediatamente com o veredito: `❌ Nenhuma alteração física realizada no código do projeto`.
     </HARD-GATE>
 
     ```diff

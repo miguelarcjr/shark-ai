@@ -15,6 +15,10 @@ Subagent (general-purpose):
     Read your task brief first: [BRIEF_FILE]
     It contains the full task text from the plan.
 
+    <HARD-GATE>
+    Você é responsável pela implementação física das alterações no código do projeto. Você DEVE criar ou modificar arquivos reais no código-fonte utilizando as ferramentas `create_file` ou `modify_file` e executar os testes.
+    </HARD-GATE>
+
     ## Context
 
     [Scene-setting: where this fits, dependencies, architectural context]

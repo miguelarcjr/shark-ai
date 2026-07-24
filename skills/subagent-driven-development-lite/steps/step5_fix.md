@@ -12,6 +12,7 @@ Dispatch a subagent to fix the Critical or Important issues raised by the review
      - `type_name`: "self"
      - `role`: "Fixer"
      - `task_file`: ".shark/sdd/task-N-fix-run.md"
+   * Note: O subagente Fixer DEVE realizar alterações físicas no código-fonte utilizando as ferramentas `create_file` ou `modify_file` e executar os testes.
 3. **Start Waiting:** Once dispatched:
    * Action: Use the `wait` action without `duration_seconds` (or set to `null`) to wait indefinitely.
 
