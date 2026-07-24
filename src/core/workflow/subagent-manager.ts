@@ -430,7 +430,7 @@ export class SubagentManager {
                     customContext += `- Seu ID é: ${id}\n`;
                     customContext += `- O ID do seu Agente Pai é: ${parentId}\n`;
                     customContext += `- Você NÃO tem um terminal interativo com o usuário humano. Não use 'talk_with_user' para interagir.\n`;
-                    customContext += `- Para concluir a tarefa e enviar o resultado detalhado em markdown, use obrigatoriamente a ação 'complete_task' com suas descobertas no campo 'content'.\n`;
+                    customContext += `- Quando você tiver EXECUTADO integralmente todas as ações da sua tarefa, use a ação 'complete_task' com um resumo técnico no campo 'content' para notificar a conclusão.\n`;
                     
                     const instruction = customContext + '\n\n' + sub.Prompt;
 
