@@ -191,9 +191,38 @@ export function handleSearchCode(
     const MAX_MATCHES = 50;
     const MAX_FILE_SIZE_BYTES = 500 * 1024; // skip files > 500KB
 
+    if (!query || query.trim() === '') {
+        return "Error: 'query' parameter is required for search_code";
+    }
+
     try {
-        const files = fg.sync(globPattern, { dot: true, absolute: false });
-        if (files.length === 0) return `No files found matching pattern: "${globPattern}"`;
+        // 1. Normalize slashes
+        let pattern = (globPattern || '**/*').replace(/\\/g, '/').trim();
+
+        // 2. Default to **/* if empty or "."
+        if (pattern === '' || pattern === '.' || pattern === './') {
+            pattern = '**/*';
+        } else {
+            // Check if pattern is a directory or lacks wildcards
+            const fullPath = path.resolve(process.cwd(), pattern);
+            if (fs.existsSync(fullPath) && fs.statSync(fullPath).isDirectory()) {
+                pattern = pattern.endsWith('/') ? `${pattern}**/*` : `${pattern}/**/*`;
+            } else if (!pattern.includes('*') && !pattern.includes('?') && !fs.existsSync(fullPath)) {
+                pattern = `${pattern}/**/*`;
+            }
+        }
+
+        const defaultIgnores = [
+            '**/node_modules/**',
+            '**/.git/**',
+            '**/dist/**',
+            '**/build/**',
+            '**/.next/**',
+            '**/coverage/**'
+        ];
+
+        const files = fg.sync(pattern, { dot: true, absolute: false, ignore: defaultIgnores });
+        if (files.length === 0) return `No files found matching pattern: "${pattern}"`;
 
         let searchRegex: RegExp;
         try {
@@ -213,7 +242,7 @@ export function handleSearchCode(
             try {
                 const fullPath = path.resolve(process.cwd(), filePath);
                 const stats = fs.statSync(fullPath);
-                if (stats.size > MAX_FILE_SIZE_BYTES) continue; // skip huge binaries
+                if (stats.isDirectory() || stats.size > MAX_FILE_SIZE_BYTES) continue;
 
                 const content = fs.readFileSync(fullPath, 'utf-8');
                 const lines = content.split('\n');
@@ -232,11 +261,11 @@ export function handleSearchCode(
         }
 
         if (results.length === 0) {
-            return `No matches found for "${query}" in files matching "${globPattern}"`;
+            return `No matches found for "${query}" in files matching "${pattern}"`;
         }
 
         const limited = totalMatches >= MAX_MATCHES ? ` (limited to ${MAX_MATCHES})` : '';
-        return `Found ${totalMatches} match(es) for "${query}" in "${globPattern}"${limited}:\n${results.join('\n')}`;
+        return `Found ${totalMatches} match(es) for "${query}" in "${pattern}"${limited}:\n${results.join('\n')}`;
 
     } catch (e: any) {
         return `Error searching code: ${e.message}`;
