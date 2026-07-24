@@ -196,5 +196,26 @@ describe('AnchorStateManager', () => {
             }
         }
     });
+
+    it('should strip leaked anchor prefixes from replacement content', () => {
+        fs.writeFileSync(testFile, 'line1\nline2\nline3\nline4');
+        try {
+            const firstRead = manager.getAnchoredContent(testFile);
+            const linesBefore = firstRead.split('\n');
+            const anchor2 = linesBefore[1].split('§')[0];
+            const anchor3 = linesBefore[2].split('§')[0];
+
+            manager.applyAnchoredEdit(testFile, anchor2, anchor3, 'apple§new_lineA\nbeach§new_lineB');
+
+            const onDisk = fs.readFileSync(testFile, 'utf8');
+            expect(onDisk).toBe('line1\nnew_lineA\nnew_lineB\nline4');
+        } finally {
+            if (fs.existsSync(testFile)) {
+                fs.unlinkSync(testFile);
+            }
+        }
+    });
 });
+
+
 

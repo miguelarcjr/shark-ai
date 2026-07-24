@@ -167,6 +167,13 @@ export class AnchorStateManager {
         return lineStates.map(ls => `${ls.anchor}§${ls.text}`).join('\n');
     }
 
+    private sanitizeContent(content: string): string {
+        if (!content) return content;
+        const lines = content.split('\n');
+        const sanitizedLines = lines.map(line => line.replace(/^[a-zA-Z0-9_]+§/, ''));
+        return sanitizedLines.join('\n');
+    }
+
     applyAnchoredEdit(filePath: string, startAnchor: string, endAnchor: string, content: string): void {
         const absolutePath = path.resolve(filePath);
         let lineStates = this.cache.get(absolutePath);
@@ -193,8 +200,9 @@ export class AnchorStateManager {
         const originalContent = fs.readFileSync(absolutePath, 'utf8');
         const hasTrailingNewline = originalContent.endsWith('\n');
 
+        const sanitizedInput = this.sanitizeContent(content);
         const oldLines = lineStates.map(ls => ls.text);
-        const cleanContent = content.endsWith('\n') ? content.slice(0, -1) : content;
+        const cleanContent = sanitizedInput.endsWith('\n') ? sanitizedInput.slice(0, -1) : sanitizedInput;
         const newEditLines = cleanContent.split('\n');
 
         const updatedLines = [
