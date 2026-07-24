@@ -291,13 +291,19 @@ if (mode === 'init') {
     const diffFile = path.join(sddDir, `review-${baseShort}..${headShort}.diff`);
 
     const excludes = '":(exclude)_sharkrc" ":(exclude).shark" ":(exclude)shark-debug.log" ":(exclude)node_modules"';
+    try { execSync('git add -N .', { encoding: 'utf8' }); } catch {}
     let commits = '';
     try { commits = execSync(`git log --oneline "${base}..HEAD"`, { encoding: 'utf8' }); } catch {}
     const stat = execSync(`git diff --stat "${base}" -- . ${excludes}`, { encoding: 'utf8' });
     const diff = execSync(`git diff -U10 "${base}" -- . ${excludes}`, { encoding: 'utf8' });
 
+    let emptyDiffWarning = '';
+    if (!diff || diff.trim() === '') {
+        emptyDiffWarning = '⚠️ ATENÇÃO CRÍTICA: O Git Diff está VAZIO. O Implementador não alterou nenhum arquivo físico no disco.\n\n';
+    }
+
     const diffReport = [
-        `# Review package: ${base}..${head}`,
+        emptyDiffWarning + `# Review package: ${base}..${head}`,
         '',
         '## Commits',
         commits,
@@ -306,7 +312,7 @@ if (mode === 'init') {
         stat,
         '',
         '## Diff',
-        diff
+        diff || '(sem alterações físicas no disco)'
     ].join('\n');
     fs.writeFileSync(diffFile, diffReport, 'utf8');
 
