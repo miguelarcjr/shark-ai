@@ -291,11 +291,17 @@ if (mode === 'init') {
     const diffFile = path.join(sddDir, `review-${baseShort}..${headShort}.diff`);
 
     const excludes = '":(exclude)_sharkrc" ":(exclude).shark" ":(exclude)shark-debug.log" ":(exclude)node_modules"';
-    try { execSync('git add -N .', { encoding: 'utf8' }); } catch {}
     let commits = '';
     try { commits = execSync(`git log --oneline "${base}..HEAD"`, { encoding: 'utf8' }); } catch {}
-    const stat = execSync(`git diff --stat "${base}" -- . ${excludes}`, { encoding: 'utf8' });
-    const diff = execSync(`git diff -U10 "${base}" -- . ${excludes}`, { encoding: 'utf8' });
+    let stat = '';
+    let diff = '';
+    try {
+        try { execSync('git add -N .', { encoding: 'utf8' }); } catch {}
+        stat = execSync(`git diff --stat "${base}" -- . ${excludes}`, { encoding: 'utf8' });
+        diff = execSync(`git diff -U10 "${base}" -- . ${excludes}`, { encoding: 'utf8' });
+    } finally {
+        try { execSync('git reset HEAD .', { encoding: 'utf8' }); } catch {}
+    }
 
     let emptyDiffWarning = '';
     if (!diff || diff.trim() === '') {
