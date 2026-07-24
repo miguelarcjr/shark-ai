@@ -338,13 +338,22 @@ if (mode === 'init') {
         implementerReportFile = uniqueReportFile;
     }
 
+    let implementerReportContent = '(Relatório do implementador não disponível)';
+    if (latestImplementer && latestImplementer.content) {
+        implementerReportContent = latestImplementer.content;
+    } else if (fs.existsSync(implementerReportFile)) {
+        implementerReportContent = fs.readFileSync(implementerReportFile, 'utf8');
+    }
+
     template = template.replace(/\[MODEL\]/g, '');
     template = template.replace(/\[BRIEF_FILE\]/g, `.shark/sdd/task-${taskNum}-brief.md`);
     template = template.replace(/\[REPORT_FILE\]/g, implementerReportFile.replace(/\\/g, '/'));
+    template = template.replace(/\[IMPLEMENTER_REPORT_CONTENT\]/g, implementerReportContent);
     template = template.replace(/\[GLOBAL_CONSTRAINTS\]/g, globalConstraints);
     template = template.replace(/\[BASE_SHA\]/g, base);
     template = template.replace(/\[HEAD_SHA\]/g, head);
     template = template.replace(/\[DIFF_FILE\]/g, `.shark/sdd/review-${baseShort}..${headShort}.diff`);
+    template = template.replace(/\[DIFF_CONTENT\]/g, diffReport);
     template = template.replace(/\[REVIEW_REPORT_FILE\]/g, `.shark/sdd/task-${taskNum}-review-report.md`);
 
     const runReviewFile = path.join(sddDir, `task-${taskNum}-review-run.md`);
