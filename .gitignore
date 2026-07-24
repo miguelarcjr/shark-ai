@@ -128,3 +128,4 @@ pnpm-lock.yaml
 .shark/
 _sharkrc/
 shark-debug.log
+.vitest_cache_membox/
