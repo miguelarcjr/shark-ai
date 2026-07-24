@@ -802,7 +802,7 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'search_code') {
-                    const glob = action.path || 'src/**/*';
+                    const glob = action.path || '**/*';
                     const query = action.query || '';
                     const isRegex = action.is_regex === true;
                     log.info(`🔎 Search code: ${colors.dim(`"${query}" in ${glob}`)}`);
