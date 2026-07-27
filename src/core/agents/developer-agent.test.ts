@@ -505,6 +505,46 @@ describe('DeveloperAgent', () => {
         expect(result).toEqual({ success: true, summary: 'Finished testing subagent actions' });
     });
 
+    it('should catch subagent briefing parse errors and feed error message back to agent without crashing', async () => {
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'invoke_subagent',
+                    task_file: '.shark/sdd/invalid-brief.md'
+                },
+                actions: [],
+                message: 'Invoking subagent with bad brief',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'complete_task',
+                    content: 'Recovered from invalid brief',
+                    summary: 'Handled briefing error successfully',
+                },
+                actions: [],
+                message: 'Task completed',
+                conversation_id: 'conv-123',
+            });
+
+        vi.spyOn(subagentManager, 'parseTaskBrief').mockImplementation(() => {
+            throw new Error('Briefing YAML frontmatter must define both "type" and "role" properties');
+        });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'subagent-error-task',
+            taskInstruction: 'Test subagent error recovery',
+            auto: true,
+        });
+
+        expect(mockProvider.streamChat).toHaveBeenNthCalledWith(
+            2,
+            expect.stringContaining('[Action invoke_subagent Failed]: Briefing YAML frontmatter must define both "type" and "role" properties'),
+            expect.any(Object)
+        );
+        expect(result).toEqual({ success: true, summary: 'Handled briefing error successfully' });
+    });
+
     it('should support /skills interactive command and activate selection', async () => {
         vi.mocked(tui.text)
             .mockResolvedValueOnce('/skills')
