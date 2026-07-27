@@ -504,11 +504,29 @@ export class SubagentManager {
                         tui.log.error(`Subagent ${sub.Role} (${id}) failed.`);
                     } else {
                         this.updateSubagentSummary(id, 'Completed');
+                        
+                        const mailboxDir = path.resolve(projectRoot, '.shark', 'mailbox', parentId);
+                        let hasReturnedDetails = false;
+                        if (fs.existsSync(mailboxDir)) {
+                            try {
+                                const allFiles = fs.readdirSync(mailboxDir);
+                                for (const file of allFiles) {
+                                    const fileContent = fs.readFileSync(path.join(mailboxDir, file), 'utf-8');
+                                    if (fileContent.includes(`(${id})`)) {
+                                        hasReturnedDetails = true;
+                                        break;
+                                    }
+                                }
+                            } catch {}
+                        }
+
                         // Print the subagent notification message to the parent console immediately
                         const parentMsgs = this.peekMessages(parentId);
                         const subagentMsg = parentMsgs.find(m => m.includes(`(${id})`));
                         if (subagentMsg) {
                             tui.log.message(`\n${subagentMsg}`);
+                        } else if (hasReturnedDetails) {
+                            tui.log.success(`Subagent ${sub.Role} (${id}) completed.`);
                         } else {
                             const completedMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) completed successfully but did not return detailed results.`;
                             this.sendMessage(parentId, completedMsg);
