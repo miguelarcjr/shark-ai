@@ -13,9 +13,12 @@ export const ptBr: Locale = {
             title: 'Configurações do Shark AI',
             selectAction: 'O que você deseja configurar?',
             actions: {
+                provider: '🤖 Provedor de LLM (StackSpot / OpenAI-compatible)',
+                memory: '🧠 Memória & Embeddings',
+                general: '⚙️ Preferências Gerais (Idioma, Log, API Base)',
+                agents: '🆔 Agentes StackSpot (IDs & Versões)',
                 language: 'Alterar Idioma',
                 logLevel: 'Nível de Log',
-                agents: 'Configurar Agentes',
                 back: 'Voltar'
             },
             selectLanguage: 'Selecione o idioma:',

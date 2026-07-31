@@ -13,9 +13,12 @@ export const esEs: Locale = {
             title: 'Configuración Shark AI',
             selectAction: '¿Qué desea configurar?',
             actions: {
+                provider: '🤖 Proveedor LLM (StackSpot / OpenAI-compatible)',
+                memory: '🧠 Memoria y Embeddings',
+                general: '⚙️ Preferencias Generales (Idioma, Log, API Base)',
+                agents: '🆔 Agentes StackSpot (IDs y Versiones)',
                 language: 'Cambiar Idioma',
                 logLevel: 'Nivel de Log',
-                agents: 'Configurar Agentes',
                 back: 'Volver'
             },
             selectLanguage: 'Seleccione el idioma:',

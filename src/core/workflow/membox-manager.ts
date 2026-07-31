@@ -347,7 +347,7 @@ export class MemboxManager {
         const topEvents = scoredEvents.slice(0, traceEventTopN);
 
         // Recuperar as traces correspondentes a esses eventos selecionados com orçamento de tokens
-        const compactionTokenLimit = config.memory?.compactionTokenLimit ?? 8000;
+        const compactionTokenLimit = config.memory?.compactionTokenLimit ?? 120000;
         const budget = Math.floor(compactionTokenLimit * 0.3); // 30% of compaction limit
 
         let currentTokens = 0;

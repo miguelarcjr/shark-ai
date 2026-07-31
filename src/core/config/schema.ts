@@ -10,7 +10,7 @@ export const ConfigSchema = z.object({
     stackspot: z.object({
         agentId: z.string().default('01KEQCGJ65YENRA4QBXVN1YFFX'),
         subagentId: z.string().optional(),
-        useServerConversation: z.boolean().default(true),
+        useServerConversation: z.boolean().default(false),
     }).optional().default({}),
     'openai-compatible': z.object({
         baseURL: z.string().default('http://localhost:11434/v1'),
@@ -20,14 +20,12 @@ export const ConfigSchema = z.object({
     }).optional(),
     preferredStack: z.array(z.string()).default([]),
     memory: z.object({
-        compactionTokenLimit: z.number().default(8000),
+        compactionTokenLimit: z.number().default(120000),
         enabled: z.boolean().default(false),
     }).default({}),
     apiBaseUrl: z.string().optional(),
     language: z.enum(['pt-br', 'en-us', 'es-es']).default('pt-br'),
-    project: z.string().optional(),
-    environment: z.string().optional(),
-    activeRealm: z.string().optional(), // Currently logged-in realm
+    activeRealm: z.string().optional(),
     agents: z.object({
         dev: z.string().optional(),
         subagent: z.string().optional(),
@@ -39,3 +37,4 @@ export const ConfigSchema = z.object({
 });
 
 export type Config = z.infer<typeof ConfigSchema>;
+

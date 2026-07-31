@@ -504,7 +504,7 @@ Your goal is to address the user's request:
                     }
 
                     const totalTokens = encode(fullTextForEstimation).length;
-                    const compactionTokenLimit = config.memory?.compactionTokenLimit ?? 8000;
+                    const compactionTokenLimit = config.memory?.compactionTokenLimit ?? 120000;
                     const effectiveLimit = compactionTokenLimit - 1000; // 1000 token output margin
 
                     if (enabled && totalTokens >= effectiveLimit * 0.85) {

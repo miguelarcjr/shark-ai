@@ -13,9 +13,12 @@ export interface Locale {
             title: string;
             selectAction: string;
             actions: {
+                provider: string;
+                memory: string;
+                general: string;
+                agents: string;
                 language: string;
                 logLevel: string;
-                agents: string;
                 back: string;
             };
             selectLanguage: string;
@@ -40,6 +43,12 @@ export interface Locale {
             alreadyLoggedIn: string;
             success: string;
             error: string;
+            selectProvider?: string;
+            openaiIntro?: string;
+            baseURLPrompt?: string;
+            apiKeyPrompt?: string;
+            modelPrompt?: string;
+            openaiSuccess?: string;
         };
         scan: {
             intro: string;

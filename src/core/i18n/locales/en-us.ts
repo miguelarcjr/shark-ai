@@ -13,9 +13,12 @@ export const enUs: Locale = {
             title: 'Shark AI Configuration',
             selectAction: 'What matches your needs?',
             actions: {
+                provider: '🤖 LLM Provider (StackSpot / OpenAI-compatible)',
+                memory: '🧠 Memory & Embeddings',
+                general: '⚙️ General Preferences (Language, Log, API Base)',
+                agents: '🆔 StackSpot Agents (IDs & Versions)',
                 language: 'Set Language',
                 logLevel: 'Log Level',
-                agents: 'Configure Agents',
                 back: 'Back'
             },
             selectLanguage: 'Select language:',

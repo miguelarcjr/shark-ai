@@ -115,7 +115,7 @@ export class StackSpotProvider implements AIProvider {
             rawHistory.push({ role: 'user', content: prompt });
             await HistoryManager.saveRawHistory(conversationId, rawHistory);
 
-            const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 8000;
+            const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 120000;
             const orchestratedHistory = await orchestrateContext(rawHistory, prompt, compactionTokenLimit);
 
             history = orchestratedHistory;
