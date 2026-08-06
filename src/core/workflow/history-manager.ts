@@ -78,4 +78,53 @@ export class HistoryManager {
         fs.writeFileSync(filePath, JSON.stringify(history, null, 2), 'utf-8');
     }
 
+    static isLogicalUserTurn(msg: ChatMessage): boolean {
+        if (msg.role !== 'user') return false;
+        const content = msg.content || '';
+        if (content.startsWith('[Action ') || content.startsWith('[MEMÓRIA')) {
+            return false;
+        }
+        return true;
+    }
+
+    static getLogicalTurnIndexes(history: ChatMessage[]): number[] {
+        const indexes: number[] = [];
+        for (let i = 0; i < history.length; i++) {
+            if (this.isLogicalUserTurn(history[i])) {
+                indexes.push(i);
+            }
+        }
+        return indexes;
+    }
+
+    static async rewindLogicalTurns(conversationId: string, count: number = 1): Promise<{ success: boolean; removedCount: number; remainingCount: number }> {
+        const rawHistory = await this.getRawHistory(conversationId);
+        if (rawHistory.length === 0) {
+            return { success: false, removedCount: 0, remainingCount: 0 };
+        }
+
+        const turnIndexes = this.getLogicalTurnIndexes(rawHistory);
+        if (turnIndexes.length === 0) {
+            return { success: false, removedCount: 0, remainingCount: rawHistory.length };
+        }
+
+        const targetTurnIndex = Math.max(0, turnIndexes.length - count);
+        const cutOffIndex = turnIndexes[targetTurnIndex];
+
+        const truncatedRaw = rawHistory.slice(0, cutOffIndex);
+        await this.saveRawHistory(conversationId, truncatedRaw);
+
+        const formattedHistory = await this.getHistory(conversationId);
+        if (formattedHistory.length > 0) {
+            const truncatedFormatted = formattedHistory.slice(0, Math.min(formattedHistory.length, cutOffIndex));
+            await this.saveHistory(conversationId, truncatedFormatted);
+        }
+
+        return {
+            success: true,
+            removedCount: rawHistory.length - truncatedRaw.length,
+            remainingCount: truncatedRaw.length
+        };
+    }
 }
+

@@ -68,5 +68,51 @@ describe('HistoryManager', () => {
         // Cleanup
         if (rawExists) fs.unlinkSync(rawPath);
     });
+
+    describe('Logical Turn Rewind', () => {
+        const testRewindId = 'test-rewind-conv';
+
+        afterEach(async () => {
+            await HistoryManager.deleteHistory(testRewindId);
+            const rawPath = HistoryManager.getRawHistoryPath(testRewindId);
+            if (fs.existsSync(rawPath)) fs.unlinkSync(rawPath);
+        });
+
+        it('should identify logical user turn start indexes correctly', () => {
+            const history = [
+                { role: 'system' as const, content: 'System instruction' },
+                { role: 'user' as const, content: 'First user prompt' },
+                { role: 'assistant' as const, content: '{"action":{"type":"read_file"}}' },
+                { role: 'user' as const, content: '[Action read_file Success]: content' },
+                { role: 'assistant' as const, content: 'Assistant final response 1' },
+                { role: 'user' as const, content: 'Second user prompt' },
+                { role: 'assistant' as const, content: 'Assistant final response 2' }
+            ];
+
+            const indexes = HistoryManager.getLogicalTurnIndexes(history);
+            expect(indexes).toEqual([1, 5]);
+        });
+
+        it('should rewind 1 logical turn properly', async () => {
+            const history = [
+                { role: 'system' as const, content: 'System instruction' },
+                { role: 'user' as const, content: 'First user prompt' },
+                { role: 'assistant' as const, content: 'Assistant response 1' },
+                { role: 'user' as const, content: 'Second user prompt' },
+                { role: 'assistant' as const, content: '{"message":"An unexpected error occurred"}' }
+            ];
+
+            await HistoryManager.saveRawHistory(testRewindId, history);
+            await HistoryManager.saveHistory(testRewindId, history);
+
+            const res = await HistoryManager.rewindLogicalTurns(testRewindId, 1);
+            expect(res.success).toBe(true);
+
+            const updatedRaw = await HistoryManager.getRawHistory(testRewindId);
+            expect(updatedRaw.length).toBe(3);
+            expect(updatedRaw[updatedRaw.length - 1].content).toBe('Assistant response 1');
+        });
+    });
 });
+
 
