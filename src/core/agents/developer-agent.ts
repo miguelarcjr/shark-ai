@@ -314,9 +314,49 @@ export async function interactiveDeveloperAgent(options: {
             }
             return true;
         }
+        if (command === '/rewind' || command.startsWith('/rewind ')) {
+            if (!activeConversationId) {
+                tui.log.warning('Nenhuma conversação ativa para rebobinar.');
+                return true;
+            }
+
+            const args = command.trim().split(/\s+/).slice(1);
+            const subCommand = args[0] ? args[0].toLowerCase() : '';
+
+            const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+            const turnIndexes = HistoryManager.getLogicalTurnIndexes(rawHistory);
+
+            if (subCommand === 'list') {
+                if (turnIndexes.length === 0) {
+                    tui.log.info('Nenhum turno do usuário encontrado no histórico.');
+                    return true;
+                }
+                tui.log.info(colors.dim('\n--- TURNOS DO USUÁRIO ---'));
+                turnIndexes.forEach((idx, i) => {
+                    const snippet = rawHistory[idx].content.replace(/\n/g, ' ').substring(0, 60);
+                    console.log(`[Turno ${i + 1}] Índice ${idx}: "${snippet}..."`);
+                });
+                tui.log.info(colors.dim('-------------------------\n'));
+                return true;
+            }
+
+            let count = 1;
+            if (subCommand && !isNaN(parseInt(subCommand, 10))) {
+                count = Math.max(1, parseInt(subCommand, 10));
+            }
+
+            const result = await HistoryManager.rewindLogicalTurns(activeConversationId, count);
+            if (result.success) {
+                tui.log.success(`✔ Histórico rebobinado em ${count} turno(s). Mensagens no contexto: ${result.remainingCount}`);
+            } else {
+                tui.log.warning('Não foi possível rebobinar o histórico (histórico vazio ou sem turnos).');
+            }
+            return true;
+        }
         return false;
     };
     activeOnCommandHandler = onCommandHandler;
+
 
     let currentTask = options.taskInstruction;
     if (!currentTask) {
