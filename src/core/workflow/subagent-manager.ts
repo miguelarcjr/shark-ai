@@ -19,6 +19,7 @@ interface SubagentState {
 
 export class SubagentManager {
     private subagents = new Map<string, SubagentState>();
+    private recordedSubagents = new Set<string>();
     private messageSeq = 0;
     private watchdogInterval: NodeJS.Timeout | null = null;
     private fileWatcher: fs.FSWatcher | null = null;
@@ -236,6 +237,11 @@ export class SubagentManager {
     }
 
     sendMessage(recipient: string, message: string) {
+        const match = message.match(/\(subagent-[a-f0-9-]+\)/i);
+        if (match) {
+            const matchedId = match[0].slice(1, -1);
+            this.recordedSubagents.add(matchedId);
+        }
         const mailboxDir = path.resolve(process.cwd(), '.shark', 'mailbox', recipient);
         fs.mkdirSync(mailboxDir, { recursive: true });
         const seq = (this.messageSeq++).toString().padStart(6, '0');
@@ -506,8 +512,8 @@ export class SubagentManager {
                         this.updateSubagentSummary(id, 'Completed');
                         
                         const mailboxDir = path.resolve(projectRoot, '.shark', 'mailbox', parentId);
-                        let hasReturnedDetails = false;
-                        if (fs.existsSync(mailboxDir)) {
+                        let hasReturnedDetails = this.recordedSubagents.has(id);
+                        if (!hasReturnedDetails && fs.existsSync(mailboxDir)) {
                             try {
                                 const allFiles = fs.readdirSync(mailboxDir);
                                 for (const file of allFiles) {

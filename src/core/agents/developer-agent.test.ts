@@ -688,6 +688,22 @@ describe('DeveloperAgent', () => {
         );
     });
 
+    it('preserves draftBuffer when subagent notification interrupts prompt in waitForInputOrNotification', async () => {
+        vi.mocked(tui.text).mockImplementationOnce(() => new Promise(() => {}));
+        const queue = new MessageQueue();
+        setTimeout(() => {
+            queue.push({
+                type: 'subagent_notification',
+                content: '<subagent_notification status="completed">Done</subagent_notification>',
+                timestamp: Date.now()
+            });
+        }, 10);
+
+        const result = await waitForInputOrNotification(queue, 'Your answer:', '', undefined, false, 'my partial draft');
+        expect(result.type).toBe('subagent_notification');
+        expect(result.draft).toBe('my partial draft');
+    });
+
     it('should complete and return summary without prompting if subagent receives complete_task', async () => {
         vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
             action: {

@@ -36,7 +36,10 @@ let activeOnCommandHandler: ((command: string) => Promise<boolean>) | undefined 
 const AGENT_TYPE = 'developer_agent';
 
 async function promptUser(message: string, initialValue?: string, placeholder?: string, prefix: string = ''): Promise<string> {
-    let userReply = await tui.text({ message: `${prefix}${message}`, initialValue, placeholder });
+    const textOpts: any = { message: `${prefix}${message}` };
+    if (initialValue) textOpts.initialValue = initialValue;
+    if (placeholder) textOpts.placeholder = placeholder;
+    let userReply = await tui.text(textOpts);
     
     while (userReply && userReply.startsWith('/')) {
         let handled = false;
@@ -76,11 +79,13 @@ export async function waitForInputOrNotification(
     promptMessage: string = 'Your answer:',
     subagentPrefix: string = '',
     timeoutMs?: number,
-    isAuto: boolean = false
-): Promise<QueueMessage> {
+    isAuto: boolean = false,
+    initialDraft?: string
+): Promise<QueueMessage & { draft?: string }> {
     let cancelled = false;
     let resolvePromptPromise: ((value: QueueMessage) => void) | null = null;
     let timerId: any = null;
+    let capturedDraft = initialDraft || '';
 
     const promises: Promise<QueueMessage>[] = [];
 
@@ -91,7 +96,10 @@ export async function waitForInputOrNotification(
 
         const runPrompt = async () => {
             try {
-                const userReply = await promptUser(promptMessage, undefined, undefined, subagentPrefix);
+                const userReply = await promptUser(promptMessage, initialDraft, undefined, subagentPrefix);
+                if (typeof userReply === 'string') {
+                    capturedDraft = userReply;
+                }
                 if (!cancelled && resolvePromptPromise) {
                     resolvePromptPromise({
                         type: 'user',
@@ -135,16 +143,18 @@ export async function waitForInputOrNotification(
         if (!isAuto) {
             try {
                 process.stdin.emit('keypress', '\r', { name: 'return', ctrl: false, meta: false });
-                process.stdin.emit('data', Buffer.from('\r'));
+                process.stdin.emit('data', Buffer.from('\r\n'));
             } catch {}
             await new Promise(r => setTimeout(r, 50));
             if (process.stdout.isTTY) {
                 process.stdout.write('\x1b[1A\x1b[2K\x1b[1A\x1b[2K');
             }
         }
+    } else if (winner.type === 'user') {
+        capturedDraft = '';
     }
 
-    return winner;
+    return Object.assign(winner, { draft: capturedDraft });
 }
 
 
@@ -455,6 +465,7 @@ Your goal is to address the user's request:
     let nextPrompt = basePrompt;
     let keepGoing = true;
     let finalSummary = "";
+    let userDraftBuffer = "";
     const anchorManager = new AnchorStateManager();
 
     const spinner = tui.spinner();
@@ -639,7 +650,8 @@ Your goal is to address the user's request:
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                            userDraftBuffer = (nextMsg as any).draft || '';
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -683,7 +695,8 @@ Your goal is to address the user's request:
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                            userDraftBuffer = (nextMsg as any).draft || '';
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -925,7 +938,8 @@ Your goal is to address the user's request:
                                 if (!messageQueue.isEmpty()) {
                                     nextMsg = await messageQueue.next();
                                 } else {
-                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Seu prompt alternativo para o agente:', subagentPrefix, undefined, isBatchMode);
+                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Seu prompt alternativo para o agente:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                                    userDraftBuffer = (nextMsg as any).draft || '';
                                 }
                                 if (nextMsg.type === 'user') {
                                     if (tui.isCancel(nextMsg.content)) {
@@ -971,7 +985,8 @@ Your goal is to address the user's request:
                                 if (!messageQueue.isEmpty()) {
                                     nextMsg = await messageQueue.next();
                                 } else {
-                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
+                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                                    userDraftBuffer = (nextMsg as any).draft || '';
                                 }
                                 if (nextMsg.type === 'user') {
                                     if (tui.isCancel(nextMsg.content)) {
@@ -993,7 +1008,8 @@ Your goal is to address the user's request:
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                            userDraftBuffer = (nextMsg as any).draft || '';
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -1056,7 +1072,8 @@ Your goal is to address the user's request:
                             if (!messageQueue.isEmpty()) {
                                 nextMsg = await messageQueue.next();
                             } else {
-                                nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
+                                nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                                userDraftBuffer = (nextMsg as any).draft || '';
                             }
                             if (nextMsg.type === 'user') {
                                 if (tui.isCancel(nextMsg.content)) {
@@ -1083,7 +1100,8 @@ Your goal is to address the user's request:
                     if (!messageQueue.isEmpty()) {
                         nextMsg = await messageQueue.next();
                     } else {
-                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, durationMs, isBatchMode);
+                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, durationMs, isBatchMode, userDraftBuffer);
+                        userDraftBuffer = (nextMsg as any).draft || '';
                     }
 
                     if (nextMsg.type === 'timeout') {

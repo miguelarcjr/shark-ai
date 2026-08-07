@@ -407,6 +407,30 @@ describe('SubagentManager', () => {
             fs.unlinkSync(filePath);
         });
     });
+
+    it('does not send fallback message on exit if subagent already recorded completion', async () => {
+        const parentId = 'parent-ledger-test';
+        const subId = 'subagent-recorded-123';
+        subagentManager.registerSubagent(subId, 'self', 'Tester', parentId);
+
+        // Simulate subagent calling complete_task which sends a message
+        subagentManager.sendMessage(
+            parentId,
+            `[Subagent Notification] Subagent Tester (${subId}) completed.\nResult Details:\nDone`
+        );
+
+        // Retrieve the message (mailbox disk file is unlinked/renamed)
+        const msgs = subagentManager.retrieveMessages(parentId);
+        expect(msgs.length).toBe(1);
+
+        // Simulate child process exit handler
+        subagentManager.terminateSubagent(subId, true);
+
+        // Check parent mailbox again - should NOT contain duplicate fallback message
+        const extraMsgs = subagentManager.retrieveMessages(parentId);
+        expect(extraMsgs.length).toBe(0);
+    });
 });
+
 
 

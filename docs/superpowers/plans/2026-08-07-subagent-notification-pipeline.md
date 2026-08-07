@@ -1,95 +1,87 @@
-# Subagent Notification Pipeline Implementation Plan
+# Subagent Non-Blocking Pipeline & Draft-Preserving TUI Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Unify subagent completion, crash, and cancellation notifications into a single disk-based Mailbox channel, preventing duplicate prompt injections and agent freezing in Shark Dev.
+**Goal:** Eliminate duplicate subagent completion fallback messages and implement non-blocking TUI input with automatic user draft preservation in Shark Dev.
 
-**Architecture:** Remove direct in-memory `parentQueue.push` calls from `subagentManager.invokeSubagents`. Use `.shark/mailbox/` as the single source of truth for subagent status notifications. Format all incoming mailbox messages into standardized `<subagent_notification status="...">` XML blocks and deduplicate message ingestion in `developer-agent.ts`.
+**Architecture:** Maintain an in-memory `recordedSubagents: Set<string>` in `SubagentManager` to prevent duplicate exit messages. Refactor `waitForInputOrNotification` in `developer-agent.ts` to use asynchronous non-blocking input listening with a `draftBuffer` that saves partially typed user text when subagent notifications wake the agent, restoring the draft seamlessly when prompting resumes.
 
-**Tech Stack:** TypeScript, Node.js (fs, child_process), Vitest.
+**Tech Stack:** TypeScript, Node.js (readline, events, fs), Vitest.
 
 ## Global Constraints
 
-- Retain backward compatibility with existing subagent task brief frontmatter parsing.
-- Ensure Windows-safe file operations (`.processed` atomic rename / delete retry).
-- No duplicate messages allowed in `messageQueue` or prompt injections.
+- Never lose user keystrokes typed into the CLI prompt line.
+- Prevent duplicate mailbox notifications per subagent lifecycle.
+- Maintain full compatibility with interactive (`!isAuto`) and batch (`--auto`) execution modes.
 
 ---
 
-### Task 1: Unify Subagent Exit & Crash Handlers in `subagent-manager.ts`
+### Task 1: In-Memory Subagent Completion Tracking in `subagent-manager.ts`
 
 **Files:**
-- Modify: `src/core/workflow/subagent-manager.ts:500-580`
+- Modify: `src/core/workflow/subagent-manager.ts:20-40, 238-250, 500-535`
 - Test: `src/core/workflow/subagent-manager.test.ts`
 
 **Interfaces:**
-- Consumes: Subagent process exit events, crash logs from `_sharkrc/history/`
-- Produces: Single disk mailbox notification per subagent status update via `this.sendMessage(parentId, ...)`
+- Consumes: `sendMessage` calls with subagent ID tags `(subagent-uuid)`
+- Produces: `recordedSubagents.has(id)` check in exit handler to skip duplicate fallback messages
 
-- [ ] **Step 1: Write the failing unit tests in `subagent-manager.test.ts`**
-
-Update `subagent-manager.test.ts` to verify that `invokeSubagents` does NOT push direct duplicate messages into `parentQueue` when subagent exits, and that crash notifications contain formatted logs in Mailbox only.
+- [ ] **Step 1: Write failing test in `subagent-manager.test.ts`**
 
 ```typescript
-it('does not duplicate notifications into parentQueue when mailbox already has subagent message', async () => {
-    const queue = new MessageQueue();
-    const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Test prompt' }];
-    const parentId = 'parent-no-dup';
+it('does not send fallback message on exit if subagent already recorded completion', async () => {
+    const parentId = 'parent-ledger-test';
+    const subId = 'subagent-recorded-123';
+    subagentManager.registerSubagent(subId, 'self', 'Tester', parentId);
 
-    await subagentManager.invokeSubagents(subagents, parentId, queue);
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // Simulate subagent calling complete_task which sends a message
+    subagentManager.sendMessage(
+        parentId,
+        `[Subagent Notification] Subagent Tester (${subId}) completed.\nResult Details:\nDone`
+    );
 
-    // Disk mailbox should contain the notification
-    const diskMsgs = subagentManager.retrieveMessages(parentId);
-    expect(diskMsgs.length).toBe(1);
+    // Retrieve the message (mailbox disk file is unlinked/renamed)
+    const msgs = subagentManager.retrieveMessages(parentId);
+    expect(msgs.length).toBe(1);
 
-    // parentQueue should remain empty (or only populated by mailbox reader, not direct push)
-    expect(queue.isEmpty()).toBe(true);
+    // Simulate child process exit handler
+    const state = subagentManager.getSubagentState(subId);
+    if (state) {
+        (subagentManager as any).terminateSubagent(subId, true);
+    }
+
+    // Check parent mailbox again - should NOT contain duplicate fallback message
+    const extraMsgs = subagentManager.retrieveMessages(parentId);
+    expect(extraMsgs.length).toBe(0);
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [ ] **Step 2: Run test to verify failure state if present**
 
 Run: `npx vitest run src/core/workflow/subagent-manager.test.ts`
-Expected: FAIL due to `queue.next()` receiving `subagent_notification` directly from `invokeSubagents`.
 
-- [ ] **Step 3: Modify `src/core/workflow/subagent-manager.ts` to remove direct queue push and standardize exit notifications**
+- [ ] **Step 3: Implement `recordedSubagents` tracking in `subagent-manager.ts`**
 
-Remove lines 537-562 (`parentQueue.push(...)` in `invokeSubagents`) and refine exit handling:
-
+In `src/core/workflow/subagent-manager.ts`:
+1. Add property `private recordedSubagents = new Set<string>();` to `SubagentManager`.
+2. In `sendMessage(recipient, message)`:
 ```typescript
-// In subagent-manager.ts invokeSubagents exit handler:
-const isCancelled = this.subagents.get(id)?.status === 'cancelled';
-const success = exitCode === 0;
-this.terminateSubagent(id, success);
-
-if (isCancelled) {
-    this.updateSubagentSummary(id, 'Terminated by parent agent.');
-    tui.log.message(`\nSubagent ${sub.Role} (${id}) cancelled.`);
-} else if (!success) {
-    this.updateSubagentSummary(id, 'Failed');
-    const lastLogs = this.getSubagentLogs(id, 15);
-    const fallbackMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) failed (Exit Code: ${exitCode}). Last console logs:\n${lastLogs}`;
-    const parentMsgs = this.peekMessages(parentId);
-    const hasExistingMsg = parentMsgs.some(m => m.includes(`(${id})`));
-    if (!hasExistingMsg) {
-        this.sendMessage(parentId, fallbackMsg);
-    }
-    tui.log.error(`Subagent ${sub.Role} (${id}) failed.`);
+const match = message.match(/\(subagent-[a-f0-9-]+\)/i);
+if (match) {
+    const matchedId = match[0].slice(1, -1);
+    this.recordedSubagents.add(matchedId);
+}
+```
+3. In child exit handler (lines 505-535):
+```typescript
+if (this.recordedSubagents.has(id)) {
+    // Already sent completion/failure message, skip fallback
+    tui.log.success(`Subagent ${sub.Role} (${id}) completed.`);
 } else {
-    this.updateSubagentSummary(id, 'Completed');
-    const parentMsgs = this.peekMessages(parentId);
-    const hasExistingMsg = parentMsgs.some(m => m.includes(`(${id})`));
-    if (!hasExistingMsg) {
-        const completedMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) completed successfully.`;
-        this.sendMessage(parentId, completedMsg);
-        tui.log.success(completedMsg);
-    } else {
-        const subagentMsg = parentMsgs.find(m => m.includes(`(${id})`));
-        if (subagentMsg) {
-            tui.log.message(`\n${subagentMsg}`);
-        }
-    }
+    // Fallback if subagent exited without sending message
+    const completedMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) completed successfully.`;
+    this.sendMessage(parentId, completedMsg);
+    tui.log.success(completedMsg);
 }
 ```
 
@@ -102,88 +94,73 @@ Expected: PASS
 
 ```bash
 git add src/core/workflow/subagent-manager.ts src/core/workflow/subagent-manager.test.ts
-git commit -m "fix(workflow): remove duplicate queue push and unify subagent exit notifications to mailbox"
+git commit -m "fix(workflow): track recorded subagents in memory to prevent exit fallback duplicates"
 ```
 
 ---
 
-### Task 2: Standardize XML Notification Ingestion in `developer-agent.ts`
+### Task 2: Non-Blocking Input Handling & Draft Buffer Preservation in `developer-agent.ts`
 
 **Files:**
-- Modify: `src/core/agents/developer-agent.ts:175-195, 490-515`
-- Test: `src/commands/dev.test.ts`
+- Modify: `src/core/agents/developer-agent.ts:74-148, 480-515, 620-640`
+- Test: `src/core/agents/developer-agent.test.ts`
 
 **Interfaces:**
-- Consumes: Raw mailbox strings from `subagentManager.retrieveMessages()`
-- Produces: Formatted `<subagent_notification status="...">` blocks injected once into turn prompt
+- Consumes: Asynchronous keystrokes from `process.stdin`, subagent notifications from `messageQueue`
+- Produces: Unblocked resolution on `subagent_notification` arrival while storing user text in `draftBuffer` and passing `initialValue: draftBuffer` back to prompt
 
-- [ ] **Step 1: Write failing unit test in `src/commands/dev.test.ts` or new test file**
+- [ ] **Step 1: Write unit test in `developer-agent.test.ts`**
 
-Verify that `developer-agent` formats mailbox messages as `<subagent_notification>` XML tags and does not process duplicate messages in a single turn.
+Verify that `waitForInputOrNotification` preserves user draft text when a subagent notification interrupts input:
 
 ```typescript
-it('formats subagent mailbox messages into structured XML notifications without duplication', async () => {
-    const rawMsg = '[Subagent Notification] Subagent Tester (subagent-123) completed.\nResult Details:\nDone!';
-    const formatted = subagentManager.retrieveMessages('parent-1');
-    // Verify XML formatting wrapper
-    expect(formatted).toBeDefined();
+it('preserves draftBuffer when subagent notification interrupts prompt', async () => {
+    const queue = new MessageQueue();
+    // Push a notification after 10ms
+    setTimeout(() => {
+        queue.push({
+            type: 'subagent_notification',
+            content: '<subagent_notification status="completed">Done</subagent_notification>',
+            timestamp: Date.now()
+        });
+    }, 10);
+
+    const result = await waitForInputOrNotification(queue, 'Your answer:', '', undefined, false, 'my partial draft');
+    expect(result.type).toBe('subagent_notification');
 });
 ```
 
-- [ ] **Step 2: Run test to verify behavior**
+- [ ] **Step 2: Run test to verify failure or expected behavior**
 
-Run: `npx vitest run src/core/workflow/subagent-manager.test.ts`
+Run: `npx vitest run src/core/agents/developer-agent.test.ts`
 
-- [ ] **Step 3: Update `src/core/agents/developer-agent.ts` mailbox polling and prompt injection**
+- [ ] **Step 3: Update `waitForInputOrNotification` and `interactiveDeveloperAgent` in `developer-agent.ts`**
 
-In `developer-agent.ts`:
-1. In `mailboxInterval` (lines 175-193):
+1. Update `waitForInputOrNotification` signature to accept `initialDraft?: string`:
 ```typescript
-mailboxInterval = setInterval(() => {
-    try {
-        const newMsgs = subagentManager.retrieveMessages(myId);
-        for (const msg of newMsgs) {
-            let status = 'completed';
-            if (msg.includes('FAILED') || msg.includes('failed')) status = 'failed';
-            if (msg.includes('CANCELLED') || msg.includes('cancelled')) status = 'cancelled';
-
-            const formatted = `<subagent_notification status="${status}">\n${msg}\n</subagent_notification>`;
-            messageQueue.push({
-                type: 'subagent_notification',
-                content: formatted,
-                timestamp: Date.now()
-            });
-        }
-    } catch (e) {}
-}, 2000);
+export async function waitForInputOrNotification(
+    queue: MessageQueue,
+    promptMessage: string = 'Your answer:',
+    subagentPrefix: string = '',
+    timeoutMs?: number,
+    isAuto: boolean = false,
+    initialDraft: string = ''
+): Promise<{ message: QueueMessage, currentDraft: string }> {
+    // ...
 ```
+2. Refactor input listening: when a `subagent_notification` arrives, store the current user typed text in `currentDraft` and resolve immediately without blocking on `process.stdin`.
+3. In `interactiveDeveloperAgent`: maintain `let userDraftBuffer = '';`. Pass `userDraftBuffer` to `waitForInputOrNotification`. If user submits input, reset `userDraftBuffer = ''`. If subagent notification arrives, keep `userDraftBuffer` intact so next prompt re-opens with `initialValue: userDraftBuffer`.
 
-2. In turn loop (lines 485-502), deduplicate reading so messages are read once from `messageQueue`:
-```typescript
-const queuedMessages: string[] = [];
-while (!messageQueue.isEmpty()) {
-    const qMsg = await messageQueue.next();
-    if (qMsg && qMsg.content) {
-        queuedMessages.push(qMsg.content);
-    }
-}
+- [ ] **Step 4: Run tests to verify passing state**
 
-let currentTurnPrompt = nextPrompt;
-if (queuedMessages.length > 0) {
-    currentTurnPrompt += `\n\n✉️ NEW MAILBOX MESSAGES:\n${queuedMessages.join('\n\n')}\n`;
-}
-```
-
-- [ ] **Step 4: Run all tests to verify passing state**
-
-Run: `npx vitest run`
+Run: `npx vitest run src/core/agents/developer-agent.test.ts`
 Expected: PASS
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/core/agents/developer-agent.ts
-git commit -m "feat(agent): standardize subagent XML notifications and deduplicate prompt ingestion"
+git add src/core/agents/developer-agent.ts src/core/agents/developer-agent.test.ts
+git commit -m "feat(agent): implement non-blocking subagent notification handling with draft buffer preservation"
 ```
 
 ---
@@ -191,16 +168,16 @@ git commit -m "feat(agent): standardize subagent XML notifications and deduplica
 ### Task 3: Full End-to-End Verification
 
 **Files:**
-- Test: `src/core/workflow/subagent-manager.test.ts`
+- Test: Full Vitest suite
 
 - [ ] **Step 1: Run full test suite**
 
 Run: `npx vitest run`
-Expected: All tests pass with 0 failures.
+Expected: 264+ tests PASS.
 
-- [ ] **Step 2: Commit any final test cleanups**
+- [ ] **Step 2: Commit clean state**
 
 ```bash
 git add .
-git commit -m "test(workflow): complete verification for subagent notification pipeline fix"
+git commit -m "test(agent): complete non-blocking draft-preserving subagent pipeline implementation"
 ```
