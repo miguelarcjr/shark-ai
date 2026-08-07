@@ -207,18 +207,24 @@ describe('SubagentManager', () => {
         expect(fs.existsSync(path.join(mailboxDir, files[0]))).toBe(false);
     });
 
-    it('pushes completion event to parent queue when subagent exits', async () => {
+    it('delivers subagent notification to mailbox without direct queue push', async () => {
         const queue = new MessageQueue();
         const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Test prompt' }];
         const parentId = 'parent-1';
         
         await subagentManager.invokeSubagents(subagents, parentId, queue);
         
-        const nextMsg = await queue.next();
-        expect(nextMsg.type).toBe('subagent_notification');
-        expect(nextMsg.metadata?.role).toBe('Tester');
-        expect(nextMsg.metadata?.status).toBe('completed');
-        expect(nextMsg.content).toContain('Passed test checks');
+        // Wait briefly for process exit handling
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Disk mailbox should contain the notification
+        const parentMsgs = subagentManager.retrieveMessages(parentId);
+        expect(parentMsgs.length).toBe(1);
+        expect(parentMsgs[0]).toContain('[Subagent Notification]');
+        expect(parentMsgs[0]).toContain('Tester');
+
+        // parentQueue should remain empty (no duplicate push)
+        expect(queue.isEmpty()).toBe(true);
     });
 
     it('supports cancelled status for terminated subagents', () => {
@@ -289,16 +295,12 @@ describe('SubagentManager', () => {
         expect(state?.status).toBe('cancelled');
         expect(state?.summary).toBe('Terminated by parent agent.');
         
-        // Retrieve queue messages
-        const msgs: any[] = [];
-        while (!queue.isEmpty()) {
-            msgs.push(await queue.next());
-        }
-        
-        const subNotification = msgs.find(m => m.type === 'subagent_notification');
+        // Retrieve mailbox messages
+        const msgs = subagentManager.retrieveMessages(parentId);
+        expect(msgs.length).toBeGreaterThan(0);
+        const subNotification = msgs.find(m => m.includes('status: CANCELLED') || m.includes('CANCELLED'));
         expect(subNotification).toBeDefined();
-        expect(subNotification.metadata?.status).toBe('cancelled');
-        expect(subNotification.content).toBe('Terminated by parent agent.');
+        expect(subNotification).toContain('Terminated by parent agent.');
     });
 
     it('should inject specialized subagent instructions into the instruction prompt', async () => {

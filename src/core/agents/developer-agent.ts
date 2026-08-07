@@ -179,7 +179,11 @@ export async function interactiveDeveloperAgent(options: {
             try {
                 const newMsgs = subagentManager.retrieveMessages(myId);
                 for (const msg of newMsgs) {
-                    const formatted = `<mailbox>\n  <message from="subagent" status="info">\n${msg}\n  </message>\n</mailbox>`;
+                    let status = 'completed';
+                    if (msg.includes('FAILED') || msg.includes('failed')) status = 'failed';
+                    if (msg.includes('CANCELLED') || msg.includes('cancelled')) status = 'cancelled';
+
+                    const formatted = `<subagent_notification status="${status}">\n${msg}\n</subagent_notification>`;
                     messageQueue.push({
                         type: 'subagent_notification',
                         content: formatted,
@@ -490,14 +494,22 @@ Your goal is to address the user's request:
                 }
             }
 
+            const formatNotification = (msg: string): string => {
+                if (msg.startsWith('<subagent_notification')) return msg;
+                let status = 'completed';
+                if (msg.includes('FAILED') || msg.includes('failed')) status = 'failed';
+                if (msg.includes('CANCELLED') || msg.includes('cancelled')) status = 'cancelled';
+                return `<subagent_notification status="${status}">\n${msg}\n</subagent_notification>`;
+            };
+
             const allIncomingMessages = [
-                ...diskMessages.map(m => `- ${m}`),
-                ...queuedMessages.map(m => `- ${m}`)
+                ...diskMessages.map(formatNotification),
+                ...queuedMessages.map(formatNotification)
             ];
 
             let currentTurnPrompt = nextPrompt;
             if (allIncomingMessages.length > 0) {
-                currentTurnPrompt += `\n\n✉️ NEW MAILBOX MESSAGES:\n${allIncomingMessages.join('\n')}\n`;
+                currentTurnPrompt += `\n\n✉️ NEW MAILBOX MESSAGES:\n${allIncomingMessages.join('\n\n')}\n`;
             }
 
             // Inject active subagent status panel

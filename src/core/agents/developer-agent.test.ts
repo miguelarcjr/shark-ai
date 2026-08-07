@@ -683,7 +683,7 @@ describe('DeveloperAgent', () => {
         expect(subagentManager.retrieveMessages).toHaveBeenCalledWith('parent');
         // Verify the streamChat was called with the mailbox content
         expect(mockProvider.streamChat).toHaveBeenCalledWith(
-            expect.stringContaining('✉️ NEW MAILBOX MESSAGES:\n- Hello parent'),
+            expect.stringContaining('<subagent_notification status="completed">\nHello parent'),
             expect.any(Object)
         );
     });
