@@ -1411,5 +1411,45 @@ describe('DeveloperAgent', () => {
         expect(retrieveSpy).toHaveBeenCalledWith('polling-parent-task');
         vi.useRealTimers();
     });
+
+    it('should handle /auto slash command to toggle tool auto-approval and log notification', async () => {
+        vi.mocked(tui.text)
+            .mockResolvedValueOnce('/auto')
+            .mockResolvedValueOnce('do something');
+
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: {
+                type: 'modify_file',
+                path: 'test.ts',
+                start_anchor: 'a',
+                end_anchor: 'b',
+                content: 'new content'
+            },
+            actions: [],
+            message: 'Modifying file',
+            conversation_id: 'conv-auto-toggle'
+        }).mockResolvedValueOnce({
+            action: {
+                type: 'complete_task',
+                summary: 'Task finished'
+            },
+            actions: [],
+            message: 'TASK_COMPLETED: Done',
+            conversation_id: 'conv-auto-toggle'
+        });
+
+        vi.mocked(tui.isCancel).mockImplementation((val) => val === 'cancel');
+
+        await interactiveDeveloperAgent({
+            taskInstruction: undefined,
+            auto: false
+        });
+
+        expect(tui.log.info).toHaveBeenCalledWith('⚡ Auto-aprovação de ferramentas ATIVADA.');
+        expect(tui.confirm).not.toHaveBeenCalledWith(expect.objectContaining({
+            message: expect.stringContaining('modify_file')
+        }));
+    });
 });
+
 

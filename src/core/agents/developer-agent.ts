@@ -166,7 +166,8 @@ export async function interactiveDeveloperAgent(options: {
     history?: string,
     auto?: boolean
 } = {}): Promise<DevelopmentResult> {
-    const isAuto = options.auto === true || process.argv.includes('--auto');
+    const isBatchMode = options.auto === true || process.argv.includes('--auto');
+    let autoApproveTools = isBatchMode;
     const isSubagent = !!options.taskId && (options.taskId.startsWith('subagent-') || subagentManager.hasSubagent(options.taskId));
     const projectRoot = process.cwd();
     const messageQueue = new MessageQueue();
@@ -195,6 +196,15 @@ export async function interactiveDeveloperAgent(options: {
     let activeConversationId = await conversationManager.getConversationId(conversationKey);
 
     const onCommandHandler = async (command: string): Promise<boolean> => {
+        if (command.trim() === '/auto') {
+            autoApproveTools = !autoApproveTools;
+            if (autoApproveTools) {
+                tui.log.info('⚡ Auto-aprovação de ferramentas ATIVADA.');
+            } else {
+                tui.log.info('🔒 Auto-aprovação de ferramentas DESATIVADA (solicitando confirmações manuais).');
+            }
+            return true;
+        }
         if (command === '/compact') {
             const config = ConfigManager.getInstance().getConfig();
             const enabled = config.memory?.enabled === true || !!process.env.VITEST;
@@ -612,12 +622,12 @@ Your goal is to address the user's request:
                         break;
                     }
 
-                    if (!options.auto || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
+                    if (!isBatchMode || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -656,12 +666,12 @@ Your goal is to address the user's request:
                         return { success: false, summary: failureReason };
                     }
 
-                    if (!options.auto || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
+                    if (!isBatchMode || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -703,7 +713,7 @@ Your goal is to address the user's request:
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -718,7 +728,7 @@ Your goal is to address the user's request:
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', subagentPrefix, undefined, isAuto);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', subagentPrefix, undefined, isBatchMode);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -747,7 +757,7 @@ Your goal is to address the user's request:
                     const filePath = action.path || '';
                     log.warning(`📝 Modify (Anchored): ${colors.bold(filePath)}`);
 
-                    let approved = isAuto;
+                    let approved = autoApproveTools;
                     if (!approved) {
                         approved = await tui.confirm({ message: `Approve modify_file changes to ${filePath}?` });
                     }
@@ -767,7 +777,7 @@ Your goal is to address the user's request:
                     const filePath = action.path || '';
                     log.warning(`📝 Create file: ${colors.bold(filePath)}`);
 
-                    let approved = isAuto;
+                    let approved = autoApproveTools;
                     if (!approved) {
                         approved = await tui.confirm({ message: `Approve create_file changes to ${filePath}?` });
                     }
@@ -792,7 +802,7 @@ Your goal is to address the user's request:
                     const filePath = action.path || '';
                     log.warning(`🗑️ Delete file: ${colors.bold(filePath)}`);
 
-                    let approved = isAuto;
+                    let approved = autoApproveTools;
                     if (!approved) {
                         approved = await tui.confirm({ message: `Approve delete_file changes to ${filePath}?` });
                     }
@@ -815,7 +825,7 @@ Your goal is to address the user's request:
                     const cmd = action.command || '';
                     log.info(`💻 Executing: ${colors.dim(cmd)}`);
 
-                    let approved = isAuto;
+                    let approved = autoApproveTools;
                     if (!approved) {
                         approved = await tui.confirm({ message: `Execute run_command: ${cmd}?` });
                     }
@@ -892,7 +902,7 @@ Your goal is to address the user's request:
                             nextPrompt = resultMsg;
                             continue; // Retry loop
                         } else {
-                            let approved = isAuto;
+                            let approved = autoApproveTools;
                             if (!approved) {
                                 approved = await tui.confirm({ message: `Enviar notificação de erro para o agente tentar se recuperar automaticamente?` });
                             }
@@ -903,7 +913,7 @@ Your goal is to address the user's request:
                                 if (!messageQueue.isEmpty()) {
                                     nextMsg = await messageQueue.next();
                                 } else {
-                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Seu prompt alternativo para o agente:', subagentPrefix, undefined, isAuto);
+                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Seu prompt alternativo para o agente:', subagentPrefix, undefined, isBatchMode);
                                 }
                                 if (nextMsg.type === 'user') {
                                     if (tui.isCancel(nextMsg.content)) {
@@ -944,12 +954,12 @@ Your goal is to address the user's request:
 
                             finalSummary = contentStr.split('TASK_COMPLETED:')[1].trim();
                             log.success(`✔ Task Completed: ${finalSummary}`);
-                            if (!options.auto || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
+                            if (!isBatchMode || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                                 let nextMsg: QueueMessage;
                                 if (!messageQueue.isEmpty()) {
                                     nextMsg = await messageQueue.next();
                                 } else {
-                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
+                                    nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
                                 }
                                 if (nextMsg.type === 'user') {
                                     if (tui.isCancel(nextMsg.content)) {
@@ -971,7 +981,7 @@ Your goal is to address the user's request:
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
                         } else {
-                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
                         }
                         if (nextMsg.type === 'user') {
                             if (tui.isCancel(nextMsg.content)) {
@@ -1029,12 +1039,12 @@ Your goal is to address the user's request:
                         
                         log.success(`✔ Task Completed: ${taskSummary}`);
                         
-                        if (!options.auto || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
+                        if (!isBatchMode || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                             let nextMsg: QueueMessage;
                             if (!messageQueue.isEmpty()) {
                                 nextMsg = await messageQueue.next();
                             } else {
-                                nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isAuto);
+                                nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
                             }
                             if (nextMsg.type === 'user') {
                                 if (tui.isCancel(nextMsg.content)) {
@@ -1061,7 +1071,7 @@ Your goal is to address the user's request:
                     if (!messageQueue.isEmpty()) {
                         nextMsg = await messageQueue.next();
                     } else {
-                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, durationMs, isAuto);
+                        nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, durationMs, isBatchMode);
                     }
 
                     if (nextMsg.type === 'timeout') {
