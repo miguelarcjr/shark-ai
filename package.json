@@ -71,6 +71,7 @@
         "execa": "^8.0.1",
         "fast-glob": "^3.3.3",
         "gpt-tokenizer": "^2.8.1",
+        "ignore": "^7.0.6",
         "jsonrepair": "^3.14.1",
         "marked": "^15.0.12",
         "marked-terminal": "^7.3.0",
