@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { handleRunCommand } from './agent-tools.js';
+import { handleRunCommand, handleSearchFile, handleSearchCode } from './agent-tools.js';
 
 describe('agent-tools: handleRunCommand', () => {
     it('should execute basic commands successfully', async () => {
@@ -17,3 +17,17 @@ describe('agent-tools: handleRunCommand', () => {
         expect(result).toContain('current-run');
     });
 });
+
+describe('agent-tools: search functions', () => {
+    it('handleSearchFile excludes .shark and gitignored files', () => {
+        const result = handleSearchFile('**/*');
+        expect(result).not.toContain('.shark');
+        expect(result).not.toContain('node_modules');
+    });
+
+    it('handleSearchCode does not search inside .shark directory', () => {
+        const result = handleSearchCode('**/*', 'membox', false);
+        expect(result).not.toContain('.shark');
+    });
+});
+

@@ -8,6 +8,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { execa, type ExecaChildProcess } from 'execa';
+import { IgnoreFilterManager } from '../utils/ignore-filter.js';
 
 const execAsync = promisify(exec);
 
@@ -163,11 +164,12 @@ If the context looks wrong, DO NOT CONFIRM. Re-read the file to check line numbe
 
 export function handleSearchFile(pattern: string): string {
     try {
-        // Limit scope to current directory for safety?
-        // Patterns are relative to process.cwd()
+        const ignoreManager = new IgnoreFilterManager();
         const entries = fg.sync(pattern, { dot: true });
-        if (entries.length === 0) return 'No files found matching pattern.';
-        return entries.slice(0, 50).join('\n');
+        const filteredEntries = entries.filter(e => !ignoreManager.isIgnored(e));
+
+        if (filteredEntries.length === 0) return 'No files found matching pattern.';
+        return filteredEntries.slice(0, 50).join('\n');
     } catch (e: any) {
         return `Error searching files: ${e.message}`;
     }
@@ -179,7 +181,7 @@ export function handleSearchFile(pattern: string): string {
  * Use this instead of read_file when you only need to find specific symbols,
  * exports, method names, or patterns — avoiding flooding the context with full file contents.
  *
- * @param globPattern  Glob pattern to select files (e.g., "src/**‌/*.ts")
+ * @param globPattern  Glob pattern to select files (e.g., "src/*.ts")
  * @param query        String or regex pattern to search for
  * @param isRegex      If true, treats query as a regular expression
  */
@@ -215,13 +217,17 @@ export function handleSearchCode(
         const defaultIgnores = [
             '**/node_modules/**',
             '**/.git/**',
+            '**/.shark/**',
             '**/dist/**',
             '**/build/**',
             '**/.next/**',
             '**/coverage/**'
         ];
 
-        const files = fg.sync(pattern, { dot: true, absolute: false, ignore: defaultIgnores });
+        const ignoreManager = new IgnoreFilterManager();
+        const rawFiles = fg.sync(pattern, { dot: true, absolute: false, ignore: defaultIgnores });
+        const files = rawFiles.filter(filePath => !ignoreManager.isIgnored(filePath));
+
         if (files.length === 0) return `No files found matching pattern: "${pattern}"`;
 
         let searchRegex: RegExp;
