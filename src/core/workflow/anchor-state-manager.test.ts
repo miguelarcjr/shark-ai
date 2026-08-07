@@ -215,6 +215,28 @@ describe('AnchorStateManager', () => {
             }
         }
     });
+
+    it('should invalidate cache when file on disk is modified externally', () => {
+        fs.writeFileSync(testFile, 'initial_alpha\ninitial_beta');
+        try {
+            const firstRead = manager.getAnchoredContent(testFile);
+            expect(firstRead).toContain('initial_alpha');
+            expect(firstRead).toContain('initial_beta');
+
+            // Manually edit the file on disk (simulation of external edit)
+            fs.writeFileSync(testFile, 'updated_gamma\nupdated_delta');
+
+            // Next read should detect hash mismatch, reload disk content and re-anchor
+            const secondRead = manager.getAnchoredContent(testFile);
+            expect(secondRead).toContain('updated_gamma');
+            expect(secondRead).toContain('updated_delta');
+            expect(secondRead).not.toContain('initial_alpha');
+        } finally {
+            if (fs.existsSync(testFile)) {
+                fs.unlinkSync(testFile);
+            }
+        }
+    });
 });
 
 

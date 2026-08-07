@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { diffLines } from 'diff';
 
 interface LineState {
@@ -7,8 +8,13 @@ interface LineState {
     text: string;
 }
 
+interface CachedFileState {
+    lineStates: LineState[];
+    hash: string;
+}
+
 export class AnchorStateManager {
-    private cache = new Map<string, LineState[]>();
+    private cache = new Map<string, CachedFileState>();
     private wordPool: string[] = [];
 
     constructor() {
@@ -148,23 +154,26 @@ export class AnchorStateManager {
 
     getAnchoredContent(filePath: string): string {
         const absolutePath = path.resolve(filePath);
-        let lineStates = this.cache.get(absolutePath);
+        const diskContent = fs.readFileSync(absolutePath, 'utf8');
+        const diskHash = crypto.createHash('md5').update(diskContent).digest('hex');
 
-        if (!lineStates) {
-            const content = fs.readFileSync(absolutePath, 'utf8');
-            const hasTrailingNewline = content.endsWith('\n');
-            const lines = hasTrailingNewline ? content.slice(0, -1).split('\n') : content.split('\n');
+        let cached = this.cache.get(absolutePath);
+
+        if (!cached || cached.hash !== diskHash) {
+            const hasTrailingNewline = diskContent.endsWith('\n');
+            const lines = hasTrailingNewline ? diskContent.slice(0, -1).split('\n') : diskContent.split('\n');
             const usedAnchors = new Set<string>();
 
-            lineStates = lines.map(line => {
+            const lineStates = lines.map(line => {
                 const anchor = this.allocateAnchor(usedAnchors);
                 return { anchor, text: line };
             });
 
-            this.cache.set(absolutePath, lineStates);
+            cached = { lineStates, hash: diskHash };
+            this.cache.set(absolutePath, cached);
         }
 
-        return lineStates.map(ls => `${ls.anchor}§${ls.text}`).join('\n');
+        return cached.lineStates.map(ls => `${ls.anchor}§${ls.text}`).join('\n');
     }
 
     private sanitizeContent(content: string): string {
@@ -176,12 +185,14 @@ export class AnchorStateManager {
 
     applyAnchoredEdit(filePath: string, startAnchor: string, endAnchor: string, content: string): void {
         const absolutePath = path.resolve(filePath);
-        let lineStates = this.cache.get(absolutePath);
+        let cached = this.cache.get(absolutePath);
 
-        if (!lineStates) {
+        if (!cached) {
             this.getAnchoredContent(absolutePath);
-            lineStates = this.cache.get(absolutePath)!;
+            cached = this.cache.get(absolutePath)!;
         }
+
+        const lineStates = cached.lineStates;
 
         const startIndex = lineStates.findIndex(ls => ls.anchor === startAnchor);
         if (startIndex === -1) {
@@ -262,6 +273,7 @@ export class AnchorStateManager {
             ...lineStates.slice(endIndex + 1)
         ];
 
-        this.cache.set(absolutePath, finalLineStates);
+        const newHash = crypto.createHash('md5').update(fileContentToWrite).digest('hex');
+        this.cache.set(absolutePath, { lineStates: finalLineStates, hash: newHash });
     }
 }
