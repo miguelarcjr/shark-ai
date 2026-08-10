@@ -89,7 +89,9 @@ export async function waitForInputOrNotification(
 
     const promises: Promise<QueueMessage>[] = [];
 
+    let promptStarted = false;
     if (!isAuto) {
+        promptStarted = true;
         const promptPromise = new Promise<QueueMessage>((resolve) => {
             resolvePromptPromise = resolve;
         });
@@ -140,7 +142,7 @@ export async function waitForInputOrNotification(
 
     if (winner.type === 'subagent_notification' || winner.type === 'timeout') {
         cancelled = true;
-        if (!isAuto) {
+        if (promptStarted) {
             try {
                 process.stdin.emit('keypress', '\r', { name: 'return', ctrl: false, meta: false });
                 process.stdin.emit('data', Buffer.from('\r\n'));

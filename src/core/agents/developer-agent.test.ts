@@ -688,6 +688,26 @@ describe('DeveloperAgent', () => {
         );
     });
 
+    it('unblocks waitForInputOrNotification instantly when subagent notification arrives', async () => {
+        vi.mocked(tui.text).mockImplementationOnce(() => new Promise(() => {}));
+        const queue = new MessageQueue();
+        setTimeout(() => {
+            queue.push({
+                type: 'subagent_notification',
+                content: '<subagent_notification status="completed">Subagent Done</subagent_notification>',
+                timestamp: Date.now()
+            });
+        }, 20);
+
+        const start = Date.now();
+        const result = await waitForInputOrNotification(queue, 'Your answer:', '', undefined, false, 'partial input');
+        const duration = Date.now() - start;
+
+        expect(result.type).toBe('subagent_notification');
+        expect(result.draft).toBe('partial input');
+        expect(duration).toBeLessThan(500);
+    });
+
     it('preserves draftBuffer when subagent notification interrupts prompt in waitForInputOrNotification', async () => {
         vi.mocked(tui.text).mockImplementationOnce(() => new Promise(() => {}));
         const queue = new MessageQueue();
