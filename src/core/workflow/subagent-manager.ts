@@ -18,6 +18,7 @@ interface SubagentState {
 }
 
 export class SubagentManager {
+    private parentQueues = new Map<string, MessageQueue>();
     private subagents = new Map<string, SubagentState>();
     private recordedSubagents = new Set<string>();
     private messageSeq = 0;
@@ -236,17 +237,35 @@ export class SubagentManager {
         });
     }
 
+    registerParentQueue(parentId: string, queue: MessageQueue) {
+        this.parentQueues.set(parentId, queue);
+    }
+
     sendMessage(recipient: string, message: string) {
         const match = message.match(/\(subagent-[^)]+\)/i);
         if (match) {
             const matchedId = match[0].slice(1, -1);
             this.recordedSubagents.add(matchedId);
+            this.recordedSubagents.add(matchedId + '-queue-delivered');
         }
         const mailboxDir = path.resolve(process.cwd(), '.shark', 'mailbox', recipient);
         fs.mkdirSync(mailboxDir, { recursive: true });
         const seq = (this.messageSeq++).toString().padStart(6, '0');
         const filePath = path.join(mailboxDir, `${Date.now()}-${seq}-${crypto.randomUUID()}.json`);
         fs.writeFileSync(filePath, JSON.stringify({ message }), 'utf-8');
+
+        // Deliver full detailed subagent report payload directly in memory in real time (0ms)
+        const queue = this.parentQueues.get(recipient);
+        if (queue) {
+            const formattedContent = message.startsWith('<subagent_notification')
+                ? message
+                : `<subagent_notification status="completed">\n${message}\n</subagent_notification>`;
+            queue.push({
+                type: 'subagent_notification',
+                content: formattedContent,
+                timestamp: Date.now()
+            });
+        }
     }
 
     retrieveMessages(id: string): string[] {
@@ -382,6 +401,10 @@ export class SubagentManager {
         parentQueue?: MessageQueue
     ): Promise<Array<{ id: string, TypeName: string, Role: string }>> {
         const invoked: Array<{ id: string, TypeName: string, Role: string }> = [];
+
+        if (parentQueue) {
+            this.registerParentQueue(parentId, parentQueue);
+        }
 
         for (const sub of subagents) {
             const id = `subagent-${crypto.randomUUID()}`;

@@ -221,6 +221,20 @@ describe('SubagentManager', () => {
         expect(queue.isEmpty()).toBe(true);
     });
 
+    it('delivers full detailed report payload directly to parentQueue in memory without truncation', async () => {
+        const queue = new MessageQueue();
+        const parentId = 'parent-full-payload-test';
+        subagentManager.registerParentQueue(parentId, queue);
+        
+        const detailedReport = `[Subagent Notification] Subagent Implementer (subagent-test-123) completed.\nResult Details:\n- Created file src/foo.ts\n- Passed 10 unit tests`;
+        subagentManager.sendMessage(parentId, detailedReport);
+        
+        const nextMsg = await queue.next();
+        expect(nextMsg.type).toBe('subagent_notification');
+        expect(nextMsg.content).toContain('Result Details:');
+        expect(nextMsg.content).toContain('- Created file src/foo.ts');
+    });
+
     it('supports cancelled status for terminated subagents', () => {
         const id = 'cancelled-test-id';
         subagentManager.registerSubagent(id, 'self', 'Tester');
