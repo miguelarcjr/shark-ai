@@ -1,0 +1,897 @@
+Graph Engineering with Claude: 14-Step roadmap from 0 to graph architect (Full Course)
+Codez
+@0xCodez
+·
+Jul 20
+
+Most people who try to build a multi-step agent end up with a straight line. Step one, step two, step three - each waiting politely for the last to finish before it starts.
+9/10 notice that half those steps never needed to wait at all.
+They don’t route. They don’t branch. They don’t parallelize. They just queue - one head, one context, one thing at a time, until the window fills up and the agent forgets what it was doing.
+Follow my Substack to get fresh AI alpha: movez.substack.com
+This is the 14-step roadmap that turns that single-file line into a graph: one that fans out across a fleet, verifies its own findings, and converges on a result a lone agent could never hold.
+Here’s the shift nobody spells out. A prompt is a sentence. A loop is a cycle. A harness is the floor the agent stands on. 
+But the shape of the work itself - what runs before what, what can run at the same time, what has to wait for everything else - that shape is a graph. Nodes do the thinking. Edges carry the results. 
+Claude Code shipped the tooling to build these graphs directly: dynamic workflows. 
+Claude writes a plain JavaScript orchestration script, then spawns a coordinated fleet of subagents to execute it - and the coordination itself costs zero model tokens, because it’s code, not a conversation.
+
+01. Nodes are jobs. Edges are what flows.
+A graph has exactly two things, and getting them straight fixes most of the confusion. A node is a unit of work - one agent, one bounded job, one input in and one output out. 
+An edge is a dependency: it says this node’s output feeds that node’s input. Nothing more.
+The mistake is treating “and then” as an edge. “Summarize the file and then tell me the weather” has no edge between the two - the weather doesn’t consume the summary. 
+That’s two disconnected nodes that a linear script needlessly chains. The edge only exists when data actually moves across it. 
+Learn to ask, for every “and then” in your agent: does the next step read the last step’s output? If not, there is no edge, and the wait is wasted.
+python
+Draw it as boxes and arrows. A box is an agent() call. 
+An arrow is a variable passed from one call’s return into another’s 
+prompt. If you can’t draw the arrow - if no variable crosses - the two 
+boxes are independent, and independence is the thing you’ll exploit 
+for the rest of this course.
+
+02. Your linear script is a degenerate graph
+When you write an agent as “do A, then B, then C, then D,” you’ve drawn a graph - a single unbranching chain. Every node has exactly one edge in and one edge out.
+ It runs correctly. It also runs slowly and fragile, because a chain has no redundancy: if C stalls, D never happens, and A’s work is trapped upstream with nowhere to go.
+The first real skill of graph engineering is redrawing the chain. Take your linear agent and, for each arrow, ask the Step 1 question. 
+Most chains have two or three arrows that don’t carry data - they’re just the order you happened to type things in. 
+Cut those arrows and the chain collapses into something wider: a few independent nodes that could all run at once, feeding a single node that needs them all.
+
+03. Give every node a contract
+A node you can’t reason about is a node you can’t parallelize. The fix is a contract: bounded input, bounded output, exactly one job. 
+The input is whatever the node reads - passed in explicitly, never assumed from a shared window. The output is a defined shape, ideally validated, so the next node can consume it without guessing.
+In a workflow this contract is enforced with a schema. When you hand Claude an agent() call with a JSON schema, the subagent Claude spawns is forced to return validated structured data - validation happens at the tool-call layer, so Claude retries on mismatch instead of handing you free text you have to parse and pray over. 
+This is the difference between a node Claude can wire into a graph and a node that only works when a human reads its output.
+python
+// A node with a real contract: bounded in, validated out, one job.
+const ITEM = {
+  type: 'object', additionalProperties: false,
+  properties: {
+    title:   { type: 'string' },
+    url:     { type: 'string' },
+    impact:  { type: 'string', enum: ['high', 'medium', 'low'] },
+  },
+  required: ['title', 'url', 'impact'],
+};
+
+const result = await agent(source.prompt, {
+  label:  `research:${source.key}`,
+  schema: ITEM,           // forces validated structured output
+  agentType: 'general-purpose',
+});
+// result is now a shape the next node can trust — not free text.
+
+04. Treat the edge as a data contract
+An edge isn’t just “B comes after A.” It’s a promise about what crosses: A produces this shape, and B is built to consume this shape. When you name the edge by its data - not its order - two things get easier. 
+You can see instantly whether the edge is real (does data actually move?), and you can swap the node on either end without breaking the graph, as long as the shape holds.
+In practice, the edge lives in plain JavaScript. The reduce step between fan-out and synthesis - flatten, dedupe, filter - is just code operating on the shapes your nodes returned. 
+No agent needed. One of the quiet wins of graph thinking: a huge amount of what people burn model tokens on is really an edge, and edges are free.
+python
+The temptation is to spawn an agent to “combine the results.” Resist 
+it. If combining means flatten-and-dedupe, that’s results.flatMap(...) 
+and a Set — deterministic, instant, zero tokens. Save agents for 
+judgment, not for plumbing. A graph where every edge is an agent is a 
+graph paying rent on its own wiring.
+
+05. Fan out with parallel()
+This is the move that pays for everything. When you have N independent nodes - N sources to check, N files to review, N routes to audit - you don’t chain them. 
+You tell Claude to fan them out and run them at once. In a workflow that’s parallel(): Claude takes an array of thunks and spawns one subagent per thunk, all executing concurrently, then hands you back the array of results.
+Two details make it robust. First, parallel() is a barrier - it waits for every thunk before it returns, so the next stage sees the complete set. Second, a thunk that throws resolves to null instead of rejecting the whole batch, so one flaky agent can’t sink the run. 
+Always .filter(Boolean) the results. Concurrency is capped around your core count and the excess queues, so you can pass a hundred thunks and they’ll all finish - just a handful at a time.
+python
+phase('Research');
+
+// Nine sources, nine agents, all at once.
+const raw = await parallel(
+  SOURCES.map((s) => () =>
+    agent(s.prompt, {
+      label: `research:${s.key}`,
+      phase: 'Research',
+      schema: ITEM_SCHEMA,     // each node returns validated JSON
+      agentType: 'general-purpose',
+    }),
+  ),
+);
+
+const collected = raw.filter(Boolean);  // drop the nulls from failed agents
+The fan-out lives in code Claude wrote, not in a model conversation. Claude’s own context never holds nine sources at once - each subagent carries its own, and only the final answer comes back. 
+That’s what lets Claude scale a workflow to dozens or hundreds of subagents without drowning the session. The orchestration layer costs zero tokens because it isn’t another turn of Claude thinking.
+
+06. Fan in at a barrier
+A fan-out is only useful if something gathers it. The fan-in is the node where edges converge - where one agent (or one piece of code) sees all the upstream results at once and does something that requires the whole set: dedupe across sources, rank by impact, early-exit if the total came back empty. This is the one place a barrier earns its wall-clock cost.
+The rule that keeps graphs fast: use a barrier only when a stage genuinely needs every prior result together. Deduping across all sources? Barrier - correct. 
+python
+// The edge: plain JS, no agent, zero tokens.
+const flat = collected.flatMap((c) => c.items);
+log(`Collected ${flat.length} items`);
+
+phase('Curate');
+// The barrier node: needs the WHOLE set to dedupe + rank.
+const curated = await agent(
+  `Dedupe and rank these by impact:\n${JSON.stringify(flat)}`,
+  { phase: 'Curate', schema: CURATED_SCHEMA },
+);
+Just flattening a list? That’s an edge, do it inline. The smell test is brutal and simple: if you wrote parallel → transform → parallel, and that middle transform has no cross-item dependency, you should have used a pipeline and skipped the barrier entirely.
+
+07. The diamond: split → work → merge
+Put fan-out and fan-in together and you get the workhorse topology of every serious agent graph: the diamond.
+ One node splits the job, many nodes do the work in parallel, one node merges. It’s the shape behind a market scan, a dependency audit, a code review, a research report - swap the sources and prompts and the same skeleton adapts.
+The canonical form has a name worth memorizing: fan out → reduce → synthesize. Fan out to gather breadth, reduce with plain code to compress it, synthesize with a final agent to write the answer. 
+Once you see the diamond, you stop asking “how do I make my agent do more steps” and start asking “where’s the split, where’s the merge” - which is the question that actually scales.
+
+08. Route the edge at runtime with a conditional
+Not every graph is fixed. Sometimes the edge to take depends on what a node found. A router node inspects a result and decides which downstream path fires - classify the ticket, then branch to the right handler; check the diff size, then either do a quick review or spin up a full audit. 
+In a workflow this is just a JavaScript if or switch on a node’s validated output, because control flow lives in code.
+This is where determinism becomes a feature, not a limitation. The router’s decision can be Claude-powered (a subagent classifies), but the routing is code Claude wrote - so it runs the same way every time for the same classification. 
+You get Claude’s judgment at the node and the script’s reliability at the edge. No emergent “Claude decided to skip the audit” surprises  - because the skip would have to be written into the graph, and it isn’t.
+python
+// Router node: an agent classifies, code picks the edge.
+const { severity } = await agent(
+  `Classify this diff's risk:\n${diff}`,
+  { schema: { type: 'object',
+      properties: { severity: { enum: ['low', 'high'] } },
+      required: ['severity'] } },
+);
+
+let review;
+if (severity === 'high') {
+  // heavy path: full parallel audit
+  review = await parallel(FILES.map((f) => () => agent(`Audit ${f}`)));
+} else {
+  // light path: one quick pass
+  review = await agent(`Quick review of ${diff}`);
+}
+
+09. Put a verifier on the edge
+The real leverage of a graph isn’t more agents - it’s the structure you can wrap around them to produce confidence. 
+A verifier node sits on the edge before a result is allowed downstream, and its only job is to try to kill the finding. If it survives, it passes. If not, it never reaches the answer.
+Three patterns are worth having in your hands. 
+Adversarial verify: for each finding, spawn N independent skeptics prompted to refute it; keep it only if a majority survive. 
+Perspective-diverse verify: give each verifier a distinct lens - correctness, security, does-it-reproduce - because diversity catches failure modes that N identical checks never will. 
+Judge panel: generate N attempts from different angles, score them with parallel judges, synthesize from the winner while grafting the best of the runners-up. 
+This is exactly the pattern that let a real team port the Bun runtime with adversarial code review baked into the loop.
+
+10. Isolate nodes so one failure can’t poison the graph
+In a chain, a failure cascades - C dies, D never runs, the whole thing halts. In a graph, failure should be contained to its node. 
+That’s already partly true: a thunk that throws inside parallel() resolves to null, so eight good agents still return while one bad one drops out. Your .filter(Boolean) is the containment. 
+
+Design every fan-in to tolerate missing inputs rather than assume a full set.
+The subtler failure is nodes stepping on each other. When agents write files in parallel, they can collide. 
+
+The fix is isolation: "worktree" - each agent runs in its own git worktree, does its work in a sandbox, and merges cleanly. 
+
+Reach for it only when nodes actually write in parallel. it’s the seatbelt for the one topology that needs it, not a default tax on every run.
+
+11. Add a cycle - but make it converge
+Sometimes you don’t know how big the job is until you’re in it: unknown-size discovery, a bug sweep where finding one bug reveals three more. That needs a cycle - a controlled edge back to an earlier node. 
+The danger is obvious: a cycle that doesn’t converge is an infinite loop that spawns agents until your budget is gone.
+The pattern that converges is loop-until-dry: keep spawning finders until K consecutive rounds surface nothing new, then stop. The one detail that makes or breaks it - and the mistake almost everyone makes the first time - is what you dedupe against. 
+Dedupe against everything seen, not just against confirmed results. Otherwise rejected findings reappear every round, the loop never runs dry, and you’ve built a machine that pays to rediscover the same dead ends forever.
+const seen = new Set(); const confirmed = []; let dry = 0;
+
+while (dry < 2) {                       // stop after 2 empty rounds
+  const found = (await parallel(
+    FINDERS.map((f) => () => agent(f.prompt, { schema: BUGS }))
+  )).filter(Boolean).flatMap((r) => r.bugs);
+
+  const fresh = found.filter((b) => !seen.has(key(b)));
+  if (!fresh.length) { dry++; continue; } // nothing new → toward dry
+  dry = 0;
+  fresh.forEach((b) => seen.add(key(b))); // dedupe vs SEEN, not confirmed
+
+  // diverse-lens verify each fresh finding before it counts
+  const judged = await parallel(fresh.map((b) => () =>
+    parallel(['correctness', 'security', 'repro'].map((lens) => () =>
+      agent(`Judge "${b.desc}" via ${lens} — real?`, { schema: VERDICT })))
+    .then((v) => ({ b, real: v.filter(Boolean).filter((x) => x.real).length >= 2 }))));
+
+  confirmed.push(...judged.filter((v) => v.real).map((v) => v.b));
+}
+
+12. Tier the models across the nodes
+Not every node needs your best model. A graph makes this obvious in a way a single agent never does: some nodes are bounded and repetitive (extract this field, classify this ticket), and some carry the real judgment (synthesize the report, adjudicate the finding). 
+Run the boring nodes on a cheaper model and spend your expensive tokens where judgment actually lives.
+In a workflow every subagent Claude spawns inherits your session model unless the script overrides it - so by default a big run bills entirely at your session tier. The model option on a single agent() call tells Claude to route just that node elsewhere. 
+Check /model before a large run, then have Claude route the fan-out’s repetitive nodes down to a cheaper model and keep the merge node up. This is the lever that turns a token-hungry graph from expensive into economical without touching its shape.
+
+13. Topology is your cost and latency
+The shape of the graph isn’t cosmetic - it’s the single biggest lever on wall-clock time. The choice that trips everyone up: parallel() versus pipeline(). A parallel() barrier makes everything wait for the slowest node before the next stage starts.
+A pipeline() streams each item through all stages independently, with no barrier - item A can be in stage 3 while item B is still in stage 1. Fast items finish early instead of idling behind slow ones.
+Default to pipeline(). Reach for a barrier only when a stage truly needs every prior result at once - a cross-set dedupe, an early-exit on the total, a prompt that compares against “the other findings.” “It’s cleaner code” and “the stages feel separate” are not reasons; barrier latency is real, measurable, wasted time. Separate is not the same as synchronized.
+
+14. Let Claude draw the graph - self-routing
+The final move is to stop drawing the graph by hand for jobs you can’t plan in advance. 
+With dynamic workflows, you describe the objective and Claude writes the orchestration script itself- decomposing the task, choosing the fan-out, spawning a coordinated fleet of subagents, and synthesizing the result. You get a graph tailored to this run instead of a fixed one you hoped would fit.
+There are three ways in. Say the word “workflow” in your prompt and Claude writes one for the task. Run a saved or bundled one - /deep-research is a real graph shipping in production: scope → parallel search → fetch → adversarial verify → synthesize, the exact skeleton from this course. 
+Or turn on ultracode and Claude plans a workflow for every substantial task in the session. When a run is good, press s to save its script into .claude/workflows/ - version-controlled, re-runnable by name, a graph anyone who clones the repo can launch.
+python
+› Run a workflow to audit every route under src/routes/ for missing 
+auth. Spawn one agent per route file, then verify each finding before 
+reporting. ● Claude wrote an orchestration script · launching in 
+background… /workflows — auth-audit · running ✓ Scope 1/1 2.1k tok · 
+4s ✓ Fan-out 18/18 one agent per route file ◯ Verify 11/18 3-vote 
+skeptics per finding… ○ Synthesize 0/1 waiting on verify session stays 
+responsive — keep working while the fleet runs
+
+Six graphs to build with Claude this week
+Security sweep across every route. Claude spawns one subagent per route file, each hunting for missing auth checks, then a verifier pass confirms every finding before it reaches the report. Breadth no single context could hold.
+Cited report with /deep-research. A graph that ships in Claude Code already. Claude decomposes your question into distinct angles, runs parallel searches, dedupes sources, then adversarially verifies every claim with three-vote skeptics before writing.
+Port a module, file by file. The Bun ceiling, scaled to your repo. Claude fans out translation across files, runs the test suite as a gate on each, and loops the failures back - adversarial review catching what a single pass would ship broken.
+Adversarial review of a diff. Claude routes on diff size: a small change gets one quick pass, a large one triggers a full parallel audit with reviewers on distinct lenses - correctness, security, performance - then a judge panel synthesizes.
+Ecosystem scan on a schedule. Save it once, re-run it forever. Claude checks many sources in parallel - eleases, blogs, discussion - ranks by impact at a barrier, and writes the digest. Version-controlled in .claude/workflows/, launchable by name.
+Discovery of unknown size. You don’t know how many bugs are there. Claude runs finders in parallel, dedupes each new find against everything seen, verifies survivors, and keeps looping until two rounds turn up nothing new - then stops.
+
+Conclusion: 
+A prompter asks a question. An architect draws a graph.
+The linear agent was never the ceiling - it was just the first shape, the one everyone reaches for because it matches how we type. One line, one head, one thing at a time.
+Once you can see the nodes and the edges, you stop asking the agent to do more and start asking the graph to do it wider: fan out where the work is independent, gate the edges where confidence matters, tier the models where judgment doesn’t.
+Most people will keep queueing steps in a line. The ones who learn to draw the graph will run a fleet - and never notice the ceiling the rest are stuck under.
+
+https://x.com/AnatoliKopadze/status/2080668775796314331
+
+
+Anatoli Kopadze
+@AnatoliKopadze
+Graph Engineering explained: what it is, when to use it and when not to
+Most people are using AI at 5 to 10% of what it can actually do. There is a faster way, and it is bigger than it looks. Learn it, and you can optimize enormous processes, not just personal tasks.
+
+This is the skill behind real roles at large companies. The difference between doing one job, and designing how a hundred of them get done.
+
+I got lucky with it early. When I studied at one of the best universities in Denmark, we had a whole course on one thing: how to lay a process out as a diagram and make it as efficient as possible.
+
+Back then it felt abstract. Now it is the exact thing the top AI engineers are arguing about on your timeline.
+
+By the end of this article you will understand Graph Engineering better than almost anyone you follow: what a graph actually is, the one test that instantly makes your AI faster, the single pattern that pays for itself, where these things quietly break, when a graph is the wrong tool, and how to build a real one yourself in a couple of minutes.
+Before we get into it, follow me on X and join my Telegram channel I just created where I post more AI content every day. Both are free.
+X - https://x.com/AnatoliKopadze
+Telegram - https://t.me/kopadzemp
+Peter Steinberger 🦞
+
+@steipete
+·
+Jul 17
+Are we still talking loops or did we shift to graphs yet?
+1 - Where this even came from.
+A month ago the whole field was talking about loops. Then Peter Steinberger posted the line above, and a corner of the internet that had just finished learning loops declared them old news overnight.
+
+The joke landed because it was half true. If you have read my Loops article, you already have the foundation. A loop is one agent improving one thing on repeat: try, check, adjust, go again. That was the skill of last month.
+
+What everyone moved to is not a better loop. It is a graph of loops, a network where cycles watch and correct each other instead of one agent chasing one number alone.
+
+And engineers pushed back on the hype within hours, pointing out this is a decades-old idea wearing a new name. They are right, and that is the good news. A pattern that has run critical systems for thirty years is exactly what you want to trust with your work.
+2 - What a graph actually is.
+A graph is just a plan for your AI work, drawn out so you can see it. It answers two questions: which jobs need to happen, and which job has to wait for which.
+
+There are only two parts, and getting them straight fixes most of the confusion.
+
+A box is called a node. It's one job: one agent doing one task, with one thing going in and one thing coming out. Researching a competitor. Writing a draft. Checking a claim.
+
+An arrow is called an edge. It just means one job needs what another job produced, so it has to wait for it. And the arrow only counts when something real actually passes along it.
+Nodes do the thinking. Edges carry the results. That is the entire vocabulary. Once you have it, you never need a definition again.
+The thing that makes a node actually usable in a graph is a contract: one bounded job, a defined input, a defined output. A node whose output is a wall of free text is a node only a human can read. A node with a fixed output shape is one the next node can consume without guessing, which is the whole point.
+▸ NODE CONTRACT
+JOB:     research one competitor's pricing (one job, nothing else)
+IN:      { competitor: "name", url: "https://..." }   ← passed in, never assumed
+OUT:     { price: number, plan: string, source: url, date: "YYYY-MM-DD" }
+SCHEMA:  enforced. if the agent returns free text, it's rejected and retried
+WHY:     a defined output is what lets the next node read this one
+         without a human in the middle. that is what makes it wire-able.
+3 - The test that finds the fake edges.
+Look at the AI workflow you run today and walk it step by step. At each step, ask one thing: does this step actually need the result of the one before it?
+
+If yes, the edge is real. Keep the order. If no, there is no edge, and the wait is wasted. Those two jobs can run at the same time.
+
+Take a simple one: "review file A for bugs, then review file B for bugs." It reads like a sequence, but the check on file B never looks at what file A returned. They only run one after another because that is the order you typed them in. Run them side by side and the whole thing finishes in the time of the slower single file, not the two added together.
+
+You will find two or three of these fake edges in almost any workflow you draw. Every one of them is time you are throwing away for free.
+4 - Your current setup is already a graph.
+When you write an agent as "do A, then B, then C, then D," you have technically already drawn a graph. It is just the saddest possible one: a single straight chain where every node has one arrow in and one arrow out.
+It runs correctly. It also runs slowly and breaks easily, because a chain has no redundancy. If C stalls, D never happens, and A's work is trapped upstream with nowhere to go.
+The first real skill of graph engineering is redrawing that chain. Take your linear workflow, and for each arrow, ask the fake-edge question. Cut the arrows that carry no data, and the line collapses into something wider: a few independent jobs that can all run at once, feeding one job that needs them all.
+The reason this matters is not cosmetic. A linear workflow with 40 steps has 40 points of sequential failure and the latency of all 40 added together. The same 40 jobs drawn as a graph have only as many real dependencies as actually exist, usually three to five, and finish at the speed of your slowest layer, not the sum of everything. That is the difference between a job that takes five minutes and one that takes fifteen seconds, running the exact same work.
+The model was never the bottleneck. The line you drew was.
+5 - The one pattern that pays: the diamond.
+You do not need a hundred shapes. Watch any serious agent system work and the same picture keeps appearing. The work splits, several workers dig side by side, something checks what they found, and everything merges back into one answer.
+That picture is called the diamond, and it is close to the only pattern you need this year. Its formal name is worth memorizing: fan out, reduce, synthesize. 
+
+Fan out to gather breadth, reduce with plain code to compress it, synthesize with a final agent to write the answer.
+The research feature inside Claude runs exactly this in production. One lead plans the angles, workers gather in parallel, findings get checked, and only then does one report reach you. Once you can see the diamond, you stop asking "how do I make my agent do more steps" and start asking "where is the split, where is the merge." That second question is the one that scales.
+Here is what the diamond actually looks like under the hood. When you say "workflow," Claude writes a short script like this itself and runs the coordination as code, which is why passing results between agents costs zero extra context.
+// a market-scan graph — the diamond, written by Claude when you say "workflow"
+
+const angles = [
+  "pricing vs the top 3 competitors",
+  "what buyers complain about in reviews",
+  "the feature gaps in the category",
+  "where the market moves in the next 12 months",
+];
+
+// FAN OUT — one researcher per angle, all at the same time
+const raw = await parallel(
+  angles.map(a => () => agent({
+    task: `research: ${a}. every claim needs a source url + date.`,
+    schema: Finding,        // validated output, not free text
+    model: "cheap",         // boring node → cheap model
+  }))
+);
+
+// REDUCE — plain code, no model, no tokens
+const findings = dedupeBySource(raw.flat().filter(Boolean));
+
+// VERIFY — a FRESH skeptic per finding, tries to kill it
+const survivors = await parallel(
+  findings.map(f => () => agent({
+    task: "try to disprove this. return keep | drop + why.",
+    input: f,
+    freshContext: true,     // never reuse the researcher's chat
+    model: "strong",        // judgment node → strong model
+  }))
+).then(v => findings.filter((_, i) => v[i].verdict === "keep"));
+
+// SYNTHESIZE — one agent writes the answer from what survived
+return agent({ task: "one report, ranked by confidence, sources attached.",
+               input: survivors, model: "strong" });
+Read it once and the whole craft is visible: the fan-out where work is independent, the reduce done in free code, the verify on a fresh context, cheap models on the boring nodes and the strong one where judgment lives and a single synthesize at the end. Same skeleton behind a market scan, a code review, or a research report. Swap the angles and the prompts.
+6 - The checker is the whole trick.
+Now the part almost everyone skips, and it is what separates a real graph from an expensive toy.
+
+Every serious test of AI self-review says the same thing: models miss most of their own mistakes. A model grading its own work is far too easy on itself.
+
+So you never let the agent that did the work check the work.
+
+You put a separate node on the edge. Its only job is to try to kill the finding before it moves on. If it survives, it passes. If not, it dies right there.
+
+Here is the catch nobody names: that checker needs a clean context.
+
+Give it the same chat the worker had and it is not checking anything, it is nodding along to itself in a different font. A graph of agents sharing one context is just a single loop in a costume, and it breaks the same way, only later and pricier.
+
+So make the verifier fresh. Own context. Checking a real signal, not "did the agent say it is done" but "does the test actually pass."
+
+Then split the checking three ways. Is it correct? Is it current? Is the source even real? Three different lenses catch what ten identical ones miss.
+▸ VERIFIER NODE
+INPUT:    one finding from a worker (the finding only, never the worker's chat)
+CONTEXT:  fresh and empty. it has not seen the work it is judging
+CHECKS:   three skeptics run in parallel, each with a different question
+  1. is it correct?      → does the claim actually hold up
+  2. is it current?      → is the source recent, not something stale
+  3. is the source real? → does the link resolve to the claim it's cited for
+PASS:     keep the finding only if a majority of skeptics let it live
+FAIL:     drop it before it ever reaches the final answer
+The rule to remember: a worker and its verifier must never share a context. The moment they do, you are back to one loop grading its own homework, just with a bigger bill.
+7 - Where graphs actually break.
+1. Context collapse.
+Fan out a thousand nodes, then try to feed all thousand outputs into one final step, and you blow past the context window before synthesis even starts.
+The fix: layer your fan-in. Batch the results, summarize each batch, then combine the summaries, never the raw pile.
+// layered fan-in — never pour 1,000 raw outputs into one step
+const batches = chunk(results, 40);              // groups of 40
+const summaries = await parallel(
+  batches.map(b => () => agent({ task: "summarize this batch", input: b }))
+);
+return agent({ task: "write the answer from the summaries", input: summaries });
+// the final step reads ~25 summaries, not 1,000 raw outputs
+2. False independence.
+Two nodes look independent because their prompts never mention each other, but they both write to the same file or hit the same rate-limited API. That is a hidden edge.
+
+When Bun's team first fanned a big job across many agents, they shared one workspace and overwrote each other.
+
+The fix: give every worker its own isolated space, and audit for shared resources, not just shared data.
+// isolate the workers — no shared file, no shared workspace
+await parallel(files.map(f => () => agent({
+  task: `refactor ${f}`,
+  worktree: true,        // each agent works in its own git worktree
+})));
+// they can't overwrite each other, then the results merge cleanly
+// rule: any two nodes writing the same file need an edge, not parallelism
+3. Silent node failure.
+In a chain, one failure stops everything, annoying but obvious. In a graph, one dead node among two hundred can slip into a report that looks complete.
+
+The fix: every merge step counts its inputs against the number it expected, and flags the gap instead of quietly running on half the data.
+// fan-in guard — catch the node that quietly died
+const results = (await parallel(jobs)).filter(Boolean);   // dropped nodes = null
+if (results.length < jobs.length) {
+  flag(`WARNING: ${jobs.length - results.length} of ${jobs.length} nodes returned nothing`);
+}
+// never synthesize on a partial set and call the report complete
+8 - Do you even need one?
+As tradition goes for my articles, let's honestly figure out who this could even be useful for.
+
+A graph buys breadth. It does not buy better judgment.
+
+It is a tool for width, for independent work done at once. When the work is not wide, the line was never the problem.
+Skip the graph when:
+- The task is small or isolated. Adding one function, fixing one bug. The coordination is pure overhead, and a single agent is faster and cheaper.
+
+- You want to approve every step. A graph's whole point is running wide without you, so a tight leash works against it.
+
+- You do not know yet what you are looking for. Exploratory work wants one agent you can steer, not a fleet locked into a plan.
+
+- The steps genuinely depend on each other. Forcing a graph onto truly sequential work just adds cost for zero speedup.
+
+- The tell is the fake-edge test. If you cannot find two jobs with no edge between them, there is no graph to build. It is a loop, and a loop is fine.
+9 - The part nobody wants to hear: anchors.
+There is a deeper trap here, and it is the real lesson of this whole shift.
+
+Imagine you build the full graph. Paired checkers, audit nodes, meta-nodes tuning the other nodes. Every node watches another node, and every one of them reads a report.
+
+The audit checks the numbers against the finance numbers, which came from the same system in the first place.
+
+Everything is consistent. Nothing is verified.
+
+This graph fails exactly like the single loop did, just later, more expensively, and with far more green lights on the way down.
+Topology alone does not buy truth. The graph needs anchors: nodes that cannot be argued with.
+
+Tests that actually ran, not "should pass," did pass. Revenue that landed in the bank. Customers who actually stayed.
+
+And some rules must be frozen, the ones an optimizer would be tempted to weaken, kept off-limits precisely because they are the ones it would bend to win.
+
+The graph is only as honest as the things inside it that refuse to move.
+
+Judge it on numbers that cannot argue back and it stays grounded. Let it grade its own reports and it will be confidently wrong.
+10 - Build one yourself in Claude Code.
+Enough theory. If you have decided this is for you, or you just want to try it, let's build one. You can build a real graph in a couple of minutes, because Claude Code shipped the tooling to do it directly, called dynamic workflows.
+It comes down to one word: "workflow."
+
+Put it in your prompt and Claude stops working through a single line of steps. Instead it writes a short orchestration script, then spawns a coordinated fleet of sub-agents to run it.
+
+The important part is that the coordination is code, not a conversation. Passing results between agents does not re-spend your context the way a chat handoff does, which is what lets one run scale to a whole fleet without drowning the session.
+
+Open a real repository you know, and paste this:
+▸ GRAPH SPEC
+GOAL: audit every route file under src/routes/ for missing auth checks
+
+FAN OUT:    one agent per file, all running in parallel
+VERIFY:     an independent checker on each finding, with fresh context
+CAP:        20 files on this first run
+ON FAIL:    flag any file that doesn't return, never skip it silently
+REPORT:     one merged list of the routes missing auth
+
+(start the prompt with the word "workflow" so Claude builds the graph)
+Run it, and here is what happens.
+
+First, Claude signals that it is building a workflow instead of answering in a normal chat, and shows you the plan before doing anything. You read it and approve.
+
+Then the fleet runs. One agent per file, all at the same time, while your own session stays free the whole way through.
+
+And what lands at the end is not twenty separate chats to dig through. It is one report. The in-between results lived inside the script, never in your context, so the only thing you actually see is the final answer.
+
+That is a graph. A dozen agents from a single sentence. When a run comes out good, save it, and it turns into one command you can re-run by name forever.
+Notice the "20 files" cap in that prompt. It keeps your first run cheap, and it hints at the thing every demo leaves out: the bill.
+11 - Ready graphs you can paste right away.
+Every one of these is the same diamond aimed at a different job. Open Claude Code in a real folder, swap the bracketed parts for your own, and paste. The word "workflow" is what tells Claude to build a coordinated fleet instead of a single line of steps. Keep yourself as the last yes before anything ships.
+A decision-grade research desk. Replaces a week of googling or an expensive analyst invoice. Your question splits into angles, researchers dig at once, a skeptic attacks every finding, and only the survivors reach the report.
+▸ GRAPH SPEC
+GOAL: decision-grade research on [your question]
+
+FAN OUT:      split into 5 distinct angles, one researcher per angle, in parallel
+RULE:         every finding needs a source link and a date
+VERIFY:       a skeptic attacks each finding and tries to disprove it, drop what fails
+MERGE:        survivors into one report ranked by confidence
+SAVE:         research-report.md, then show me the top findings
+HUMAN GATE:   change nothing after that without asking me
+
+(start the prompt with the word "workflow" so Claude builds the graph)
+An SEO content machine. Writes one ranking-ready draft per run, and never publishes without you.
+▸ GRAPH SPEC
+GOAL: one ranking-ready draft for [topic]
+
+PARALLEL JOBS (run at once):
+  1. what the current top-ranking pages cover
+  2. the real questions people ask about this topic
+  3. what those top pages skip
+MERGE:        the three into an outline, then write a full draft
+VERIFY:       a fact-checker that flags every claim without a source
+SAVE:         drafts/ with the flagged claims listed at the top
+HUMAN GATE:   never publish anything
+
+(start the prompt with the word "workflow" so Claude builds the graph)
+A go-to-market kit. The full launch pack in one run, with you approving every piece.
+▸ GRAPH SPEC
+GOAL: full launch kit for [product], aimed at [audience]
+
+PARALLEL JOBS (research, run at once):
+  1. profile the buyer and the exact words they use
+  2. map where these buyers spend time online
+  3. collect how competitors pitch them
+MERGE:        a one-page positioning doc
+HUMAN GATE:   pause and show me the positioning doc before writing
+PARALLEL JOBS (writing, from that doc):
+  1. landing page copy
+  2. a week of launch posts
+  3. a set of outreach messages
+VERIFY:       a checker compares every asset to the positioning doc, flags anything off
+SAVE:         launch-kit/, change nothing after that without asking me
+
+(start the prompt with the word "workflow" so Claude builds the graph)
+A refactor sweep across a whole repo. Breadth no single context could hold.
+▸ GRAPH SPEC
+GOAL: find every function over 100 lines and propose a refactor for each
+
+FAN OUT:    one agent per file, in parallel
+VERIFY:     an independent checker on each proposed refactor, fresh context
+DEDUPE:     proposals against everything already seen
+CAP:        50 files on this first run
+REPORT:     how many files came back, so nothing fails silently
+
+(start the prompt with the word "workflow" so Claude builds the graph)
+A discovery loop of unknown size. For jobs where you do not know how big the work is until you are in it, like a bug sweep where finding one bug reveals three more.
+▸ GRAPH SPEC
+GOAL: hunt this repo for [security issues / broken error handling / dead code]
+
+FAN OUT:    run finders in parallel
+DEDUPE:     check each new find against everything already seen
+VERIFY:     an independent checker on the survivors
+LOOP:       keep going until two rounds in a row find nothing new, then stop
+CAP:        a hard limit on total agents so it can't run away
+REPORT:     final list ranked by severity
+
+(start the prompt with the word "workflow" so Claude builds the graph)
+Run one scoped, watch what it costs, then widen. When a run is good, save it, and every one of these becomes a single command you launch by name.
+12 - The cost and the supervision.
+A graph costs more than a normal chat. A lot more. The coordination is what gets cheaper, not the work itself. The agents still burn tokens, and a fleet of them burns a pile.
+
+The clearest example is public. An engineer used this exact setup to rewrite the Bun runtime, translating around 535,000 lines of one language into over a million lines of another in about eleven days. By hand that is close to a year of work.
+
+It ran about 50 workflows, with up to 64 agents going at once.
+
+It also cost roughly $165,000 in usage, needed a human designing and watching the whole thing, and got real criticism over whether that much AI-written code can even be reviewed safely.
+
+That is the honest shape of it. A graph can fan out to a thousand agents and chew through a job no single context could hold. It can also quietly spend your money in the background if you point it at the wrong task or skip the anchors.
+
+So the heavy version is for teams with the budget, the caps, and the monitoring to run it. If that is not you yet, you are not missing anything. Start small, watch what a run costs, and go wider only once one has earned it.
+13 - What this actually means for you.
+That is the whole picture. You now know what a graph is, where it shines, where it breaks, and who it is actually for.
+
+You know the strength: breadth, independent work done at once. And the weakness: it buys width, not judgment, and it will spend your money if you point it at the wrong job.
+
+So the move is not to graph everything. It is to know when the work is wide enough to need one, and when a simple loop was the answer all along.
+
+My take: learn the fake-edge test tonight. Draw your current workflow, find the edges that carry no data, and delete them. That one move makes you faster than most people before you touch a single new tool.
+
+Most will keep queueing steps in a line. The few who learn to draw the graph will run a fleet.
+If you want to stay up to date with everything happening in AI, follow me on X and Telegram:  
+
+X - https://x.com/AnatoliKopadze
+
+Telegram - https://t.me/kopadzemp
+
+https://x.com/Sprytixl/status/2086533982385033355
+
+Right now anyone can build an AI system that answers complex questions with 18% better accuracy and 85% lower costs than regular RAG. No PhD. No million dollar budget. No team of researchers.
+The only thing standing between you and that result is one concept that Microsoft, Stanford and Anthropic all independently discovered - and which most developers still haven't caught up with.
+Regular RAG finds text. Graph Engineering finds relationships. Here's the full system behind it.
+Bookmark This and follow - I'm Sprytix, a developer who builds AI systems and automation pipelines that turn technology into real income. DMs open.
+Why regular RAG hits a ceiling
+Regular RAG works like this:
+Question
+↓
+Search documents for matching text
+↓
+Return most relevant chunks
+↓
+Model generates answer from chunks
+This works well for simple questions. It breaks completely for complex ones.
+Ask "why did our product sales drop in March?" and RAG finds documents with the words "sales" and "March." It finds fragments. It does not find the chain of causation.
+RAG answer:
+Here are 5 documents mentioning sales in March.
+
+Graph Engineering answer:
+Sales dropped because of a release delay
+caused by a supplier dependency
+triggered by a warehouse problem
+which generated negative reviews
+which reduced conversion by 23%.
+Same model. Same data. Completely different result - because one system searches text and the other searches reality.
+This is what Microsoft, Stanford and Anthropic all independently discovered. And it's why all three of them moved to Graph Engineering.
+Document 1 - Microsoft GraphRAG
+github.com/microsoft/graphrag 
+github.com/microsoft/graphrag/blob/main/docs/index/architecture.md
+Microsoft built GraphRAG and open-sourced it. The results from their research are the most concrete numbers available on what Graph Engineering actually delivers versus regular RAG.
+The architecture converts unstructured text into a full knowledge graph:
+Load Documents
+↓
+Chunk Documents
+↓
+Extract Entities and Relations
+↓
+Build Graph
+↓
+Detect Communities
+↓
+Generate Community Reports
+↓
+Embed Entities and Reports
+↓
+Local Search / Global Search
+The key insight Microsoft documented: regular RAG answers local questions well - find me information about this specific entity. It fails on global questions - what are the main themes across this entire dataset, what patterns connect these 10,000 documents.
+Graph Engineering answers both.
+Local Search   |  what happened with supplier X in March
+               |  finds specific node and its connections
+
+Global Search  |  what are the main risk patterns across
+               |  all our supplier relationships
+               |  finds patterns across entire graph
+Practical results from Microsoft's GraphRAG research:
+Accuracy improvement    |  18% higher than raw document approach
+Token cost reduction    |  85% lower than loading structured files directly
+Cost per task           |  approximately $0.004 in tested configuration
+arxiv.org/abs/2603.22528
+These numbers come from the ChatP&ID paper - GraphRAG applied to industrial engineering diagrams. The same principles apply across domains.
+Document 2 - Stanford DSPy and the graph connection
+github.com/stanfordnlp/dspy 
+arxiv.org/abs/2310.03714
+Stanford's DSPy paper established that the model is a node in a graph - not the center of the universe. This is the theoretical foundation that connects directly to Graph Engineering.
+DSPy treats the AI pipeline as a graph of modules:
+Question
+↓
+Retriever      - finds relevant information
+↓
+Reasoning      - processes and connects
+↓
+Verifier       - checks the result
+↓
+Answer
+The connection to Graph Engineering is direct: DSPy optimizes the pipeline graph, GraphRAG optimizes the knowledge graph. Both treat the model as one component in a larger structure rather than the entire solution.
+Stanford's STORM paper goes further:
+github.com/stanford-oval/storm 
+arxiv.org/abs/2402.14207
+STORM builds knowledge from scratch through a structured graph of research steps before writing a single word. Research, source collection, outline, writing, verification, revision - each step informed by the relationships discovered in the previous one.
+The shared insight across all Stanford research: complex tasks need a system of connected steps, not a single model call. The graph is the system.
+Document 3 - Stanford scaling laws for knowledge graphs
+arxiv.org/abs/2505.16276
+This paper compared 26 open-source models on knowledge graph engineering tasks. The conclusion is one of the most important in the field:
+Larger model + bad graph   |  worse results
+Smaller model + good graph |  better results
+The right graph beats the bigger model. Every time.
+This is the same conclusion Microsoft reached with GraphRAG and Anthropic reached with Claude Code - the system around the model determines the output more than the model itself. Graph Engineering is the most concrete implementation of that principle.
+Document 4 - MIT Press research on relational memory
+direct.mit.edu/tacl/article/doi/10.1162/tacl_a_00476
+Published in Transactions of the Association for Computational Linguistics.
+The research shows what happens when you connect a language model to relational memory - a knowledge graph of relationships rather than just text chunks.
+Text Context
+↓
+Retrieve Relevant Relations from Graph
+↓
+Relational Memory
+↓
+Language Model
+↓
+More coherent, more accurate generation
+The key finding: models with access to explicit relationship structures produce more coherent text and make fewer logical errors than models working from text alone.
+This is the scientific explanation for why Graph Engineering works. The model doesn't have to infer relationships from text. The relationships are explicit in the graph. The model uses them directly.
+Document 5 - KEPLER
+direct.mit.edu/tacl/article-abstract/doi/10.1162/tacl_a_00360/98089 
+
+github.com/THU-KEG/KEPLER
+KEPLER combines language model training with knowledge graph embeddings. Instead of treating language understanding and factual knowledge as separate problems - KEPLER optimizes both simultaneously.
+Language Model
++
+Knowledge Embeddings
++
+Knowledge Graph
+=
+Model that understands both language and facts
+The practical implication: a model that has access to a properly structured knowledge graph doesn't have to guess at relationships between entities. It looks them up. The accuracy difference on factual questions is significant.
+Document 6 - Anthropic and Claude in the graph
+www.anthropic.com/customers/graph 
+github.com/anthropics/anthropic-cookbook 
+github.com/modelcontextprotocol
+Anthropic doesn't have a product called "Graph Engineering." What they have is three layers where Claude integrates directly into graph architecture.
+Layer 1 - Claude extracts the graph from text
+Documents
+↓
+Claude extracts entities and relationships
+↓
+JSON triples:
+{
+  "subject": "Anthropic",
+  "relation": "created",
+  "object": "Claude"
+}
+↓
+Knowledge Graph
+Claude handles entity extraction, relation extraction, deduplication, normalization and ontology drafting. The tasks that used to require specialized NLP pipelines now run through one API call.
+Layer 2 - Claude queries the graph
+User Question
+↓
+Claude
+↓
+Cypher / SPARQL query
+↓
+Knowledge Graph
+↓
+Result
+↓
+Claude explanation in plain language
+Claude translates natural language into graph queries, runs them against Neo4j or any graph database and explains the results. No query language knowledge required from the user.
+Layer 3 - MCP connects Claude to the graph
+github.com/modelcontextprotocol
+Claude
+↓
+MCP Protocol
+↓
+Graph Database
+↓
+Entities + Relationships
+↓
+Claude with full graph context
+MCP is the transport layer that gives Claude permanent access to any knowledge graph without rebuilding the connection for every session.
+The LaunchNotes case - real production numbers
+www.anthropic.com/customers/graph
+LaunchNotes built a product called Graph that connects GitHub, Jira and Linear. Claude analyzes the relationships between engineering work across all three systems.
+GitHub commits
++
+Jira tickets
++
+Linear tasks
+↓
+Graph of Engineering Work
+↓
+Claude
+↓
+Incident Detection + Project Insights
+Results from the Anthropic case study:
+Incident detection     |  up to 5x faster
+Meeting time           |  approximately 50% reduction
+Release notes          |  generated automatically in seconds
+These numbers come from connecting structured relationship data - not just searching documents.
+What a knowledge graph actually is
+Before building one - the fundamental concept.
+A knowledge graph stores information as triples:
+Subject → Relation → Object
+Examples:
+Anthropic → created → Claude
+Claude → supports → MCP
+MCP → connects → external tools
+Microsoft → built → GraphRAG
+GraphRAG → reduces token cost by → 85%
+Every piece of information is an explicit relationship between two entities. Not a paragraph of text that might contain this information - an explicit, structured, queryable fact.
+Regular database:
+Table of companies
+Table of products
+No explicit relationships between them
+
+Knowledge graph:
+Company → created → Product
+Product → competes with → Other Product
+Other Product → owned by → Other Company
+Company → invested in → Other Company
+The graph doesn't just store facts. It stores how facts connect to each other. That's what makes complex reasoning possible.
+The full Graph Engineering pipeline
+Step 1  |  Collect raw documents
+        |  PDFs, emails, reports, database exports
+
+Step 2  |  Extract entities
+        |  people, companies, products, events, concepts
+
+Step 3  |  Extract relationships
+        |  who did what to whom, when, why, how
+
+Step 4  |  Build schema
+        |  define entity types and relationship types
+
+Step 5  |  Deduplicate and normalize
+        |  "Microsoft Corp" and "MSFT" are the same entity
+
+Step 6  |  Store in graph database
+        |  Neo4j, Amazon Neptune, PostgreSQL with graph extension
+
+Step 7  |  Build retrieval layer
+        |  local search for specific entities
+        |  global search for patterns across entire graph
+
+Step 8  |  Connect model
+        |  Claude queries graph via MCP or direct API
+
+Step 9  |  Update continuously
+        |  new documents expand the graph
+        |  contradictions get flagged for review
+The LLM-assisted Knowledge Graph Engineering paper at arxiv.org/abs/2307.06917 benchmarks how well language models handle each of these steps. The honest finding: LLMs are excellent assistants for extraction and normalization but zero-shot graph generation is not yet reliable enough for production without human review on the schema and deduplication steps.
+The five prompts that run the entire pipeline
+Graph Engineering doesn't eliminate prompts. It uses them at each specific stage of the graph pipeline.
+Prompt 1 - Extraction
+Extract all organizations, people, products and events.
+
+For each entity return:
+- canonical_name
+- type
+- description
+- source
+
+For each relationship return:
+- source_entity
+- relation_type
+- target_entity
+- evidence
+- confidence_score
+Prompt 2 - Normalization
+Compare the following entities.
+Determine whether they refer to:
+- the same entity
+- related but different entities
+- unrelated entities
+
+Return canonical name and explanation.
+Do not merge entities without clear evidence.
+Prompt 3 - Graph query
+Translate the user question into a Cypher query.
+Use only relationships present in the schema.
+Do not invent labels or properties.
+Return the query and a short explanation of the logic.
+Prompt 4 - Grounded answer
+Answer using only the retrieved graph paths.
+For every conclusion:
+- identify the supporting nodes
+- identify the relationship path
+- state uncertainty clearly
+- do not infer causation from correlation
+Prompt 5 - Graph maintenance
+Compare new facts with the existing graph.
+Classify each fact as:
+- new
+- duplicate
+- contradiction
+- update
+- uncertain
+
+Do not overwrite existing facts without evidence.
+As Microsoft's GraphRAG documentation shows - prompts handle extraction, relationship identification, summarization and community report generation internally. Prompt engineering is the mechanism inside graph engineering, not its competitor.
+Five businesses you can build on a knowledge graph
+1 - Due diligence platform
+Corporate reports + founders + investors
++ legal cases + subsidiaries + transactions
+↓
+Knowledge Graph
+↓
+Claude
+↓
+Risk analysis + hidden connections + conflict of interest detection
+Clients: investment funds, law firms, banks, M&A consultants. Monthly retainer $2,000-10,000 per client.
+2 - Sales intelligence
+Contacts + companies + roles
++ previous emails + company problems + product
+↓
+Knowledge Graph
+↓
+Who influences the decision
+Which objections repeat
+Which case study to show this specific client
+Where the deal is blocked
+3 - Engineering intelligence
+GitHub commits + Jira tickets + Linear tasks
+↓
+Graph of Engineering Work
+↓
+5x faster incident detection
+50% less meeting time
+Automatic release notes
+LaunchNotes already sells this. The market is every engineering team that uses more than one project management tool.
+4 - Research intelligence
+Papers + authors + institutions
++ methods + datasets + results + contradictions
+↓
+Knowledge Graph
+↓
+Which GraphRAG methods use community detection
+On which datasets they were tested
+Which papers contradict each other
+5 - Personal knowledge OS
+Obsidian notes + emails + calendar
++ PDFs + contacts + tasks
+↓
+Personal Knowledge Graph
+↓
+Who did I discuss this idea with
+Which tasks depend on one person's response
+Which decisions contradict previous agreements
+What did I promise to do this month
+The shift that connects Microsoft, Stanford and Anthropic
+Prompt Engineering   |  how to ask the right question
+RAG                  |  which document to find
+Graph Engineering    |  which entities exist
+                     |  how they connect
+                     |  which path leads to the answer
+                     |  what changes if one node changes
+LLM knows words. Knowledge graph knows relationships. The most powerful AI systems appear when both work together.
+Microsoft proved this in production with GraphRAG - 18% better accuracy, 85% lower costs. Stanford proved it in research with DSPy, STORM and the scaling laws paper. Anthropic proved it in the LaunchNotes case - 5x faster incident detection, 50% less meeting time.
+Three organizations. Three independent paths. One conclusion.
+The model finds text. The graph finds reality. Build the graph.
+Most developers will keep improving their prompts and wonder why complex questions still give bad answers. A few will spend one weekend building their first knowledge graph and never go back to searching documents. 
+
+/ If this was useful - follow, the next one drops here first.
