@@ -182,30 +182,6 @@ export async function interactiveDeveloperAgent(options: {
     const projectRoot = process.cwd();
     const messageQueue = new MessageQueue();
 
-    let mailboxInterval: NodeJS.Timeout | null = null;
-    if (options.taskId || !isSubagent) {
-        const myId = options.taskId || 'parent';
-        mailboxInterval = setInterval(() => {
-            try {
-                const newMsgs = subagentManager.retrieveMessages(myId);
-                for (const msg of newMsgs) {
-                    let status = 'completed';
-                    if (msg.includes('FAILED') || msg.includes('failed')) status = 'failed';
-                    if (msg.includes('CANCELLED') || msg.includes('cancelled')) status = 'cancelled';
-
-                    const formatted = `<subagent_notification status="${status}">\n${msg}\n</subagent_notification>`;
-                    messageQueue.push({
-                        type: 'subagent_notification',
-                        content: formatted,
-                        timestamp: Date.now()
-                    });
-                }
-            } catch (e) {
-                // Ignore error during background polling
-            }
-        }, 2000);
-    }
-    
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
     let activeConversationId = await conversationManager.getConversationId(conversationKey);
 
@@ -1160,9 +1136,6 @@ Your goal is to address the user's request:
         log.success('✅ Task Scope Completed');
         return finalResult;
     } finally {
-        if (mailboxInterval) {
-            clearInterval(mailboxInterval);
-        }
         activeOnCommandHandler = undefined;
         process.off('SIGINT', sigIntHandler);
         process.off('SIGTERM', sigTermHandler);

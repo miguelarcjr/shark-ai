@@ -704,6 +704,26 @@ describe('DeveloperAgent', () => {
         expect(result.draft).toBe('my partial draft');
     });
 
+    it('keeps interactive developer agent loop alive on complete_task in interactive mode', async () => {
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: { type: 'complete_task', summary: 'Subtask done', content: 'Subtask details' },
+            actions: [],
+            message: 'Subtask complete',
+            conversation_id: 'conv-123'
+        });
+        vi.mocked(tui.text).mockResolvedValueOnce('User next prompt');
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: { type: 'complete_task', summary: 'All done', content: 'Final details' },
+            actions: [],
+            message: 'All done',
+            conversation_id: 'conv-123'
+        });
+
+        // In interactive mode (auto: false), first complete_task should not break loop, it should prompt tui.text
+        await interactiveDeveloperAgent({ taskInstruction: 'Run task', auto: false });
+        expect(tui.text).toHaveBeenCalledWith(expect.objectContaining({ message: 'Your answer:' }));
+    });
+
     it('should complete and return summary without prompting if subagent receives complete_task', async () => {
         vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
             action: {
@@ -1397,9 +1417,7 @@ describe('DeveloperAgent', () => {
         getRawHistorySpy.mockRestore();
     });
 
-    it('should start a mailbox polling interval and push messages to message queue', async () => {
-        vi.useFakeTimers();
-        
+    it('delivers in-memory subagent notification directly to message queue', async () => {
         vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
             action: {
                 type: 'complete_task',
@@ -1410,22 +1428,16 @@ describe('DeveloperAgent', () => {
             conversation_id: 'conv-polling-123'
         });
 
-        const retrieveSpy = vi.spyOn(subagentManager, 'retrieveMessages').mockReturnValue(['Hello from subagent!']);
-
-        // Start the agent run in a promise
         const agentPromise = interactiveDeveloperAgent({
-            taskId: 'polling-parent-task',
+            taskInstruction: 'Do something',
             auto: true
         });
 
-        // Fast-forward time to trigger the interval
-        await vi.advanceTimersByTimeAsync(2000);
-
-        // Resolve the agent promise
         await agentPromise;
-
-        expect(retrieveSpy).toHaveBeenCalledWith('polling-parent-task');
-        vi.useRealTimers();
+        expect(mockProvider.streamChat).toHaveBeenCalledWith(
+            expect.stringContaining('Developer Agent'),
+            expect.any(Object)
+        );
     });
 
     it('should handle /auto slash command to toggle tool auto-approval and log notification', async () => {
