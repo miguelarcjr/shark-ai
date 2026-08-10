@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Establish a single-source in-memory IPC pipeline for subagent notifications to eliminate lost notifications, background disk polling (`setInterval`), and premature parent execution loop exit during sequential subagent orchestration.
+**Goal:** Establish a single-source in-memory IPC pipeline for subagent notifications to eliminate notification loss, background disk polling (`setInterval`), and premature parent REPL loop termination during interactive CLI sessions (`shark dev`).
 
-**Architecture:** Replace dual-channel notification handling (disk mailbox polling + exit handler) with a single-source in-memory IPC queue event on subagent child process exit (`child.on('exit')`). Remove `mailboxInterval` disk polling. Preserve parent loop lifecycle across multi-step plan executions in `developer-agent.ts`.
+**Architecture:** Replace background disk mailbox polling with a single-source in-memory IPC queue event on subagent child process exit (`child.on('exit')`). Remove `mailboxInterval` disk polling. Update interactive developer agent loop so `keepGoing` remains `true` continuously during interactive CLI sessions (`isBatchMode: false`).
 
 **Tech Stack:** TypeScript, Node.js `child_process` (fork), Vitest, `@clack/prompts`.
 
@@ -13,14 +13,14 @@
 - Never use background disk polling (`setInterval`) for process notification delivery.
 - Subagent completion events must deliver exactly ONE in-memory event to `parentQueue`.
 - Prevent duplicate messages using `recordedSubagents` tracking ledger.
-- Interrupted TUI prompts must preserve user draft text in `userDraftBuffer`.
+- In interactive CLI mode (`isBatchMode: false`), `keepGoing` remains `true` continuously across task completions until explicit user exit (`Ctrl+C`, `/exit`, `/quit`).
 
 ---
 
 ### Task 1: Single-Source In-Memory IPC Notification & Deduplication Ledger
 
 **Files:**
-- Modify: `src/core/workflow/subagent-manager.ts:500-540`
+- Modify: `src/core/workflow/subagent-manager.ts:500-550`
 - Modify: `src/core/workflow/subagent-manager.ts:235-245`
 - Test: `src/core/workflow/subagent-manager.test.ts:200-240`
 
@@ -110,36 +110,33 @@ git commit -m "feat(subagents): implement single-source in-memory IPC notificati
 
 ---
 
-### Task 2: Remove Disk Polling & Preserve Parent Loop Lifecycle
+### Task 2: Remove Disk Polling & Maintain Interactive REPL Lifecycle
 
 **Files:**
 - Modify: `src/core/agents/developer-agent.ts:175-195`
-- Modify: `src/core/agents/developer-agent.ts:1060-1090`
+- Modify: `src/core/agents/developer-agent.ts:1060-1095`
 - Test: `src/core/agents/developer-agent.test.ts`
 
 **Interfaces:**
 - Consumes: `subagentManager.invokeSubagents(subagents, parentId, messageQueue)`
-- Produces: Persistent `interactiveDeveloperAgent` loop execution without `mailboxInterval` `setInterval`
+- Produces: Persistent `interactiveDeveloperAgent` loop execution in interactive CLI mode without `mailboxInterval` `setInterval`
 
-- [ ] **Step 1: Write failing test verifying parent agent loop does not terminate when active subagents count drops to 0**
+- [ ] **Step 1: Write failing test verifying interactive agent loop stays alive (`keepGoing = true`) on `complete_task` in interactive mode**
 
 In `src/core/agents/developer-agent.test.ts`:
 ```typescript
-it('does not exit developer agent loop on intermediate task complete when active subagents is zero', async () => {
+it('keeps interactive developer agent loop alive on complete_task in interactive mode', async () => {
     vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
-        action: { type: 'complete_task', summary: 'Subtask 1 done', content: 'Subtask 1 details' },
+        action: { type: 'complete_task', summary: 'Subtask done', content: 'Subtask details' },
         actions: [],
-        message: 'Subtask 1 complete',
+        message: 'Subtask complete',
         conversation_id: 'conv-123'
     });
     
-    // Simulate subagentManager active subagents count = 0
-    vi.spyOn(subagentManager, 'getActiveSubagentsForParent').mockReturnValue([]);
-    
-    // Loop should stay active and not return immediately with finalSummary
-    const promise = interactiveDeveloperAgent({ taskInstruction: 'Run plan', auto: true });
+    // In interactive mode (auto: false), completing task should log success and prompt for next input
+    const promise = interactiveDeveloperAgent({ taskInstruction: 'Run task', auto: false });
     await new Promise(r => setTimeout(r, 50));
-    expect(subagentManager.getActiveSubagentsForParent).toHaveBeenCalled();
+    expect(tui.text).toHaveBeenCalled();
 });
 ```
 
@@ -147,7 +144,7 @@ it('does not exit developer agent loop on intermediate task complete when active
 
 Run: `npx vitest run src/core/agents/developer-agent.test.ts`
 
-- [ ] **Step 3: Remove `mailboxInterval` disk polling and pass `messageQueue` to `invokeSubagents` in `developer-agent.ts`**
+- [ ] **Step 3: Remove `mailboxInterval` disk polling and update interactive mode lifecycle in `developer-agent.ts`**
 
 In `src/core/agents/developer-agent.ts`:
 Remove `mailboxInterval = setInterval(...)`.
@@ -162,7 +159,16 @@ const invoked = await subagentManager.invokeSubagents(
 ```
 
 In `action.type === 'complete_task'`:
-Do not exit loop if plan/workflow tasks remain pending in `.shark/progress.md`.
+```typescript
+if (isSubagent || isBatchMode) {
+    finalSummary = taskSummary;
+    keepGoing = false;
+    break;
+} else {
+    log.success(`✔ Task Completed: ${taskSummary}`);
+    // In interactive mode, keep loop alive for user's next command or subagent notification
+}
+```
 
 - [ ] **Step 4: Run full Vitest suite to verify all 266+ tests pass**
 
@@ -173,5 +179,5 @@ Expected: PASS (43 test files passing)
 
 ```bash
 git add src/core/agents/developer-agent.ts src/core/agents/developer-agent.test.ts
-git commit -m "fix(developer-agent): remove disk polling interval and preserve loop lifecycle across subagent steps"
+git commit -m "fix(developer-agent): remove disk polling interval and preserve interactive REPL loop lifecycle"
 ```
