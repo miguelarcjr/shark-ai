@@ -266,6 +266,19 @@ export class SubagentManager {
                 timestamp: Date.now()
             });
         }
+
+        // Native Node.js IPC channel send across OS process boundaries
+        if (typeof process.send === 'function' && (process as any).connected && !process.env.VITEST) {
+            try {
+                process.send({
+                    type: 'subagent_ipc_message',
+                    recipient,
+                    message
+                });
+            } catch (e) {
+                // Ignore send errors if IPC channel is closed
+            }
+        }
     }
 
     retrieveMessages(id: string): string[] {
@@ -478,6 +491,23 @@ export class SubagentManager {
                             ...process.env,
                             SHARK_PARENT_ID: parentId,
                             SHARK_SUBAGENT_ROLE: sub.Role
+                        }
+                    });
+
+                    child.on('message', (ipcMsg: any) => {
+                        if (ipcMsg && ipcMsg.type === 'subagent_ipc_message') {
+                            const { recipient, message } = ipcMsg;
+                            const targetQueue = this.parentQueues.get(recipient) || parentQueue;
+                            if (targetQueue) {
+                                const formattedContent = message.startsWith('<subagent_notification')
+                                    ? message
+                                    : `<subagent_notification status="completed">\n${message}\n</subagent_notification>`;
+                                targetQueue.push({
+                                    type: 'subagent_notification',
+                                    content: formattedContent,
+                                    timestamp: Date.now()
+                                });
+                            }
                         }
                     });
 

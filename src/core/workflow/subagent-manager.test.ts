@@ -227,12 +227,31 @@ describe('SubagentManager', () => {
         subagentManager.registerParentQueue(parentId, queue);
         
         const detailedReport = `[Subagent Notification] Subagent Implementer (subagent-test-123) completed.\nResult Details:\n- Created file src/foo.ts\n- Passed 10 unit tests`;
+        
+        const originalSend = process.send;
+        const originalConnected = (process as any).connected;
+        const originalVitestEnv = process.env.VITEST;
+
+        const mockSend = vi.fn();
+        process.send = mockSend;
+        (process as any).connected = true;
+        delete process.env.VITEST;
+        
         subagentManager.sendMessage(parentId, detailedReport);
         
         const nextMsg = await queue.next();
         expect(nextMsg.type).toBe('subagent_notification');
         expect(nextMsg.content).toContain('Result Details:');
         expect(nextMsg.content).toContain('- Created file src/foo.ts');
+        expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({
+            type: 'subagent_ipc_message',
+            recipient: parentId,
+            message: detailedReport
+        }));
+
+        process.send = originalSend;
+        (process as any).connected = originalConnected;
+        process.env.VITEST = originalVitestEnv;
     });
 
     it('supports cancelled status for terminated subagents', () => {
