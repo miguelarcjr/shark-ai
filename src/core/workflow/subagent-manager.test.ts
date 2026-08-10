@@ -207,23 +207,17 @@ describe('SubagentManager', () => {
         expect(fs.existsSync(path.join(mailboxDir, files[0]))).toBe(false);
     });
 
-    it('delivers subagent notification to mailbox without direct queue push', async () => {
+    it('delivers single-source in-memory subagent notification directly to parentQueue', async () => {
         const queue = new MessageQueue();
         const subagents = [{ TypeName: 'self', Role: 'Tester', Prompt: 'Test prompt' }];
         const parentId = 'parent-1';
         
         await subagentManager.invokeSubagents(subagents, parentId, queue);
         
-        // Wait briefly for process exit handling
-        await new Promise(resolve => setTimeout(resolve, 50));
-
-        // Disk mailbox should contain the notification
-        const parentMsgs = subagentManager.retrieveMessages(parentId);
-        expect(parentMsgs.length).toBe(1);
-        expect(parentMsgs[0]).toContain('[Subagent Notification]');
-        expect(parentMsgs[0]).toContain('Tester');
-
-        // parentQueue should remain empty (no duplicate push)
+        const nextMsg = await queue.next();
+        expect(nextMsg.type).toBe('subagent_notification');
+        expect(nextMsg.content).toContain('[Subagent Notification]');
+        expect(nextMsg.content).toContain('Tester');
         expect(queue.isEmpty()).toBe(true);
     });
 

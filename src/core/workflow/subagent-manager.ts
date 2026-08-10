@@ -237,7 +237,7 @@ export class SubagentManager {
     }
 
     sendMessage(recipient: string, message: string) {
-        const match = message.match(/\(subagent-[a-f0-9-]+\)/i);
+        const match = message.match(/\(subagent-[^)]+\)/i);
         if (match) {
             const matchedId = match[0].slice(1, -1);
             this.recordedSubagents.add(matchedId);
@@ -529,14 +529,28 @@ export class SubagentManager {
                         // Print the subagent notification message to the parent console immediately
                         const parentMsgs = this.peekMessages(parentId);
                         const subagentMsg = parentMsgs.find(m => m.includes(`(${id})`));
+                        let finalNotificationMsg = subagentMsg || '';
+
                         if (subagentMsg) {
                             tui.log.message(`\n${subagentMsg}`);
                         } else if (hasReturnedDetails) {
                             tui.log.success(`Subagent ${sub.Role} (${id}) completed.`);
+                            finalNotificationMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) completed.`;
                         } else {
                             const completedMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) completed successfully but did not return detailed results.`;
                             this.sendMessage(parentId, completedMsg);
                             tui.log.success(completedMsg);
+                            finalNotificationMsg = completedMsg;
+                        }
+
+                        if (parentQueue && !this.recordedSubagents.has(id + '-queue-delivered')) {
+                            this.recordedSubagents.add(id + '-queue-delivered');
+                            parentQueue.push({
+                                type: 'subagent_notification',
+                                content: `<subagent_notification status="completed">\n${finalNotificationMsg}\n</subagent_notification>`,
+                                timestamp: Date.now(),
+                                metadata: { subagentId: id, role: sub.Role, status: 'completed' }
+                            });
                         }
                     }
 
