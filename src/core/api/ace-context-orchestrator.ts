@@ -267,44 +267,23 @@ export function generateAbstract(msg: ChatMessage): string {
     return content;
 }
 
-export async function orchestrateContext(
-    rawHistory: ChatMessage[],
-    currentPrompt: string,
-    compactionTokenLimit: number
-): Promise<ChatMessage[]> {
+export function applyStructuralReadDeduplication(rawHistory: ChatMessage[]): ChatMessage[] {
     if (rawHistory.length <= 2) {
         return rawHistory;
     }
 
-    const totalRawTokens = rawHistory.reduce((sum, msg) => sum + countTokens(msg.content), 0);
-    const budgetCeiling = Math.floor(0.80 * compactionTokenLimit);
-    if (totalRawTokens <= budgetCeiling) {
-        return rawHistory;
-    }
-
-    // 1. Query Composition
-    const firstUserMsg = rawHistory.find(m => m.role === 'user');
-    let lastThoughts = '';
-    const lastAssistantTurn = [...rawHistory].reverse().find(m => m.role === 'assistant');
-    if (lastAssistantTurn) {
-        const info = parseAssistantInfo(lastAssistantTurn.content);
-        lastThoughts = info.thought || info.summary || '';
-    }
-    const queryStr = `${firstUserMsg?.content || ''} ${lastThoughts} ${currentPrompt}`.trim();
-
-    // 2. Score intermediate turns
     const pinnedIndices = new Set<number>();
     pinnedIndices.add(0); // Turn 0 (system message)
     pinnedIndices.add(rawHistory.length - 1); // Turn T (current prompt)
     if (rawHistory.length > 2) {
         pinnedIndices.add(rawHistory.length - 2); // Turn T-1 (previous tool output or assistant thought)
     }
+
     const firstUserMsgIdx = rawHistory.findIndex((m, idx) => m.role === 'user' && !m.content.startsWith('[Action ') && idx > 0);
     if (firstUserMsgIdx !== -1) {
         pinnedIndices.add(firstUserMsgIdx); // Turn 1 (original task instruction)
     }
 
-    // Pin the latest human user message (actual user instruction, not a tool result)
     let latestHumanUserMsgIdx = -1;
     for (let i = rawHistory.length - 1; i >= 0; i--) {
         const msg = rawHistory[i];
@@ -317,9 +296,7 @@ export async function orchestrateContext(
         pinnedIndices.add(latestHumanUserMsgIdx);
     }
 
-    // Structural Deduplication Scan
     const seenReadFiles = new Set<string>();
-    const seenCommands = new Set<string>();
     const forceDropIndices = new Set<number>();
 
     for (let i = rawHistory.length - 1; i >= 0; i--) {
@@ -337,26 +314,70 @@ export async function orchestrateContext(
                         seenReadFiles.add(filePath);
                     }
                 }
-            } else if (msg.content.startsWith('[Action run_command(')) {
-                const cmdMatch = msg.content.match(/run_command\(([^)]+)\)/);
-                const cmd = cmdMatch ? cmdMatch[1] : '';
-                if (cmd) {
-                    if (seenCommands.has(cmd)) {
-                        if (!pinnedIndices.has(i)) {
-                            forceDropIndices.add(i);
-                        }
-                    } else {
-                        seenCommands.add(cmd);
-                    }
-                }
             }
         }
     }
 
+    return rawHistory.filter((_, idx) => !forceDropIndices.has(idx));
+}
+
+export async function orchestrateContext(
+    rawHistory: ChatMessage[],
+    currentPrompt: string,
+    compactionTokenLimit: number
+): Promise<ChatMessage[]> {
+    if (rawHistory.length <= 2) {
+        return rawHistory;
+    }
+
+    // Step 1: Always-On Structural Read-File Deduplication
+    const cleanedHistory = applyStructuralReadDeduplication(rawHistory);
+
+    // Step 2: Check total tokens on cleaned history against budget ceiling
+    const totalCleanedTokens = cleanedHistory.reduce((sum, msg) => sum + countTokens(msg.content), 0);
+    const budgetCeiling = Math.floor(0.80 * compactionTokenLimit);
+    if (totalCleanedTokens <= budgetCeiling) {
+        return cleanedHistory;
+    }
+
+    // 1. Query Composition
+    const firstUserMsg = cleanedHistory.find(m => m.role === 'user');
+    let lastThoughts = '';
+    const lastAssistantTurn = [...cleanedHistory].reverse().find(m => m.role === 'assistant');
+    if (lastAssistantTurn) {
+        const info = parseAssistantInfo(lastAssistantTurn.content);
+        lastThoughts = info.thought || info.summary || '';
+    }
+    const queryStr = `${firstUserMsg?.content || ''} ${lastThoughts} ${currentPrompt}`.trim();
+
+    // 2. Score intermediate turns
+    const pinnedIndices = new Set<number>();
+    pinnedIndices.add(0); // Turn 0 (system message)
+    pinnedIndices.add(cleanedHistory.length - 1); // Turn T (current prompt)
+    if (cleanedHistory.length > 2) {
+        pinnedIndices.add(cleanedHistory.length - 2); // Turn T-1 (previous tool output or assistant thought)
+    }
+    const firstUserMsgIdx = cleanedHistory.findIndex((m, idx) => m.role === 'user' && !m.content.startsWith('[Action ') && idx > 0);
+    if (firstUserMsgIdx !== -1) {
+        pinnedIndices.add(firstUserMsgIdx); // Turn 1 (original task instruction)
+    }
+
+    let latestHumanUserMsgIdx = -1;
+    for (let i = cleanedHistory.length - 1; i >= 0; i--) {
+        const msg = cleanedHistory[i];
+        if (msg.role === 'user' && !msg.content.startsWith('[Action ')) {
+            latestHumanUserMsgIdx = i;
+            break;
+        }
+    }
+    if (latestHumanUserMsgIdx !== -1) {
+        pinnedIndices.add(latestHumanUserMsgIdx);
+    }
+
     const intermediateTurns: { msg: ChatMessage, originalIndex: number }[] = [];
-    for (let i = 0; i < rawHistory.length; i++) {
-        if (!pinnedIndices.has(i) && !forceDropIndices.has(i)) {
-            intermediateTurns.push({ msg: rawHistory[i], originalIndex: i });
+    for (let i = 0; i < cleanedHistory.length; i++) {
+        if (!pinnedIndices.has(i)) {
+            intermediateTurns.push({ msg: cleanedHistory[i], originalIndex: i });
         }
     }
 

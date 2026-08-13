@@ -231,5 +231,36 @@ describe('ACE Context Orchestrator & Parser', () => {
             const latestHuman = result.find(m => m.content === 'Please modify the X function');
             expect(latestHuman).toBeDefined();
         });
+
+        it('should perform structural deduplication of read_file even when total tokens are below budget limit', async () => {
+            const rawHistory: ChatMessage[] = [
+                { role: 'system', content: 'System prompt' },
+                { role: 'user', content: 'Help me fix a bug' },
+                { role: 'user', content: '[Action read_file(src/index.ts) Success]:\nconst x = 1;' },
+                { role: 'assistant', content: '{"thought":"looking","summary":"analyzing","action":null}' },
+                { role: 'user', content: '[Action read_file(src/index.ts) Success]:\nconst x = 2;' },
+                { role: 'user', content: 'What next?' }
+            ];
+
+            const result = await orchestrateContext(rawHistory, 'Current user question', 200000);
+            const readTurns = result.filter(m => m.content.startsWith('[Action read_file(src/index.ts)'));
+            expect(readTurns.length).toBe(1);
+            expect(readTurns[0].content).toContain('const x = 2;');
+        });
+
+        it('should not drop run_command entries during structural deduplication', async () => {
+            const rawHistory: ChatMessage[] = [
+                { role: 'system', content: 'System prompt' },
+                { role: 'user', content: 'Initial prompt' },
+                { role: 'user', content: '[Action run_command(npm test) Success]:\nTest failed at assertion A' },
+                { role: 'assistant', content: '{"thought":"fixing","summary":"modified code","action":null}' },
+                { role: 'user', content: '[Action run_command(npm test) Success]:\nTest failed at assertion B' },
+                { role: 'user', content: 'Check status' }
+            ];
+
+            const result = await orchestrateContext(rawHistory, 'Latest prompt', 200000);
+            const cmdTurns = result.filter(m => m.content.startsWith('[Action run_command(npm test)'));
+            expect(cmdTurns.length).toBe(2);
+        });
     });
 });
