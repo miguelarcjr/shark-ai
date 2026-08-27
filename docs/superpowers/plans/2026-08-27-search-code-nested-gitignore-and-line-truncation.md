@@ -29,7 +29,7 @@
 - Consumes: `ignore`, `fast-glob`, `path`, `fs`
 - Produces: `IgnoreFilterManager.isIgnored(relativePath: string): boolean`
 
-- [ ] **Step 1: Write the failing tests in `ignore-filter.test.ts`**
+- [x] **Step 1: Write the failing tests in `ignore-filter.test.ts`**
 
 Add tests for nested `.gitignore` containing leading slashes (e.g., `/dist`, `/build`), wildcard rules, and default `.map` / `.min.js` ignore:
 
@@ -53,12 +53,12 @@ Add tests for nested `.gitignore` containing leading slashes (e.g., `/dist`, `/b
     });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/utils/ignore-filter.test.ts`
 Expected: FAIL (because `app/dist/bundle.js` was matched against `app//dist` and `.map` was not in defaultIgnores)
 
-- [ ] **Step 3: Update `src/core/utils/ignore-filter.ts`**
+- [x] **Step 3: Update `src/core/utils/ignore-filter.ts`**
 
 Implement normalized rule scoping and add `.map` / `.min.js` to `defaultIgnores`:
 
@@ -126,12 +126,12 @@ Implement normalized rule scoping and add `.map` / `.min.js` to `defaultIgnores`
     }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/core/utils/ignore-filter.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/utils/ignore-filter.ts src/core/utils/ignore-filter.test.ts
@@ -150,7 +150,7 @@ git commit -m "fix: normalize nested gitignore paths and ignore source maps by d
 - Consumes: `IgnoreFilterManager`, `fast-glob`, `fs`, `path`
 - Produces: `handleSearchCode(globPattern: string, query: string, isRegex?: boolean): string`
 
-- [ ] **Step 1: Write the failing test in `agent-tools-search.test.ts`**
+- [x] **Step 1: Write the failing test in `agent-tools-search.test.ts`**
 
 Add test checking that lines longer than 500 characters are truncated:
 
@@ -166,12 +166,12 @@ Add test checking that lines longer than 500 characters are truncated:
     });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/agents/agent-tools-search.test.ts`
 Expected: FAIL (line is not truncated)
 
-- [ ] **Step 3: Update `handleSearchCode` in `src/core/agents/agent-tools.ts`**
+- [x] **Step 3: Update `handleSearchCode` in `src/core/agents/agent-tools.ts`**
 
 Add `MAX_LINE_LENGTH = 500`, update `defaultIgnores`, and apply truncation to matched lines:
 
@@ -207,12 +207,12 @@ Add `MAX_LINE_LENGTH = 500`, update `defaultIgnores`, and apply truncation to ma
                 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/core/agents/agent-tools-search.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/agents/agent-tools.ts src/core/agents/agent-tools-search.test.ts
@@ -226,9 +226,9 @@ git commit -m "feat: truncate long lines and exclude source maps in handleSearch
 **Files:**
 - Test: All test suites (`src/**/*.test.ts`)
 
-- [ ] **Step 1: Run complete test suite**
+- [x] **Step 1: Run complete test suite**
 
 Run: `npm test`
 Expected: All tests pass.
 
-- [ ] **Step 2: Final commit / push if required**
+- [x] **Step 2: Final commit / push if required**
