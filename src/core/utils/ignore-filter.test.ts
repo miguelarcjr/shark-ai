@@ -40,4 +40,22 @@ describe('IgnoreFilterManager', () => {
         expect(filter.isIgnored('packages/app/cache.tmp')).toBe(true);
         expect(filter.isIgnored('packages/other/cache.tmp')).toBe(false);
     });
+
+    it('should correctly scope nested .gitignore with leading slashes', () => {
+        fs.mkdirSync(path.join(testDir, 'app'), { recursive: true });
+        fs.writeFileSync(path.join(testDir, 'app', '.gitignore'), '/dist\n/build/\n');
+
+        const filter = new IgnoreFilterManager(testDir);
+        expect(filter.isIgnored('app/dist/bundle.js')).toBe(true);
+        expect(filter.isIgnored('app/dist')).toBe(true);
+        expect(filter.isIgnored('app/build/app.min.js')).toBe(true);
+        expect(filter.isIgnored('app/src/index.ts')).toBe(false);
+    });
+
+    it('should ignore .map and .min.js files by default', () => {
+        const filter = new IgnoreFilterManager(testDir);
+        expect(filter.isIgnored('src/components/Card.js.map')).toBe(true);
+        expect(filter.isIgnored('public/vendor.min.js')).toBe(true);
+        expect(filter.isIgnored('src/components/Card.tsx')).toBe(false);
+    });
 });

@@ -27,7 +27,10 @@ export class IgnoreFilterManager {
             '.next',
             '**/.next/**',
             'coverage',
-            '**/coverage/**'
+            '**/coverage/**',
+            '**/*.map',
+            '**/*.min.js',
+            '**/*.bundle.js'
         ];
         this.ig.add(defaultIgnores);
 
@@ -51,10 +54,17 @@ export class IgnoreFilterManager {
                     if (dir === '.' || dir === '') {
                         this.ig.add(trimmed);
                     } else {
-                        const scopedRule = trimmed.startsWith('!')
-                            ? `!${dir}/${trimmed.slice(1)}`
-                            : `${dir}/${trimmed}`;
-                        this.ig.add(scopedRule);
+                        const isNegative = trimmed.startsWith('!');
+                        const cleanRule = isNegative ? trimmed.slice(1) : trimmed;
+                        const normalizedRule = cleanRule.replace(/^\/+/, '');
+                        const prefix = isNegative ? '!' : '';
+
+                        if (cleanRule.startsWith('/')) {
+                            this.ig.add(`${prefix}${dir}/${normalizedRule}`);
+                        } else {
+                            this.ig.add(`${prefix}${dir}/**/${normalizedRule}`);
+                            this.ig.add(`${prefix}${dir}/${normalizedRule}`);
+                        }
                     }
                 }
             }

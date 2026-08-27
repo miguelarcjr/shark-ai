@@ -191,6 +191,7 @@ export function handleSearchCode(
     isRegex: boolean = false
 ): string {
     const MAX_MATCHES = 50;
+    const MAX_LINE_LENGTH = 500;
     const MAX_FILE_SIZE_BYTES = 500 * 1024; // skip files > 500KB
 
     if (!query || query.trim() === '') {
@@ -221,7 +222,10 @@ export function handleSearchCode(
             '**/dist/**',
             '**/build/**',
             '**/.next/**',
-            '**/coverage/**'
+            '**/coverage/**',
+            '**/*.map',
+            '**/*.min.js',
+            '**/*.bundle.js'
         ];
 
         const ignoreManager = new IgnoreFilterManager();
@@ -257,7 +261,11 @@ export function handleSearchCode(
                     if (totalMatches >= MAX_MATCHES) break;
                     searchRegex.lastIndex = 0; // reset for 'g' flag
                     if (searchRegex.test(lines[i])) {
-                        results.push(`${filePath}:${i + 1}: ${lines[i].trim()}`);
+                        let lineContent = lines[i].trim();
+                        if (lineContent.length > MAX_LINE_LENGTH) {
+                            lineContent = lineContent.slice(0, MAX_LINE_LENGTH) + `... [truncated remaining ${lineContent.length - MAX_LINE_LENGTH} chars]`;
+                        }
+                        results.push(`${filePath}:${i + 1}: ${lineContent}`);
                         totalMatches++;
                     }
                 }

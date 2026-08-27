@@ -37,4 +37,14 @@ describe('handleSearchCode - VS Code Style', () => {
         const result = handleSearchCode('temp_test_search', '');
         expect(result).toBe("Error: 'query' parameter is required for search_code");
     });
+
+    it('should truncate lines longer than MAX_LINE_LENGTH (500 chars)', () => {
+        const longLine = 'const CardInvestimentsComponent = "' + 'A'.repeat(600) + '";';
+        fs.writeFileSync(path.join(testDir, 'long_line.ts'), longLine);
+
+        const result = handleSearchCode('temp_test_search', 'CardInvestimentsComponent');
+        expect(result).toContain('long_line.ts:1:');
+        expect(result).toContain('[truncated remaining');
+        expect(result.length).toBeLessThan(700);
+    });
 });
