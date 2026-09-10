@@ -43,4 +43,11 @@ describe('memoryTool', () => {
       memoryToolSchema.parse({ action: 'add', target: 'soul', content: 'teste' })
     ).toThrow();
   });
+
+  it('should reject target soul at runtime in executeMemoryTool with permission error', async () => {
+    await expect(
+      // @ts-expect-error test direct runtime call
+      executeMemoryTool(store, { action: 'add', target: 'soul', content: 'teste' })
+    ).rejects.toThrow("Permissão negada: O arquivo 'SOUL.md' é estritamente somente-leitura");
+  });
 });

@@ -100,6 +100,39 @@ export class MemoryStore {
     return { soul, user, memory, memoryUsage, userUsage, composedPromptBlock };
   }
 
+  public static readonly DELIMITER = '§';
+
+  private sanitizeContent(content: string): string {
+    if (!content) return '';
+    // 1. Remove caracteres Unicode invisíveis e de controle
+    let sanitized = content
+      .replace(/[\u200B-\u200D\uFEFF\u200E\u200F\u202A-\u202E]/g, '')
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+
+    // 2. Desarmar tags de injeção de prompt que tentem fechar ou manipular o system prompt
+    sanitized = sanitized.replace(/<\/?(soul|user_profile|project_memory|project_context|system)(?:\s+[^>]*)?>/gi, match => {
+      return match.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    });
+
+    // 3. Normalizar espaçamento excessivo
+    return sanitized.replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  async getEntries(target: 'memory' | 'user' | 'soul'): Promise<string[]> {
+    const text = await this.readFile(target);
+    if (!text.trim()) return [];
+    if (text.includes(MemoryStore.DELIMITER)) {
+      return text
+        .split(/(?:^|\n)§(?:\n|$)/)
+        .map(e => e.trim())
+        .filter(e => e.length > 0);
+    }
+    return text
+      .split('\n')
+      .map(e => e.trim())
+      .filter(e => e.length > 0);
+  }
+
   async updateFile(
     target: 'memory' | 'user',
     action: 'add' | 'replace' | 'remove',
@@ -107,7 +140,7 @@ export class MemoryStore {
     oldStr?: string
   ): Promise<{ success: boolean; usage: string; current_entries?: string[] }> {
     const ALLOWED_TARGETS = ['memory', 'user'] as const;
-    if (!ALLOWED_TARGETS.includes(target as any)) {
+    if (!ALLOWED_TARGETS.includes(target as any) || (target as string).toLowerCase() === 'soul') {
       throw new Error(
         `Alvo inválido: '${target}'. O agente só possui permissão de escrita em 'MEMORY.md' e 'USER.md'. O arquivo 'SOUL.md' é estritamente somente-leitura.`
       );
@@ -115,25 +148,37 @@ export class MemoryStore {
 
     const currentText = await this.readFile(target);
     const limit = this.getLimit(target);
+    const sanitized = this.sanitizeContent(content);
     let newText = currentText;
 
     if (action === 'add') {
-      newText = currentText ? `${currentText}\n${content.trim()}` : content.trim();
+      newText = currentText
+        ? `${currentText}\n${MemoryStore.DELIMITER}\n${sanitized}`
+        : sanitized;
     } else if (action === 'replace') {
       if (!oldStr) throw new Error('Ação replace exige old_str para localizar o trecho a ser substituído.');
       if (!currentText.includes(oldStr)) {
         throw new Error(`Trecho '${oldStr}' não encontrado no arquivo ${target}.`);
       }
-      newText = currentText.replace(oldStr, content.trim());
+      newText = currentText.replace(oldStr, sanitized);
     } else if (action === 'remove') {
       const targetStr = oldStr || content;
       if (!targetStr) throw new Error('Ação remove exige conteúdo ou old_str para remoção.');
-      newText = currentText.replace(targetStr, '').replace(/\n\s*\n/g, '\n').trim();
+      newText = currentText
+        .replace(targetStr, '')
+        .replace(/(?:\n§)+\n?/g, '\n§\n')
+        .replace(/\n\s*\n/g, '\n')
+        .trim();
     }
 
     if (newText.length > limit) {
-      const entries = currentText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-      const errorMsg = `Memory at ${currentText.length}/${limit} chars. Adding this entry (${content.length} chars) would exceed the limit. Consolidate now: use 'replace' to merge overlapping entries into shorter ones or 'remove' stale entries, then retry this add — all in this turn.`;
+      const entries = await this.getEntries(target);
+      let errorMsg = '';
+      if (action === 'replace') {
+        errorMsg = `Memory at ${currentText.length}/${limit} chars. Replacing with this content (${sanitized.length} chars) would exceed the limit (${newText.length}/${limit} chars). Please condense the replacement text before applying.`;
+      } else {
+        errorMsg = `Memory at ${currentText.length}/${limit} chars. Adding this entry (${sanitized.length} chars) would exceed the limit. Consolidate now: use 'replace' to merge overlapping entries into shorter ones or 'remove' stale entries, then retry this add — all in this turn.`;
+      }
       const error = new Error(errorMsg);
       (error as any).current_entries = entries;
       (error as any).usage = `${currentText.length}/${limit}`;

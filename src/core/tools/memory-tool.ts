@@ -14,6 +14,12 @@ export async function executeMemoryTool(
   store: MemoryStore,
   args: MemoryToolArgs
 ): Promise<{ success: boolean; usage?: string; content?: string; current_entries?: string[] }> {
+  if ((args.target as string).toLowerCase() === 'soul' || !['memory', 'user'].includes(args.target)) {
+    throw new Error(
+      `Permissão negada: O arquivo 'SOUL.md' é estritamente somente-leitura. As operações de memória são restritas aos alvos 'memory' e 'user'.`
+    );
+  }
+
   if (args.action === 'read') {
     const content = await store.readFile(args.target);
     return { success: true, content };

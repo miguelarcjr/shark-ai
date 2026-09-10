@@ -78,4 +78,55 @@ describe('ContextCompressor with Tail Protection', () => {
     expect(summaryMessage?.content).toContain('- Objetivo Principal:');
     expect(summaryMessage?.content).toContain('- Decisões Técnicas:');
   });
+
+  it('should preserve tool_call and tool_result pairs across compression boundaries', async () => {
+    const history: ChatMessage[] = [
+      { role: 'system', content: 'SYSTEM_PINNED' },
+      { role: 'user', content: 'INITIAL_GOAL' }
+    ];
+
+    // Adiciona mensagens normais intermediárias
+    for (let i = 0; i < 20; i++) {
+      history.push({
+        role: i % 2 === 0 ? 'assistant' : 'user',
+        content: `Long middle turn ${i} ` + 'palavras chave '.repeat(40)
+      });
+    }
+
+    // Logo antes da cauda padrão (tailSize = 5), insere uma chamada de ferramenta assistant e sua resposta tool
+    // Isso simula o corte exatamente no meio do par de ferramenta!
+    const assistantWithTool: any = {
+      role: 'assistant',
+      content: '',
+      tool_calls: [{ id: 'call_123', type: 'function', function: { name: 'run_command', arguments: '{"cmd":"ls"}' } }]
+    };
+    const toolResponse: any = {
+      role: 'tool',
+      tool_call_id: 'call_123',
+      content: 'file1.txt\nfile2.txt'
+    };
+
+    history.push(assistantWithTool);
+    history.push(toolResponse);
+
+    // E adiciona mais 4 mensagens para compor a cauda
+    for (let j = 0; j < 4; j++) {
+      history.push({ role: 'user', content: `Final question ${j}` });
+    }
+
+    const result = await ContextCompressor.compress(history, {
+      tokenLimit: 1000,
+      thresholdRatio: 0.8,
+      tailSize: 5
+    });
+
+    expect(result.wasCompressed).toBe(true);
+
+    // Verifica que a resposta 'tool' NÃO ficou órfã: o 'assistant' com tool_calls DEVE estar presente antes dela
+    const toolIndex = result.history.findIndex(m => m.role === 'tool');
+    expect(toolIndex).toBeGreaterThan(0);
+    const precedingMsg = result.history[toolIndex - 1];
+    expect(precedingMsg.role).toBe('assistant');
+    expect((precedingMsg as any).tool_calls).toBeDefined();
+  });
 });

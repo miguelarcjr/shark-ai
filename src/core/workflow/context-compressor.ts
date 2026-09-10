@@ -43,10 +43,34 @@ export class ContextCompressor {
       return { history, wasCompressed: false };
     }
 
-    // Particionamento
-    const pinned = history.slice(0, 2);
-    const tail = history.slice(history.length - tailSize);
-    const middle = history.slice(2, history.length - tailSize);
+    // Particionamento inteligente com preservação de pares de ferramentas
+    let tailStart = history.length - tailSize;
+
+    // 1. Se a cauda cortar no meio de respostas de ferramentas (role: 'tool' ou tool_call_id),
+    // retroceder tailStart até incluir a mensagem 'assistant' que as invocou.
+    while (tailStart > 2 && (history[tailStart]?.role === 'tool' || (history[tailStart] as any)?.tool_call_id)) {
+      tailStart--;
+    }
+
+    // 2. Se a mensagem logo antes da cauda for uma chamada 'assistant' com tool_calls,
+    // incluí-la na cauda para que suas respostas correspondentes fiquem no mesmo bloco.
+    if (tailStart > 2 && ((history[tailStart - 1] as any)?.tool_calls?.length > 0 || (history[tailStart - 1] as any)?.function_call)) {
+      tailStart--;
+    }
+
+    // 3. Garantir integridade no bloco pinned (Turno 0/1)
+    let pinnedEnd = 2;
+    while (pinnedEnd < tailStart && (history[pinnedEnd]?.role === 'tool' || (history[pinnedEnd] as any)?.tool_call_id)) {
+      pinnedEnd++;
+    }
+
+    if (tailStart <= pinnedEnd) {
+      return { history, wasCompressed: false };
+    }
+
+    const pinned = history.slice(0, pinnedEnd);
+    const tail = history.slice(tailStart);
+    const middle = history.slice(pinnedEnd, tailStart);
 
     let summaryBlock = '';
 
