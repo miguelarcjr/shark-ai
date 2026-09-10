@@ -11,7 +11,8 @@ import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
 import crypto from 'node:crypto';
 import { skillManager } from '../workflow/skill-manager.js';
 import { compactToolOutputRetroactively, cleanResponseObject } from './openai-compatible-provider.js';
-import { orchestrateContext } from './ace-context-orchestrator.js';
+import { ContextCompressor } from '../workflow/context-compressor.js';
+import { StateDB } from '../memory/state-db.js';
 
 export class StackSpotProvider implements AIProvider {
     public agentId?: string;
@@ -85,19 +86,6 @@ export class StackSpotProvider implements AIProvider {
 
         const isSubagent = !!process.env.SHARK_SUBAGENT_ROLE;
         let systemPrompt = isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT;
-        let retrievedContext = '';
-        const isHelperCall = options.conversationId?.startsWith('membox-');
-        const config = ConfigManager.getInstance().getConfig();
-        const enabled = config.memory?.enabled === true || !!process.env.VITEST;
-        if (!isHelperCall && enabled) {
-            const { MemboxManager } = await import('../workflow/membox-manager.js');
-            const memboxManager = new MemboxManager();
-            const query = options?.searchQuery || prompt;
-            retrievedContext = await memboxManager.retrieveContext(query, []);
-            if (retrievedContext) {
-                systemPrompt = systemPrompt + '\n' + retrievedContext;
-            }
-        }
 
         const isFirstTurn = !options.conversationId;
         let finalPrompt = prompt;
@@ -114,9 +102,16 @@ export class StackSpotProvider implements AIProvider {
             }
             rawHistory.push({ role: 'user', content: prompt });
             await HistoryManager.saveRawHistory(conversationId, rawHistory);
+            try {
+                const stateDb = new StateDB();
+                stateDb.recordMessage(conversationId, 'user', prompt);
+                stateDb.close();
+            } catch {}
 
             const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 120000;
-            const orchestratedHistory = await orchestrateContext(rawHistory, prompt, compactionTokenLimit);
+            const { history: orchestratedHistory } = await ContextCompressor.compress(rawHistory, {
+                tokenLimit: compactionTokenLimit
+            });
 
             history = orchestratedHistory;
 
@@ -136,14 +131,9 @@ export class StackSpotProvider implements AIProvider {
                 }
             }
             
-            if (retrievedContext || skillExtension) {
+            if (skillExtension) {
                 let dynamicContent = '--- DADOS E MEMÓRIA DE SUPORTE ---';
-                if (retrievedContext) {
-                    dynamicContent += '\n' + retrievedContext;
-                }
-                if (skillExtension) {
-                    dynamicContent += '\n' + skillExtension;
-                }
+                dynamicContent += '\n' + skillExtension;
                 compiledPrompt += `SUPPORT DATA:\n${dynamicContent}\n\n`;
             }
             
@@ -159,9 +149,6 @@ export class StackSpotProvider implements AIProvider {
                 finalPrompt = `SYSTEM INSTRUCTIONS:\n${fullSystemPrompt}\n\nUSER REQUEST:\n${prompt}`;
             } else {
                 finalPrompt = skillExtension ? prompt + '\n' + skillExtension : prompt;
-                if (retrievedContext) {
-                    finalPrompt = `[MEMÓRIA E CONTEXTO RECUPERADOS]\n${retrievedContext}\n\n[MENSAGEM DO USUÁRIO]\n${finalPrompt}`;
-                }
             }
         }
 
@@ -235,6 +222,11 @@ export class StackSpotProvider implements AIProvider {
             const rawHistory = [...await HistoryManager.getRawHistory(conversationId)];
             rawHistory.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
             await HistoryManager.saveRawHistory(conversationId, rawHistory);
+            try {
+                const stateDb = new StateDB();
+                stateDb.recordMessage(conversationId, 'assistant', JSON.stringify(cleanedResponse));
+                stateDb.close();
+            } catch {}
 
             history.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
             await HistoryManager.saveHistory(conversationId, history);

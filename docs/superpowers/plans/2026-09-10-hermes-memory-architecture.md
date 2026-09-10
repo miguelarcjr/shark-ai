@@ -1,6 +1,6 @@
 # Arquitetura de Memória Determinística (Padrão Hermes) - Plano de Implementação
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Migrar o Shark AI de um sistema de memória complexo e estocástico (Membox/embeddings ONNX e ACE/BM25) para uma arquitetura modular em 3 camadas inspirada no Hermes Agent (`MemoryStore`, `StateDB`, `ContextCompressor`), garantindo preservação estrita do Prompt Caching, busca textual em <10ms via SQLite FTS5 e governança de memória.
 
@@ -41,7 +41,7 @@
 - Consumes: `package.json`
 - Produces: Ambiente limpo sem referências a módulos estocásticos e dependência `better-sqlite3` pronta para uso.
 
-- [ ] **Step 1: Escrever teste que valida ausência dos arquivos legados e presença do better-sqlite3**
+- [x] **Step 1: Escrever teste que valida ausência dos arquivos legados e presença do better-sqlite3**
 
 Criar `tests/core/memory/decommission.test.ts`:
 ```typescript
@@ -66,12 +66,12 @@ describe('Task 1: Decommission Legacy Stochastic Modules', () => {
 });
 ```
 
-- [ ] **Step 2: Executar teste para verificar falha inicial**
+- [x] **Step 2: Executar teste para verificar falha inicial**
 
 Run: `npx vitest run tests/core/memory/decommission.test.ts`
 Expected: FAIL (arquivos legados ainda existem e/ou `better-sqlite3` não instalado).
 
-- [ ] **Step 3: Instalar `better-sqlite3` e deletar arquivos legados**
+- [x] **Step 3: Instalar `better-sqlite3` e deletar arquivos legados**
 
 1. Executar no terminal:
 ```bash
@@ -83,12 +83,12 @@ npm install --save-dev @types/better-sqlite3
 git rm src/core/workflow/membox-manager.ts src/core/workflow/membox-manager.test.ts src/core/workflow/embedding-service.ts src/core/workflow/embedding-service.test.ts src/core/api/ace-context-orchestrator.ts src/core/api/ace-context-orchestrator.test.ts src/core/api/compaction-and-caching.test.ts
 ```
 
-- [ ] **Step 4: Executar o teste para verificar aprovação**
+- [x] **Step 4: Executar o teste para verificar aprovação**
 
 Run: `npx vitest run tests/core/memory/decommission.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add package.json package-lock.json tests/core/memory/decommission.test.ts
@@ -123,7 +123,7 @@ git commit -m "chore: decommission legacy membox and ace modules, install better
   }
   ```
 
-- [ ] **Step 1: Escrever teste unitário para `MemoryStore`**
+- [x] **Step 1: Escrever teste unitário para `MemoryStore`**
 
 Criar `tests/core/memory/memory-store.test.ts`:
 ```typescript
@@ -189,12 +189,12 @@ describe('MemoryStore', () => {
 });
 ```
 
-- [ ] **Step 2: Executar teste para verificar falha inicial**
+- [x] **Step 2: Executar teste para verificar falha inicial**
 
 Run: `npx vitest run tests/core/memory/memory-store.test.ts`
 Expected: FAIL (módulo ainda não implementado).
 
-- [ ] **Step 3: Implementar `MemoryStore`**
+- [x] **Step 3: Implementar `MemoryStore`**
 
 Criar `src/core/memory/memory-store.ts`:
 ```typescript
@@ -351,12 +351,12 @@ export class MemoryStore {
 }
 ```
 
-- [ ] **Step 4: Executar teste para verificar aprovação**
+- [x] **Step 4: Executar teste para verificar aprovação**
 
 Run: `npx vitest run tests/core/memory/memory-store.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/memory/memory-store.ts tests/core/memory/memory-store.test.ts
@@ -391,7 +391,7 @@ git commit -m "feat: implement MemoryStore with capacity metrics and overflow pr
   }
   ```
 
-- [ ] **Step 1: Escrever teste unitário e de performance para `StateDB`**
+- [x] **Step 1: Escrever teste unitário e de performance para `StateDB`**
 
 Criar `tests/core/memory/state-db.test.ts`:
 ```typescript
@@ -441,12 +441,12 @@ describe('StateDB with SQLite FTS5', () => {
 });
 ```
 
-- [ ] **Step 2: Executar teste para verificar falha inicial**
+- [x] **Step 2: Executar teste para verificar falha inicial**
 
 Run: `npx vitest run tests/core/memory/state-db.test.ts`
 Expected: FAIL (classe não implementada).
 
-- [ ] **Step 3: Implementar `StateDB` com SQLite FTS5 e WAL Mode**
+- [x] **Step 3: Implementar `StateDB` com SQLite FTS5 e WAL Mode**
 
 Criar `src/core/memory/state-db.ts`:
 ```typescript
@@ -547,12 +547,12 @@ export class StateDB {
 }
 ```
 
-- [ ] **Step 4: Executar teste para verificar aprovação**
+- [x] **Step 4: Executar teste para verificar aprovação**
 
 Run: `npx vitest run tests/core/memory/state-db.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/memory/state-db.ts tests/core/memory/state-db.test.ts
@@ -586,7 +586,7 @@ git commit -m "feat: implement StateDB with SQLite FTS5 and <10ms query gate"
   }
   ```
 
-- [ ] **Step 1: Escrever teste unitário para `ContextCompressor`**
+- [x] **Step 1: Escrever teste unitário para `ContextCompressor`**
 
 Criar `tests/core/workflow/context-compressor.test.ts`:
 ```typescript
@@ -673,12 +673,12 @@ describe('ContextCompressor with Tail Protection', () => {
 });
 ```
 
-- [ ] **Step 2: Executar teste para verificar falha inicial**
+- [x] **Step 2: Executar teste para verificar falha inicial**
 
 Run: `npx vitest run tests/core/workflow/context-compressor.test.ts`
 Expected: FAIL (classe não implementada).
 
-- [ ] **Step 3: Implementar `ContextCompressor`**
+- [x] **Step 3: Implementar `ContextCompressor`**
 
 Criar `src/core/workflow/context-compressor.ts`:
 ```typescript
@@ -794,12 +794,12 @@ export class ContextCompressor {
 }
 ```
 
-- [ ] **Step 4: Executar teste para verificar aprovação**
+- [x] **Step 4: Executar teste para verificar aprovação**
 
 Run: `npx vitest run tests/core/workflow/context-compressor.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/workflow/context-compressor.ts tests/core/workflow/context-compressor.test.ts
@@ -820,7 +820,7 @@ git commit -m "feat: implement deterministic ContextCompressor with tail protect
 - Consumes: `MemoryStore`, `StateDB`, `zod`
 - Produces: `executeMemoryTool(store, args)` e `executeSessionSearchTool(db, args)`
 
-- [ ] **Step 1: Escrever testes unitários para `memory-tool` e `session-search-tool`**
+- [x] **Step 1: Escrever testes unitários para `memory-tool` e `session-search-tool`**
 
 Criar `tests/core/tools/memory-tool.test.ts`:
 ```typescript
@@ -906,12 +906,12 @@ describe('sessionSearchTool', () => {
 });
 ```
 
-- [ ] **Step 2: Executar testes para verificar falha inicial**
+- [x] **Step 2: Executar testes para verificar falha inicial**
 
 Run: `npx vitest run tests/core/tools/memory-tool.test.ts tests/core/tools/session-search-tool.test.ts`
 Expected: FAIL (ferramentas não implementadas).
 
-- [ ] **Step 3: Implementar `memory-tool.ts` e `session-search-tool.ts`**
+- [x] **Step 3: Implementar `memory-tool.ts` e `session-search-tool.ts`**
 
 Criar `src/core/tools/memory-tool.ts`:
 ```typescript
@@ -969,12 +969,12 @@ export function executeSessionSearchTool(
 }
 ```
 
-- [ ] **Step 4: Executar testes para verificar aprovação**
+- [x] **Step 4: Executar testes para verificar aprovação**
 
 Run: `npx vitest run tests/core/tools/memory-tool.test.ts tests/core/tools/session-search-tool.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/tools/memory-tool.ts src/core/tools/session-search-tool.ts tests/core/tools/memory-tool.test.ts tests/core/tools/session-search-tool.test.ts
@@ -996,7 +996,7 @@ git commit -m "feat: implement memory and session_search tools with Zod validati
 - Consumes: `MemoryStore`, `StateDB`, `ContextCompressor`, `UNIFIED_SYSTEM_PROMPT`
 - Produces: Ciclo de vida completo no Shark AI com Frozen Snapshot estável e chamadas integradas às novas tools.
 
-- [ ] **Step 1: Escrever teste de integração para o Frozen Snapshot e Prompt Caching**
+- [x] **Step 1: Escrever teste de integração para o Frozen Snapshot e Prompt Caching**
 
 Criar `tests/core/workflow/memory-integration.test.ts`:
 ```typescript
@@ -1062,22 +1062,22 @@ describe('Integration: Frozen Snapshot & Modular System Prompt', () => {
 });
 ```
 
-- [ ] **Step 2: Executar teste para verificar falha inicial**
+- [x] **Step 2: Executar teste para verificar falha inicial**
 
 Run: `npx vitest run tests/core/workflow/memory-integration.test.ts`
 Expected: FAIL (`buildUnifiedSystemPrompt` não definida).
 
-- [ ] **Step 3: Atualizar `src/core/api/prompts.ts` e integrar provedores**
+- [x] **Step 3: Atualizar `src/core/api/prompts.ts` e integrar provedores**
 
 Atualizar `src/core/api/prompts.ts` adicionando `buildUnifiedSystemPrompt`, as ações `memory` e `session_search`, e removendo qualquer menção ao ACE.
 Atualizar `stackspot-provider.ts` e `openai-compatible-provider.ts` para invocar o `ContextCompressor.compress()` em vez de `ace-context-orchestrator` e registrar mensagens no `StateDB`.
 
-- [ ] **Step 4: Executar suíte completa de testes de memória e validação geral**
+- [x] **Step 4: Executar suíte completa de testes de memória e validação geral**
 
 Run: `npx vitest run tests/core/`
 Expected: PASS em todos os testes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/api/prompts.ts src/core/api/stackspot-provider.ts src/core/api/openai-compatible-provider.ts src/core/agents/developer-agent.ts tests/core/workflow/memory-integration.test.ts

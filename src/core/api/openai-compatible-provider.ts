@@ -7,7 +7,8 @@ import { FileLogger } from '../debug/file-logger.js';
 import { skillManager } from '../workflow/skill-manager.js';
 import { encode } from 'gpt-tokenizer';
 import { ConfigManager } from '../config-manager.js';
-import { orchestrateContext } from './ace-context-orchestrator.js';
+import { ContextCompressor } from '../workflow/context-compressor.js';
+import { StateDB } from '../memory/state-db.js';
 
 export function compactToolOutputRetroactively(content: string): string {
     // 1. run_command output
@@ -133,9 +134,16 @@ export class OpenAICompatibleProvider implements AIProvider {
 
         rawHistory.push({ role: 'user', content: prompt });
         await HistoryManager.saveRawHistory(conversationId, rawHistory);
+        try {
+            const stateDb = new StateDB();
+            stateDb.recordMessage(conversationId, 'user', prompt);
+            stateDb.close();
+        } catch {}
 
         const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 120000;
-        const orchestratedHistory = await orchestrateContext(rawHistory, prompt, compactionTokenLimit);
+        const { history: orchestratedHistory } = await ContextCompressor.compress(rawHistory, {
+            tokenLimit: compactionTokenLimit
+        });
 
         const requestMessages: ChatMessage[] = [];
         let systemPrompt = this.getAgentSystemPrompt(options.agentType);
@@ -159,32 +167,10 @@ export class OpenAICompatibleProvider implements AIProvider {
         // 2. Messages 1..N-2: Chat history (Fully cached stable prefix)
         requestMessages.push(...historyCopy);
         
-        // 3. Message N-1: Dynamic support context (RAG + Skill Extensions)
-        const isHelperCall = conversationId.startsWith('membox-');
-        const config = ConfigManager.getInstance().getConfig();
-        const enabled = config.memory?.enabled === true || !!process.env.VITEST;
-        if (!isHelperCall && enabled) {
-            const { MemboxManager } = await import('../workflow/membox-manager.js');
-            const memboxManager = new MemboxManager();
-            const query = options?.searchQuery || prompt;
-            const retrievedContext = await memboxManager.retrieveContext(query, orchestratedHistory);
-            const skillExtension = skillManager.getSystemInstructionExtension();
-            
-            if (retrievedContext || skillExtension) {
-                let dynamicContent = '--- DADOS E MEMÓRIA DE SUPORTE ---';
-                if (retrievedContext) {
-                    dynamicContent += '\n' + retrievedContext;
-                }
-                if (skillExtension) {
-                    dynamicContent += '\n' + skillExtension;
-                }
-                requestMessages.push({ role: 'system', content: dynamicContent });
-            }
-        } else if (!isHelperCall) {
-            const skillExtension = skillManager.getSystemInstructionExtension();
-            if (skillExtension) {
-                requestMessages.push({ role: 'system', content: `--- DADOS E MEMÓRIA DE SUPORTE ---\n${skillExtension}` });
-            }
+        // 3. Message N-1: Dynamic support context (Skill Extensions)
+        const skillExtension = skillManager.getSystemInstructionExtension();
+        if (skillExtension) {
+            requestMessages.push({ role: 'system', content: `--- DADOS E MEMÓRIA DE SUPORTE ---\n${skillExtension}` });
         }
         
         // 4. Message N: The current user query
@@ -328,6 +314,11 @@ export class OpenAICompatibleProvider implements AIProvider {
             const rawHistory = [...await HistoryManager.getRawHistory(conversationId)];
             rawHistory.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
             await HistoryManager.saveRawHistory(conversationId, rawHistory);
+            try {
+                const stateDb = new StateDB();
+                stateDb.recordMessage(conversationId, 'assistant', JSON.stringify(cleanedResponse));
+                stateDb.close();
+            } catch {}
 
             orchestratedHistory.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
             await HistoryManager.saveHistory(conversationId, orchestratedHistory);

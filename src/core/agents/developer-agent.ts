@@ -10,9 +10,13 @@ import { handleRunCommand, handleListFiles, handleSearchFile, handleSearchCode }
 import { skillManager } from '../workflow/skill-manager.js';
 import { subagentManager } from '../workflow/subagent-manager.js';
 import { FileLogger } from '../debug/file-logger.js';
-import { MessageQueue, QueueMessage } from '../workflow/message-queue.js';
 import { HistoryManager } from '../workflow/history-manager.js';
-import { MemboxManager } from '../workflow/membox-manager.js';
+import { MessageQueue, type QueueMessage } from '../workflow/message-queue.js';
+import { ContextCompressor } from '../workflow/context-compressor.js';
+import { MemoryStore } from '../memory/memory-store.js';
+import { StateDB } from '../memory/state-db.js';
+import { executeMemoryTool, memoryToolSchema } from '../tools/memory-tool.js';
+import { executeSessionSearchTool, sessionSearchToolSchema } from '../tools/session-search-tool.js';
 import { ConfigManager } from '../config-manager.js';
 import { encode } from 'gpt-tokenizer';
 import { UNIFIED_SYSTEM_PROMPT } from '../api/prompts.js';
@@ -204,15 +208,21 @@ export async function interactiveDeveloperAgent(options: {
                 tui.log.warning('🦈 A compactação de memória está desabilitada nas configurações.');
                 return true;
             }
-            tui.log.info('🦈 Compactando memória de forma manual...');
-            const memboxManager = new MemboxManager();
+            tui.log.info('🦈 Compactando memória de forma manual com Tail Protection...');
             if (activeConversationId) {
                 try {
                     const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
-                    const provider = ProviderResolver.getProvider('developer_agent');
-                    const truncatedHistory = await memboxManager.compactHistory(rawHistory, provider, activeConversationId, true);
-                    await HistoryManager.saveRawHistory(activeConversationId, truncatedHistory);
-                    tui.log.success('✔ Memória compactada e truncated com sucesso!');
+                    const { history: compressedHistory, wasCompressed } = await ContextCompressor.compress(rawHistory, {
+                        tokenLimit: 1000,
+                        thresholdRatio: 0.0,
+                        tailSize: 15
+                    });
+                    if (wasCompressed) {
+                        await HistoryManager.saveRawHistory(activeConversationId, compressedHistory);
+                        tui.log.success('✔ Memória compactada com sucesso (Tail Protection)!');
+                    } else {
+                        tui.log.info('ℹ Histórico muito curto para compactação.');
+                    }
                 } catch (error: any) {
                     tui.log.error(`Erro durante a compactação: ${error.message}`);
                 }
@@ -529,51 +539,17 @@ Your goal is to address the user's request:
                 if (activeConversationId) {
                     const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
                     const config = ConfigManager.getInstance().getConfig();
-                    const enabled = config.memory?.enabled === true || !!process.env.VITEST;
-                    
-                    let retrievedContext = '';
-                    if (enabled) {
-                        const memboxManager = new MemboxManager();
-                        const searchQuery = nextPrompt || '';
-                        retrievedContext = await memboxManager.retrieveContext(searchQuery, rawHistory);
-                    }
-                    
-                    const skillExtension = skillManager.getSystemInstructionExtension();
-                    
-                    let fullTextForEstimation = UNIFIED_SYSTEM_PROMPT;
-                    if (retrievedContext) {
-                        fullTextForEstimation += '\n' + retrievedContext;
-                    }
-                    if (skillExtension) {
-                        fullTextForEstimation += '\n' + skillExtension;
-                    }
-                    for (const msg of rawHistory) {
-                        fullTextForEstimation += `\n${msg.role}: ${msg.content}`;
-                    }
-                    if (promptToSend) {
-                        fullTextForEstimation += `\nuser: ${promptToSend}`;
-                    }
-
-                    const totalTokens = encode(fullTextForEstimation).length;
                     const compactionTokenLimit = config.memory?.compactionTokenLimit ?? 120000;
-                    const effectiveLimit = compactionTokenLimit - 1000; // 1000 token output margin
 
-                    if (enabled && totalTokens >= effectiveLimit * 0.85) {
-                        if (rawHistory.length >= 10) {
-                            try {
-                                log.info('🦈 Limite de context/tokens atingido. Iniciando compactação automática...');
-                                const memboxManager = new MemboxManager();
-                                const providerInstance = ProviderResolver.getProvider('developer_agent');
-                                const truncatedHistory = await memboxManager.compactHistory(rawHistory, providerInstance, activeConversationId);
-                                await HistoryManager.saveRawHistory(activeConversationId, truncatedHistory);
-                                log.success('✔ Compactação automática concluída!');
-                            } catch (error: any) {
-                                log.error(`⚠️ Falha na compactação automática: ${error.message}. Prosseguindo sem compactação.`);
-                            }
-                        } else {
-                            // Alerta de saturação do contexto estático (regras + skills)
-                            log.warning(`⚠️ Alerta: O contexto estático (regras, prompts e skills ativas) está utilizando ${totalTokens} tokens. Isso representa mais de 85% do limite configurado (teto efetivo: ${effectiveLimit}). Para evitar erros de estouro de contexto, por favor desative algumas skills ou aumente o "compactionTokenLimit" no arquivo '.sharkrc'.`);
-                        }
+                    const { history: compressedHistory, wasCompressed } = await ContextCompressor.compress(rawHistory, {
+                        tokenLimit: compactionTokenLimit,
+                        thresholdRatio: 0.8,
+                        tailSize: 15
+                    });
+
+                    if (wasCompressed) {
+                        await HistoryManager.saveRawHistory(activeConversationId, compressedHistory);
+                        log.info('✔ Contexto compactado automaticamente com Tail Protection (Hermes pattern).');
                     }
                 }
 
@@ -893,6 +869,48 @@ Your goal is to address the user's request:
                         resultMsg = `[System]: Skill '${name}' activated successfully.`;
                     } catch (e: any) {
                         resultMsg = `[System]: Failed to activate skill '${name}': ${e.message}`;
+                    }
+                }
+                else if (action.type === 'memory') {
+                    const target = (action.target || 'memory') as 'memory' | 'user';
+                    const act = action.action || 'read';
+                    log.info(`🧠 Memory: ${colors.bold(act)} on ${colors.bold(target)}`);
+                    try {
+                        const memoryStore = new MemoryStore();
+                        const memArgs = memoryToolSchema.parse({
+                            action: act,
+                            target,
+                            content: action.content || '',
+                            old_str: action.old_str
+                        });
+                        const res = await executeMemoryTool(memoryStore, memArgs);
+                        resultMsg = `[Action memory(${memArgs.action}, ${memArgs.target}) Success]: ${res.usage ? `Usage: ${res.usage}` : (res.content || 'OK')}`;
+                    } catch (e: any) {
+                        if (e.current_entries) {
+                            resultMsg = `[Action memory Failed]: ${JSON.stringify({
+                                success: false,
+                                error: e.message,
+                                current_entries: e.current_entries,
+                                usage: e.usage
+                            })}`;
+                        } else {
+                            resultMsg = `[Action memory Failed]: ${e.message}`;
+                        }
+                    }
+                }
+                else if (action.type === 'session_search') {
+                    const query = action.query || '';
+                    const limit = typeof action.limit === 'number' ? action.limit : 5;
+                    log.info(`🔍 Session Search FTS5: ${colors.bold(`"${query}"`)}`);
+                    try {
+                        const stateDb = new StateDB();
+                        const searchArgs = sessionSearchToolSchema.parse({ query, limit });
+                        const res = executeSessionSearchTool(stateDb, searchArgs);
+                        stateDb.close();
+                        const formatted = res.results.map(r => `[${r.timestamp}] (${r.role}): ${r.content}`).join('\n---\n');
+                        resultMsg = `[Action session_search("${query}") Success - ${res.totalFound} found]:\n${formatted || 'Nenhuma mensagem encontrada.'}`;
+                    } catch (e: any) {
+                        resultMsg = `[Action session_search Failed]: ${e.message}`;
                     }
                 }
                 else if (action.type === 'talk_with_user') {
