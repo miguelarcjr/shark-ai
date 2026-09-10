@@ -16,7 +16,7 @@ O subsistema de memória do Shark AI atualmente conta com módulos de alta compl
 Esses módulos estocásticos introduzem latência de inicialização, alto consumo de memória, quebra contínua do **Prompt Caching** e instabilidade na preservação de contexto do agente.
 
 Inspirado na arquitetura do **Hermes Agent**, este design substitui o Membox e o ACE por uma arquitetura em 3 camadas puramente determinística:
-1. **MemoryStore**: Arquivos planos estáticos (`MEMORY.md`, `USER.md`, `SOUL.md`) com limites rígidos de caracteres e injeção em padrão *Frozen Snapshot* (preservando o prompt caching).
+1. **MemoryStore**: Arquivos planos estáticos (`MEMORY.md`, `USER.md`, `SOUL.md`) com limites rígidos de caracteres, autopercepção de capacidade no cabeçalho e injeção em padrão *Frozen Snapshot* (preservando o prompt caching).
 2. **StateDB**: Banco SQLite local (`state.db`) com tabela virtual FTS5 para busca textual ultra-rápida de sessões anteriores (`session_search` <10ms).
 3. **ContextCompressor**: Gerenciador de janela de contexto baseado em *Tail Protection* (preservando turnos 0/1 e as últimas 15 mensagens), compactando o miolo intermediário em um resumo executivo padronizado via modelo padrão com fallback determinístico.
 
@@ -30,48 +30,129 @@ Para suportar projetos simples, monorepos e arquiteturas multirrepo / microfront
 
 | Escopo | Arquivo | Finalidade | Permissão do Agente | Limite Rígido |
 | :--- | :--- | :--- | :--- | :--- |
-| **Global (`~/.shark/`)** | `USER.md` | Perfil do desenvolvedor, estilo de comunicação e preferências globais. | Leitura e Escrita | 1.375 chars (~500 tokens) |
-| **Global (`~/.shark/`)** | `SOUL.md` | Identidade, tom de voz, regras de segurança e postura do Shark AI. | **Somente Leitura** | 1.000 chars (~350 tokens) |
-| **Local (`<workspace>/.shark/`)** | `MEMORY.md` | Fatos perenes, portas de serviços, comandos de build e atalhos daquele repositório específico. | Leitura e Escrita | 2.200 chars (~800 tokens) |
+| **Global (`~/.shark/`)** | `USER.md` | Perfil do desenvolvedor, estilo de comunicação e preferências globais. | Leitura e Escrita (`user`) | 1.375 chars (~500 tokens) |
+| **Global (`~/.shark/`)** | `SOUL.md` | Identidade, tom de voz, regras de segurança e postura do Shark AI. | **Estritamente Somente Leitura** | 1.000 chars (~350 tokens) |
+| **Local (`<workspace>/.shark/`)** | `MEMORY.md` | Fatos perenes, portas de serviços, comandos de build e atalhos daquele repositório específico. | Leitura e Escrita (`memory`) | 2.200 chars (~800 tokens) |
 | **Local (`<workspace>/.shark/`)** | `state.db` | Banco SQLite contendo o histórico de turnos e mensagens do projeto. | Gerenciado pelo Runtime / Tool | N/A (SQLite em disco) |
 
-### 2.2 Preservação do Prompt Caching (*Frozen Snapshot*)
-- No início da sessão CLI (`shark`), o `MemoryStore` carrega os arquivos `USER.md`, `SOUL.md` e `MEMORY.md` e compõe o bloco de contexto inicial no System Prompt.
-- Durante a sessão, o System Prompt **permanece 100% estático**.
-- Se o agente invocar a ferramenta `memory` para adicionar ou alterar anotações, a persistência no disco é imediata, mas o System Prompt da sessão em execução não é modificado. O novo snapshot só entrará no System Prompt na sessão seguinte.
+### 2.2 Governança Estrita na Ferramenta de Memória
+A ferramenta `memory_tool` valida rigorosamente o alvo de escrita:
+```typescript
+const ALLOWED_TARGETS = ['memory', 'user'] as const;
 
-### 2.3 Resumo do Miolo com Estratégia Híbrida e Fallback
-Quando o total de tokens do histórico acumulado ultrapassa **80% do limite da janela de contexto**, o `ContextCompressor` divide a conversa em três segmentos:
-1. **Pinned**: Turnos 0 e 1 (System Prompt + Objetivo inicial do usuário).
-2. **Tail**: Os últimos 15 turnos mantidos 100% intactos com todas as chamadas de ferramentas e saídas completas.
-3. **Middle**: As mensagens intermediárias são condensadas em um único turno no seguinte formato estruturado:
-
-```markdown
-[Summary of earlier turns]
-- Objetivo Principal: <intenção consolidada da tarefa>
-- Decisões Técnicas: <decisões de arquitetura, libs e convenções>
-- Arquivos Modificados: <caminhos de arquivos criados/editados>
-- Próximo Passo: <direcionamento atual imediato>
+if (!ALLOWED_TARGETS.includes(target)) {
+  throw new Error(
+    `Alvo inválido: '${target}'. O agente só possui permissão de escrita em 'MEMORY.md' e 'USER.md'. O arquivo 'SOUL.md' é estritamente somente-leitura.`
+  );
+}
 ```
+* **Proteção contra Prompt Injection e Drift**: Manter `SOUL.md` somente-leitura impede que instruções maliciosas injetadas em arquivos lidos pelo agente sobrescrevam a identidade ou burlem as diretrizes de segurança de forma permanente.
 
-- **Mecanismo de Geração**:
-  - **Primário**: Chamada pontual à LLM padrão configurada com prompt estruturado de sumarização.
-  - **Fallback Determinístico**: Em caso de timeout (>5s), status 429 ou erro de conexão, aciona um extrator algorítmico local que sintetiza as ações de ferramentas e arquivos tocados sem depender de rede.
+### 2.3 A Regra do *Frozen Snapshot* (Preservação do Prompt Caching)
+- O System Prompt é montado **uma única vez no boot** da CLI (`shark`).
+- Quando o agente executa a ferramenta `memory` (ações `add`, `replace`, `remove`), o arquivo no disco é gravado imediatamente.
+- O System Prompt da sessão em andamento **não é reconstruído**. O fato permanece fresco na memória imediata da conversa atual e passará a integrar o System Prompt a partir da sessão seguinte ou após uma compactação de janela.
+- **Benefício de Custo e Latência**: Manter o prefixo do System Prompt 100% estático reduz os custos de entrada da LLM em até 75%-90% via Prompt Caching da API.
 
 ---
 
-## 3. Especificação dos Componentes
+## 3. Estrutura Modular do System Prompt (Padrão 3 Camadas)
 
-### 3.1 `MemoryStore` (`src/core/memory/memory-store.ts`)
-- Carrega e formata snapshots de memória.
-- Cria arquivos padrão com templates limpos em caso de cold start.
-- Valida limites de caracteres e bloqueia escrita em `SOUL.md`.
+Para maximizar a estabilidade do prefixo e garantir que a LLM saiba exatamente como agir, o System Prompt é organizado em três camadas ordenadas por taxa de variação:
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│ 1. CAMADA ESTÁVEL (Prefix Cache — Quase nunca muda)                   │
+│    ├── Identidade Base & Persona (SOUL.md lido de ~/.shark/SOUL.md)    │
+│    ├── Diretrizes Gerais de Uso de Ferramentas & Sistema de Âncoras    │
+│    ├── Contrato do Formato de Saída (JSON estrito)                     │
+│    ├── Protocolo de Auto-gerenciamento de Memória & FTS5               │
+│    └── Índice Leve de Skills (Progressive Disclosure)                  │
+├────────────────────────────────────────────────────────────────────────┤
+│ 2. CAMADA DE CONTEXTO DO REPOSITÓRIO (Estável por Projeto)             │
+│    └── Regras da Base de Código (AGENTS.md lido da raiz do workspace)  │
+├────────────────────────────────────────────────────────────────────────┤
+│ 3. CAMADA VOLÁTIL DE MEMÓRIA (Snapshots Congelados da Sessão)          │
+│    ├── Snapshot de MEMORY.md com Indicador [XX% — Y/2.200 chars]       │
+│    ├── Snapshot de USER.md com Indicador [XX% — Y/1.375 chars]         │
+│    └── Metadados da Sessão (Timestamp / Session ID)                    │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 3.1 Revelação Progressiva de Habilidades (Progressive Disclosure)
+- O System Prompt **não carrega** o conteúdo integral de arquivos `SKILL.md`.
+- Ele injeta apenas um índice leve com o nome e resumo curto (até 60 chars) de cada skill disponível.
+- Quando o agente precisa de uma habilidade procedural extensa, invoca `activate_skill(skill_name="...")`. O conteúdo do `SKILL.md` é lido do disco e inserido no histórico da conversa como um turno regular, mantendo o prefixo do System Prompt intocado.
+
+### 3.2 Autopercepção de Capacidade nos Cabeçalhos
+Para que o agente saiba exatamente quanto espaço ainda tem antes de salvar novos fatos, os blocos de memória são injetados com contadores explícitos:
+
+```markdown
+══════════════════════════════════════════════
+MEMORY (notas do projeto) [67% — 1.474/2.200 chars]
+══════════════════════════════════════════════
+O projeto utiliza Node.js v20 com Vitest para testes unitários
+§
+O ambiente local roda Docker no Linux Ubuntu 24.04
+
+══════════════════════════════════════════════
+USER PROFILE [30% — 412/1.375 chars]
+══════════════════════════════════════════════
+O usuário utiliza Linux Ubuntu 24.04
+§
+Prefere respostas diretas e sem introduções
+
+Timestamp: 2026-09-10T10:00:00-04:00
+Session: shark-sess-8f92a1
+```
+
+---
+
+## 4. Governança de Memória: Como, Quando e Quanto Atualizar
+
+### 4.1 Diretrizes de Decisão (Gatilhos)
+
+| Alvo | O Que Salvar | Quando Salvar | O Que Descartar (Filtro) |
+| :--- | :--- | :--- | :--- |
+| `memory` (`MEMORY.md`) | Fatos perenes sobre o repositório, portas de microsserviços, comandos de build/test, convenções e soluções de bugs recorrentes. | Proativamente, no momento em que descobre ou valida um fato relevante durante a execução. | Logs extensos de terminal, código temporário, caminhos efêmeros. |
+| `user` (`USER.md`) | Preferências de comunicação ("seja conciso"), stack favorita, estilo de código declarado pelo desenvolvedor. | Quando o dev declara uma preferência ou corrige a postura/estilo de resposta do agente. | Conversas informais ou instruções pontuais da tarefa atual. |
+
+### 4.2 Protocolo de Tratamento de Estouro (Auto-Recuperação no Mesmo Turno)
+Quando uma tentativa de `add` ultrapassa o teto do arquivo, a `memory_tool` **não trunca silenciosamente**. Ela cancela a gravação e retorna uma mensagem estruturada com o estado atual:
+
+```json
+{
+  "success": false,
+  "error": "Memory at 2,100/2,200 chars. Adding this entry (250 chars) would exceed the limit. Consolidate now: use 'replace' to merge overlapping entries into shorter ones or 'remove' stale entries (see current_entries below), then retry this add — all in this turn.",
+  "current_entries": [
+    "O projeto utiliza Node.js v20 com Vitest para testes unitários",
+    "Instalada biblioteca de validação Zod no backend"
+  ],
+  "usage": "2,100/2,200"
+}
+```
+
+**Protocolo de Auto-Recuperação do Modelo**:
+1. O agente recebe o erro estruturado contendo a lista `current_entries`.
+2. Na mesma rodada lógica, o agente executa `replace` (para condensar duas entradas em uma frase concisa) ou `remove` (para apagar uma nota obsoleta).
+3. Logo após liberar espaço, ele reexecuta o `add`.
+
+---
+
+## 5. Especificação dos Componentes
+
+### 5.1 `MemoryStore` (`src/core/memory/memory-store.ts`)
+- Carrega e formata snapshots de memória com cabeçalhos de capacidade.
+- Cria templates padrões concisos no cold start.
+- Valida limites estritos e restrição de somente-leitura no `SOUL.md`.
 
 ```typescript
 export interface MemorySnapshot {
   memory: string;
   user: string;
   soul: string;
+  memoryUsage: { current: number; max: number; percentage: number };
+  userUsage: { current: number; max: number; percentage: number };
   composedPromptBlock: string;
 }
 
@@ -81,12 +162,12 @@ export class MemoryStore {
 
   constructor(customPaths?: { globalDir?: string; localDir?: string });
   async loadSnapshot(): Promise<MemorySnapshot>;
-  async updateFile(filename: 'MEMORY.md' | 'USER.md', content: string): Promise<void>;
-  async readFile(filename: 'MEMORY.md' | 'USER.md' | 'SOUL.md'): Promise<string>;
+  async updateFile(target: 'memory' | 'user', action: 'add' | 'replace' | 'remove', content: string, oldStr?: string): Promise<{ success: boolean; usage: string; current_entries?: string[] }>;
+  async readFile(target: 'memory' | 'user' | 'soul'): Promise<string>;
 }
 ```
 
-### 3.2 `StateDB` (`src/core/memory/state-db.ts`)
+### 5.2 `StateDB` (`src/core/memory/state-db.ts`)
 - Implementado sobre `better-sqlite3`.
 - Salva todas as mensagens da sessão de forma síncrona/segura.
 - Utiliza modo WAL (`PRAGMA journal_mode = WAL;`) e tabela virtual FTS5 com disparos automáticos via triggers.
@@ -137,125 +218,66 @@ export class StateDB {
 }
 ```
 
-### 3.3 `ContextCompressor` (`src/core/workflow/context-compressor.ts`)
+### 5.3 `ContextCompressor` (`src/core/workflow/context-compressor.ts`)
 - Substitui o `ace-context-orchestrator.ts`.
 - Utiliza `gpt-tokenizer` para medição rápida e determinística do consumo de tokens.
-- Implementa particionamento: Pinned (0, 1), Tail (últimos 15) e Middle (resumido).
-
-```typescript
-export interface CompressOptions {
-  tokenLimit: number;
-  thresholdRatio?: number; // default: 0.8
-  tailSize?: number; // default: 15
-  summarizer?: (messages: ChatMessage[]) => Promise<string>;
-}
-
-export class ContextCompressor {
-  static async compress(
-    history: ChatMessage[],
-    options: CompressOptions
-  ): Promise<{ history: ChatMessage[]; wasCompressed: boolean }>;
-}
-```
+- Dispara quando o histórico acumulado ultrapassa **80% do limite da janela**.
+- Implementa particionamento:
+  1. **Pinned (Turnos 0 e 1)**: System Prompt congelado + primeiro comando do usuário.
+  2. **Tail (Últimos 15 turnos)**: 100% intactos com chamadas de ferramentas recentes.
+  3. **Middle**: Condensado no bloco estruturado `[Summary of earlier turns]`.
+- **Estratégia Híbrida**: Chamada LLM primária com fallback determinístico estruturado em caso de timeout (>5s) ou falha de rede.
 
 ---
 
-## 4. Estrutura e Composição do System Prompt
+## 6. Ferramentas do Agente
 
-O System Prompt (`UNIFIED_SYSTEM_PROMPT`) é montado no boot da sessão como um **Frozen Snapshot** imutável.
+### 6.1 `memory` (`src/core/tools/memory-tool.ts`)
+- **Schema Zod**:
+  ```typescript
+  export const memoryToolSchema = z.object({
+    action: z.enum(['add', 'replace', 'remove', 'read']),
+    target: z.enum(['memory', 'user']).describe("Alvo da memória: 'memory' (MEMORY.md local) ou 'user' (USER.md global)"),
+    content: z.string().optional().describe('Conteúdo a adicionar ou novo conteúdo em substituição'),
+    old_str: z.string().optional().describe('Trecho exato a ser substituído ou removido')
+  });
+  ```
+- **Retorno**: Sucesso com capacidade atualizada ou erro guiado para auto-recuperação.
 
-### 4.1 Composição Modular
-
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        COMPOSIÇÃO DO PROMPT                            │
-├────────────────────────────────────────────────────────────────────────┤
-│ 1. Core Runtime & Instruções Base                                      │
-│    • Identidade: Shark Dev                                             │
-│    • Formato de Resposta: JSON estrito ({thought, action, summary})    │
-│    • Sistema de Âncoras: Formato palavra_âncora§conteúdo da linha      │
-│    • Orquestração de Subagentes: invoke_subagent, mailbox, wait        │
-│                                                                        │
-│ 2. Novas Ações de Memória & Busca no JSON Action                       │
-│    • "memory": {"action": "read"|"write"|"replace"|"remove",           │
-│                 "filename": "MEMORY.md"|"USER.md", ...}                │
-│    • "session_search": {"query": "termo", "limit": 5}                  │
-│    (Remoção total de "⚡ SISTEMA DE CONTEXTO ELÁSTICO (ACE)")          │
-│                                                                        │
-│ 3. Bloco de Identidade & Persona (<soul>)                              │
-│    • Carregado de ~/.shark/SOUL.md                                     │
-│                                                                        │
-│ 4. Bloco de Preferências do Usuário (<user_profile>)                   │
-│    • Carregado de ~/.shark/USER.md                                     │
-│                                                                        │
-│ 5. Bloco de Memória do Repositório (<project_memory>)                  │
-│    • Carregado de <workspace>/.shark/MEMORY.md                         │
-│                                                                        │
-│ 6. Bloco de Contexto do Projeto (<project_context>)                   │
-│    • Carregado do AGENTS.md da raiz do workspace, se existir           │
-└────────────────────────────────────────────────────────────────────────┘
-```
-
-### 4.2 Template do Bloco de Memória Injetado no Prompt
-
-```markdown
-ℹ️ SISTEMA DE MEMÓRIA E HISTÓRICO DETERMINÍSTICO:
-- Você possui memória persistente em arquivos planos e histórico indexado via SQLite FTS5.
-- Ação 'memory': Use para registrar fatos persistentes do projeto em 'MEMORY.md' ou preferências do desenvolvedor em 'USER.md'. Suas alterações são salvas em disco imediatamente.
-- Ação 'session_search': Use para pesquisar discussões, decisões ou trechos de código em sessões anteriores do projeto no banco de dados local.
-- As anotações abaixo foram carregadas no início desta sessão (Frozen Snapshot) e permanecem como referência estática.
-
-<soul>
-{{SOUL_CONTENT}}
-</soul>
-
-<user_profile>
-{{USER_CONTENT}}
-</user_profile>
-
-<project_memory>
-{{MEMORY_CONTENT}}
-</project_memory>
-
-<project_context>
-{{AGENTS_MD_CONTENT}}
-</project_context>
-```
+### 6.2 `session_search` (`src/core/tools/session-search-tool.ts`)
+- **Schema Zod**:
+  ```typescript
+  export const sessionSearchToolSchema = z.object({
+    query: z.string().describe('Termos de busca textual para encontrar mensagens em sessões anteriores'),
+    limit: z.number().int().min(1).max(20).default(5)
+  });
+  ```
+- **Execução**: Consulta FTS5 MATCH no `state.db` local com ordenação BM25 nativa e latência < 10ms.
 
 ---
 
-## 5. Ferramentas do Agente
-
-### 5.1 `memory` (`src/core/tools/memory-tool.ts`)
-- **Ações**: `read`, `write`, `replace`, `remove`.
-- **Validação**: Rejeita modificações em `SOUL.md` com erro de autorização (`Permission denied. SOUL.md is read-only`). Rejeita conteúdos maiores que os limites com mensagem de capacidade excedida.
-
-### 5.2 `session_search` (`src/core/tools/session-search-tool.ts`)
-- **Ações**: Consulta `messages_fts` com query MATCH. Retorna resultados formatados com metadados em latência sub-10ms.
-
----
-
-## 6. Plano de Descomissionamento e Limpeza
+## 7. Plano de Descomissionamento e Limpeza
 
 1. **Remoção de Arquivos Legados**:
    - `src/core/workflow/membox-manager.ts` e seus testes.
    - `src/core/workflow/embedding-service.ts` e seus testes.
    - `src/core/api/ace-context-orchestrator.ts` e seus testes.
-   - Caches em disco (`.vitest_cache_membox`, `.vitest_membox_storage`, modelos ONNX).
+   - Pastas de modelos locais (`src/resources/models/all-MiniLM-L6-v2/`).
+   - Caches em disco (`.vitest_cache_membox`, `.vitest_membox_storage`).
 2. **Atualização de Provedores e Prompts**:
-   - Atualização de `src/core/api/prompts.ts` para o novo layout com `memory`, `session_search` e tags XML.
-   - Substituição de chamadas de compactação no `StackSpotProvider` e `OpenAICompatibleProvider` para o `ContextCompressor`.
+   - Atualizar `src/core/api/prompts.ts` com o novo template de 3 camadas e remoção do ACE.
+   - Integrar `ContextCompressor` no `StackSpotProvider` e `OpenAICompatibleProvider`.
 3. **Dependências**:
-   - Adicionar `better-sqlite3` e `@types/better-sqlite3`.
-   - Limpar referências a módulos de embeddings em `package.json`.
+   - Instalar `better-sqlite3` e `@types/better-sqlite3`.
+   - Limpar eventuais dependências não utilizadas em `package.json`.
 
 ---
 
-## 7. Estratégia de Testes
+## 8. Estratégia de Testes
 
 - **Testes Unitários**:
-  - `memory-store.test.ts`: Validação de limites rígidos, isolamento de paths, e proteção de leitura de `SOUL.md`.
-  - `state-db.test.ts`: Gravação de mensagens, validação de busca FTS5 e teste de estresse de performance (<10ms).
-  - `context-compressor.test.ts`: Proteção estrita do Turno 0/1 e cauda de 15 turnos, acionamento aos 80% do budget e fallback determinístico em caso de falha da LLM.
+  - `memory-store.test.ts`: Testar limits rígidos, rejeição de escrita em `SOUL.md`, cálculo de capacidade percentual no cabeçalho e erro guiado de recuperação em caso de estouro.
+  - `state-db.test.ts`: Gravação de mensagens, validação de triggers FTS5 e teste de performance de busca (<10ms).
+  - `context-compressor.test.ts`: Proteção de Turnos 0/1 e dos últimos 15 turnos, acionamento aos 80% e fallback determinístico.
 - **Testes de Integração**:
-  - Verificação do ciclo de vida completo da sessão com Frozen Snapshot persistindo entre execuções e prompt de sistema estável.
+  - Validar imutabilidade do System Prompt durante toda a sessão, mesmo após chamadas de `memory`.
