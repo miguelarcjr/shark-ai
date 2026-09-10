@@ -1,6 +1,6 @@
 {
     "name": "shark-ai",
-    "version": "0.4.59",
+    "version": "0.5.0-next.0",
     "description": "Shark AI: AI-Native Collaborative Development Tool powered by StackSpot AI and BMAD Method",
     "main": "dist/index.js",
     "bin": {
@@ -8,7 +8,7 @@
     },
     "type": "module",
     "engines": {
-        "node": ">=20.0.0"
+        "node": ">=22.0.0"
     },
     "scripts": {
         "dev": "tsup --watch",
@@ -58,7 +58,8 @@
     "homepage": "https://github.com/miguelarcjr/shark-ai#readme",
     "license": "MIT",
     "publishConfig": {
-        "access": "public"
+        "access": "public",
+        "tag": "next"
     },
     "dependencies": {
         "@ast-grep/napi": "^0.44.1",
@@ -80,7 +81,7 @@
         "zod": "^3.25.76"
     },
     "devDependencies": {
-        "@types/node": "^20.10.0",
+        "@types/node": "^22.0.0",
         "strip-ansi": "^7.1.2",
         "tsup": "^8.0.1",
         "typescript": "^5.3.2",
