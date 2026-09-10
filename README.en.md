@@ -24,17 +24,17 @@
    ___) |  _  / ___ \|  _ <| . \    / ___ \ | | 
   |____/|_| |_/_/   \_\_| \_\_|\_\  /_/   \_\___|
                                                   
-  AI-Native Collaborative Development Tool
+  AI-Native Autonomous & Collaborative Development Tool
 
 ```
 
-**AI-Native Collaborative Development Tool**
+**AI-Native Autonomous & Collaborative Development Tool**
 
-*Transform AI chaos into a structured and transparent process*
+*Agent-driven software engineering assistant with deterministic memory and terminal code orchestration*
 
 [![npm version](https://img.shields.io/npm/v/shark-ai.svg)](https://www.npmjs.com/package/shark-ai)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Node.js Version](https://img.shields.io/badge/node-%3E%3D20.0.0-brightgreen)](https://nodejs.org/)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D22.0.0-brightgreen)](https://nodejs.org/)
 
 **English** | [Português](./README.md)
 
@@ -44,306 +44,157 @@
 
 ## 🎯 What is Shark AI?
 
-**Shark AI** is an open-source command-line tool that elevates AI-assisted development to a new level through a **collaborative, structured, and persistent workflow**.
+**Shark AI** is an open-source command-line software engineering assistant designed to operate directly inside your codebase as an autonomous pair-programmer.
 
-Shark AI **amplifies your capabilities** by orchestrating a pipeline of specialized agents (Business Analyst, Specification, Architect, Developer) natively integrated with **StackSpot AI**, keeping you always in control of critical decisions.
-
-### 💡 Inspiration: BMAD Method
-
-The heart of Shark AI is inspired by **[BMAD (Business Model Agile Development)](https://github.com/bmad-method)** - a structured methodology for agile development with AI. Shark AI adapts BMAD principles to create a CLI that keeps developers in control while AI does the heavy lifting.
+Unlike generic chat assistants, Shark AI operates with a **rich TUI**, local semantic analysis tools (`ast-grep`, `ripgrep`), **parallel subagent orchestration**, session state persistence, and a **deterministic 3-layer memory architecture inspired by the Hermes Agent**, preserving Prompt Caching and eliminating heavy, brittle stochastic dependencies.
 
 ---
 
-## ✨ Key Features
+## ✨ Architectural Highlights
 
-### 🤝 Smart Human-in-the-Loop
-Structured collaboration where **you approve** critical architecture and design decisions while AI executes repetitive tasks.
+### 🧠 1. Deterministic 3-Layer Memory Architecture (Hermes Pattern)
+No slow embeddings, no local vector databases. Shark AI implements a deterministic memory system:
+- **`MemoryStore` (Flat Files & Strict Quotas)**:
+  - Local `MEMORY.md` (`<workspace>/.shark/MEMORY.md`, max 2,200 chars) for project conventions and technical notes.
+  - Global `USER.md` (`~/.shark/USER.md`, max 1,375 chars) for developer preferences and workflow style.
+  - Global `SOUL.md` (`~/.shark/SOUL.md`, max 1,000 chars) **strictly read-only** to prevent prompt injections and persona drift.
+  - **Capacity Meters & Self-Healing**: Structured headers `[XX% — Y/Z chars]` and error protocol providing `current_entries` on overflow, enabling the agent to consolidate stale entries using `replace`.
+- **`StateDB` (Native SQLite FTS5)**:
+  - Indexed local storage using Node 22 native `node:sqlite` with WAL mode and automatic triggers, delivering full-text session searches in **<10ms** via the `session_search` tool.
+- **`ContextCompressor` (Tail Protection & Hybrid Summary)**:
+  - Triggers at 80% token budget. Strictly protects Turn 0/1 (*Pinned*) and the last 15 conversation turns (*Tail Protection*), while preserving tool call / tool result pairing integrity.
+- **Frozen Snapshot (Prompt Caching)**:
+  - Memory files are loaded once during CLI boot and remain frozen in the active System Prompt, achieving **75% to 90% cost and latency savings** via Prompt Caching.
 
-### 📁 State Persistence
-Maintains a living workflow file (`shark-workflow.json`) that tracks progress step by step. **Pause and resume** work between sessions without losing context.
+### 🤖 2. Developer Agent & Specialized Subagents
+- **Interactive Developer Loop (`shark dev`)**: Full-featured interactive terminal environment with rich Markdown rendering, interactive diff viewer, command history, and slash shortcuts (`/auto`, `/chat`, etc.).
+- **Concurrent Subagents**: The primary agent can dispatch background subagents to run tests, research documentation, or refactor components without blocking your active work.
 
-### 🔗 StackSpot AI Native Integration
-Direct access to **Knowledge Sources** and company standards, ensuring generated code automatically follows corporate guidelines.
+### 🛠️ 3. Advanced Native Tooling
+- Safe terminal execution with output streaming and capture.
+- Surgical file manipulation, reading, and editing.
+- Structural code searches via `ast-grep` and high-speed textual grep.
+- Memory governance tools (`memory` and `session_search`).
 
-### 🔄 Real Auto-Healing
-Autonomous feedback loops that run builds, detect errors, and **automatically fix them** (up to 5 attempts) before requesting your intervention.
+### 🌐 4. Multi-Provider Flexibility
+- **StackSpot AI**: Native integration with OAuth 2.0 PKCE, Workspaces, and corporate Knowledge Sources.
+- **OpenAI-Compatible**: Seamless connection to OpenAI, DeepSeek, Anthropic (via proxy), Ollama, vLLM, LM Studio, or any OpenAI-compliant endpoint.
 
-### 🎨 Rich Terminal Interface
-TUI (Text User Interface) with interactive menus, colors, spinners, and visual feedback for a premium terminal experience.
+### ⚡ 5. Superpowers & Integrated Skills (`shark super`)
+- Install and sync cutting-edge development skills: iterative brainstorming, systematic debugging, strict TDD, plan authoring, and subagent-driven development.
 
-### 🧠 Multi-Agent Orchestration
-Complete development pipeline:
-```
-Business Analyst → Specification → Architecture → Development
-```
+### 📊 6. Knowledge Graph Visualizer (`shark graph`)
+- Extracts codebase entity and dependency graphs, generating interactive visual representations in HTML and Mermaid.
 
 ---
 
 ## 🚀 Installation
 
+### Requirements
+- **Node.js >= 22.0.0** (required for native `node:sqlite` support without C++ build dependencies).
+
+### Global Installation (Stable Release)
 ```bash
 npm install -g shark-ai
 ```
 
-**Requirements:**
-- Node.js >= 20.0.0
-- StackSpot AI Account (for authentication). See the [StackSpot Setup Guide](docs/stackspot-setup.md) to configure credentials and agents.
+### Next-Gen Preview (@next)
+```bash
+npm install -g shark-ai@next
+```
+
+Or run on demand via `npx`:
+```bash
+npx shark-ai@next dev
+```
 
 ---
 
 ## ⚡ Quick Start
 
-### 1. Authenticate with StackSpot
+### 1. Configure Provider
 
+#### Using StackSpot AI:
 ```bash
 shark login
 ```
+*Your browser will open automatically for OAuth 2.0 PKCE authentication. Tokens are stored securely in your OS keychain.*
 
-Your browser will open automatically for OAuth authentication. Tokens are securely stored in your operating system keychain.
-
-### 2. Initialize a Project
-
-```bash
-shark init
-```
-
-Shark AI will ask:
-- Which stack are you using? (React, Next.js, Angular)
-- New workflow or continue existing?
-- What do you want to build?
-
-### 3. Let the Agents Work
-
-Shark will automatically orchestrate:
-
-1. **Business Analyst Agent** → Understands your requirements and creates a briefing
-2. **Specification Agent** → Transforms briefing into technical specification
-3. **Architect Agent** → Designs the solution architecture
-4. **Developer Agent** → Generates code and runs tests
-
-**You approve each critical step.** AI executes, you decide.
-
-### 4. Auto-Healing in Action
-
-If there are build or lint errors, Shark:
-1. Automatically runs build/test
-2. Captures the error (stderr)
-3. Sends it to Developer Agent to fix
-4. Tries again (up to 5x)
-5. If it fails, asks for your help
-
----
-
-## 📚 Available Commands
-
-### `shark login`
-Authenticates with StackSpot AI via OAuth 2.0.
-
-```bash
-shark login
-```
-
-### `shark init`
-Initializes a new workflow or resumes an existing one.
-
-```bash
-shark init
-```
-
-Shark automatically detects if there's a workflow in progress and offers options to:
-- Continue where you left off
-- Start a new workflow
-- View current progress
-
-### `shark config`
-Manages Shark AI global settings.
-
+#### Using OpenAI or Compatible Endpoints:
 ```bash
 shark config
 ```
+*Select `openai_compatible`, provide your `apiKey`, `baseUrl` (e.g., `https://api.openai.com/v1` or `http://localhost:11434/v1`), and target `modelName`.*
 
-Opens an interactive menu to configure:
-- API tokens
-- Interface preferences
-- Default project settings
+---
 
-### `shark ba`
-Starts an interactive session with the **Business Analyst Agent**.
-
+### 2. Initialize Workspace
+Inside your project root:
 ```bash
-shark ba
+shark init
 ```
+*Sets up the `.shark/` configuration structure and initializes local project memory files.*
 
-Use when you want to:
-- Refine business requirements
-- Create detailed briefings
-- Validate acceptance criteria
+---
 
-### `shark spec`
-Starts the **Specification Agent** to create technical specifications.
-
-```bash
-shark spec [--briefing <path>]
-```
-
-**Options:**
-- `--briefing`: Path to existing briefing file
-- `--id`: Custom agent ID
-
-### `shark dev`
-Activates the **Developer Agent** for code generation.
-
+### 3. Launch Development Mode
 ```bash
 shark dev
 ```
-
-### `shark qa`
-Runs the **QA Agent** for testing and validation.
-
-```bash
-shark qa
-```
-
-### `shark scan`
-Scans the current project and analyzes its structure.
-
-```bash
-shark scan
-```
+Enter Shark Dev's interactive TUI:
+- Instruct the agent to implement features, refactor code, or diagnose bugs.
+- The agent inspects files, runs tests, inspects diffs, and guides execution.
+- Project architectural notes are autonomously recorded in `MEMORY.md` and indexed in SQLite.
 
 ---
 
-## 🎯 Use Cases
+## 📚 CLI Commands
 
-### 👨‍💼 Carlos - Senior Developer
-**Situation:** Needs to create a complex financial statement module but was interrupted for a meeting.
-
-**With Shark AI:**
-1. Starts `shark init`, describes the module
-2. Approves architecture proposed by Architect Agent
-3. **Leaves for meeting** (closes terminal)
-4. Returns 2 hours later, runs `shark init` again
-5. **Shark resumes exactly where it left off** - zero context lost
-6. Developer Agent completes implementation
-
-**Result:** Module ready in < 1 hour of real work vs 4-6 hours manually.
-
-### 👩‍💻 Julia - Junior Developer
-**Situation:** First time optimizing dashboard performance.
-
-**With Shark AI:**
-1. `shark ba` - Business Analyst explains performance metrics (LCP, FID)
-2. `shark spec` - Specification Agent defines measurable targets
-3. During development, Auto-Healing fixes an infinite loop in `useEffect`
-4. **Julia learns** by reading diffs and AI explanations
-
-**Result:** Optimized feature + real learning about Web Vitals.
-
-### 👩‍💼 Ana - Tech Lead
-**Situation:** Ensure entire team follows new backend standards.
-
-**With Shark AI:**
-1. Updates "Backend Standards" document in StackSpot Knowledge Source
-2. **Doesn't need to notify anyone**
-3. When Carlos and Julia run Shark, agents consult updated Knowledge Source
-4. Generated code already follows new standards
-
-**Result:** 100% compliance + PRs approved quickly.
+| Command | Description |
+| :--- | :--- |
+| `shark dev` | Launches the interactive autonomous developer agent loop. |
+| `shark login` | Authenticates with StackSpot AI via OAuth 2.0 PKCE. |
+| `shark init` | Initializes project `.shark/` configuration and memory templates. |
+| `shark config` | Interactive assistant to configure providers (StackSpot / OpenAI) and API keys. |
+| `shark super` | Installs and synchronizes the Superpowers agentic skills catalog. |
+| `shark graph` | Generates an interactive HTML and Mermaid knowledge graph of your project. |
+| `shark export-schema` | Exports the workflow and configuration JSON schemas. |
+| `shark export-prompt` | Prints and exports system prompts for developer agent inspection. |
 
 ---
 
-## 🏗️ Architecture
-
-### Agent Pipeline
-
-```mermaid
-graph LR
-    A[shark init] --> B[Business Analyst]
-    B --> C[Specification Agent]
-    C --> D[Architect Agent]
-    D --> E[Developer Agent]
-    E --> F{Build OK?}
-    F -->|Yes| G[✅ Done]
-    F -->|No| H[Auto-Healing]
-    H --> E
-```
-
-### State Persistence
-
-The `shark-workflow.json` file stores:
-- History of all decisions
-- Current pipeline state
-- Artifacts generated by each agent
-- Session context
-
-**You can pause and resume at any time.**
-
-### StackSpot Integration
+## 📂 Memory Layout
 
 ```
-┌─────────────┐
-│  Shark CLI  │
-└──────┬──────┘
-       │
-       ├──► StackSpot AI API
-       │    (Agents)
-       │
-       └──► Knowledge Sources
-            (Company Standards)
+~/.shark/                          # Global Developer Scope
+├── USER.md                        # Developer preferences and habits (max 1,375 chars)
+└── SOUL.md                        # Agent identity and persona (max 1,000 chars, read-only)
+
+<your-project>/.shark/             # Local Repository Scope
+├── MEMORY.md                      # Project architectural notes & conventions (max 2,200 chars)
+└── state.db                       # Native SQLite with FTS5 (session message history)
 ```
 
 ---
 
-## 🔒 Security
+## 🔒 Governance & Security
 
-- ✅ **Tokens securely stored** using OS keychain
-- ✅ **Zero code leakage** - communication restricted to StackSpot API (SOC2 compliant)
-- ✅ **Sensitive files protected** - `.gitignore` configured to prevent committing secrets
-- ✅ **OAuth 2.0** for secure authentication
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for details on:
-- How to report bugs
-- How to suggest features
-- Pull Request process
-- Coding standards
-
----
-
-## 📝 Changelog
-
-See [CHANGELOG.md](./CHANGELOG.md) for version history and changes.
+- ✅ **Prompt Injection Defense**: `SOUL.md` is strictly read-only; memory inputs are sanitized against invisible Unicode characters and XML tag escapes.
+- ✅ **Human Approval**: High-impact terminal commands require interactive user confirmation before execution.
+- ✅ **Zero C++ Build Headaches**: Powered by Node 22's native `node:sqlite`, eliminating node-gyp / MSBuild build failures on all platforms.
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](./LICENSE) file for details.
-
----
-
-## 💬 Support
-
-- **Issues:** [GitHub Issues](https://github.com/miguelarcjr/shark-ai/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/miguelarcjr/shark-ai/discussions)
-
----
-
-## 🙏 Acknowledgments
-
-- **[BMAD Method](https://github.com/bmad-method)** - Methodological inspiration
-- **[StackSpot AI](https://stackspot.com)** - AI agents platform
-- **Open Source Community** - For making all this possible
+Distributed under the MIT License. See [LICENSE](./LICENSE) for details.
 
 ---
 
 <div align="center">
 
-**Made with ❤️ by [Miguel Arcangelo](https://github.com/miguelarcjr)**
+**Engineered for real-world software development productivity**
 
-If Shark AI helped you, consider giving the project a ⭐!
+If Shark AI accelerates your workflow, consider giving it a ⭐ on GitHub!
 
 </div>
