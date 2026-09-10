@@ -160,37 +160,102 @@ export class ContextCompressor {
 
 ---
 
-## 4. Ferramentas do Agente
+## 4. Estrutura e Composição do System Prompt
 
-### 4.1 `memory` (`src/core/tools/memory-tool.ts`)
+O System Prompt (`UNIFIED_SYSTEM_PROMPT`) é montado no boot da sessão como um **Frozen Snapshot** imutável.
+
+### 4.1 Composição Modular
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        COMPOSIÇÃO DO PROMPT                            │
+├────────────────────────────────────────────────────────────────────────┤
+│ 1. Core Runtime & Instruções Base                                      │
+│    • Identidade: Shark Dev                                             │
+│    • Formato de Resposta: JSON estrito ({thought, action, summary})    │
+│    • Sistema de Âncoras: Formato palavra_âncora§conteúdo da linha      │
+│    • Orquestração de Subagentes: invoke_subagent, mailbox, wait        │
+│                                                                        │
+│ 2. Novas Ações de Memória & Busca no JSON Action                       │
+│    • "memory": {"action": "read"|"write"|"replace"|"remove",           │
+│                 "filename": "MEMORY.md"|"USER.md", ...}                │
+│    • "session_search": {"query": "termo", "limit": 5}                  │
+│    (Remoção total de "⚡ SISTEMA DE CONTEXTO ELÁSTICO (ACE)")          │
+│                                                                        │
+│ 3. Bloco de Identidade & Persona (<soul>)                              │
+│    • Carregado de ~/.shark/SOUL.md                                     │
+│                                                                        │
+│ 4. Bloco de Preferências do Usuário (<user_profile>)                   │
+│    • Carregado de ~/.shark/USER.md                                     │
+│                                                                        │
+│ 5. Bloco de Memória do Repositório (<project_memory>)                  │
+│    • Carregado de <workspace>/.shark/MEMORY.md                         │
+│                                                                        │
+│ 6. Bloco de Contexto do Projeto (<project_context>)                   │
+│    • Carregado do AGENTS.md da raiz do workspace, se existir           │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### 4.2 Template do Bloco de Memória Injetado no Prompt
+
+```markdown
+ℹ️ SISTEMA DE MEMÓRIA E HISTÓRICO DETERMINÍSTICO:
+- Você possui memória persistente em arquivos planos e histórico indexado via SQLite FTS5.
+- Ação 'memory': Use para registrar fatos persistentes do projeto em 'MEMORY.md' ou preferências do desenvolvedor em 'USER.md'. Suas alterações são salvas em disco imediatamente.
+- Ação 'session_search': Use para pesquisar discussões, decisões ou trechos de código em sessões anteriores do projeto no banco de dados local.
+- As anotações abaixo foram carregadas no início desta sessão (Frozen Snapshot) e permanecem como referência estática.
+
+<soul>
+{{SOUL_CONTENT}}
+</soul>
+
+<user_profile>
+{{USER_CONTENT}}
+</user_profile>
+
+<project_memory>
+{{MEMORY_CONTENT}}
+</project_memory>
+
+<project_context>
+{{AGENTS_MD_CONTENT}}
+</project_context>
+```
+
+---
+
+## 5. Ferramentas do Agente
+
+### 5.1 `memory` (`src/core/tools/memory-tool.ts`)
 - **Ações**: `read`, `write`, `replace`, `remove`.
-- **Validação**: Rejeita modificações em `SOUL.md` com erro de autorização. Rejeita conteúdos maiores que os limites com mensagem de capacidade excedida.
+- **Validação**: Rejeita modificações em `SOUL.md` com erro de autorização (`Permission denied. SOUL.md is read-only`). Rejeita conteúdos maiores que os limites com mensagem de capacidade excedida.
 
-### 4.2 `session_search` (`src/core/tools/session-search-tool.ts`)
+### 5.2 `session_search` (`src/core/tools/session-search-tool.ts`)
 - **Ações**: Consulta `messages_fts` com query MATCH. Retorna resultados formatados com metadados em latência sub-10ms.
 
 ---
 
-## 5. Plano de Descomissionamento e Limpeza
+## 6. Plano de Descomissionamento e Limpeza
 
 1. **Remoção de Arquivos Legados**:
    - `src/core/workflow/membox-manager.ts` e seus testes.
    - `src/core/workflow/embedding-service.ts` e seus testes.
    - `src/core/api/ace-context-orchestrator.ts` e seus testes.
    - Caches em disco (`.vitest_cache_membox`, `.vitest_membox_storage`, modelos ONNX).
-2. **Atualização de Provedores**:
+2. **Atualização de Provedores e Prompts**:
+   - Atualização de `src/core/api/prompts.ts` para o novo layout com `memory`, `session_search` e tags XML.
    - Substituição de chamadas de compactação no `StackSpotProvider` e `OpenAICompatibleProvider` para o `ContextCompressor`.
 3. **Dependências**:
    - Adicionar `better-sqlite3` e `@types/better-sqlite3`.
-   - Limpar eventuais referências a módulos de embeddings em `package.json`.
+   - Limpar referências a módulos de embeddings em `package.json`.
 
 ---
 
-## 6. Estratégia de Testes
+## 7. Estratégia de Testes
 
 - **Testes Unitários**:
   - `memory-store.test.ts`: Validação de limites rígidos, isolamento de paths, e proteção de leitura de `SOUL.md`.
   - `state-db.test.ts`: Gravação de mensagens, validação de busca FTS5 e teste de estresse de performance (<10ms).
   - `context-compressor.test.ts`: Proteção estrita do Turno 0/1 e cauda de 15 turnos, acionamento aos 80% do budget e fallback determinístico em caso de falha da LLM.
 - **Testes de Integração**:
-  - Verificação do ciclo de vida completo da sessão com Frozen Snapshot persistindo entre execuções.
+  - Verificação do ciclo de vida completo da sessão com Frozen Snapshot persistindo entre execuções e prompt de sistema estável.
