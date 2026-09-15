@@ -307,7 +307,7 @@ describe('OpenAICompatibleProvider', () => {
         expect(schema.properties.actions).toBeUndefined();
         expect(schema.required).toContain('action');
         expect(schema.required).not.toContain('actions');
-        expect(schema.properties.action.properties.type.enum).toContain('use_mcp_tool');
+        expect(schema.properties.action.properties.type.enum).toContain('tool_call');
     });
 
     it('should dynamically append skill extension to system message without modifying saved history', async () => {

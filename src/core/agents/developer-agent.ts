@@ -888,9 +888,9 @@ Your goal is to address the user's request:
                     const res = await bridgeToolsManager.executeToolDescribe({ names });
                     resultMsg = res.success ? JSON.stringify(res.output, null, 2) : res.error!;
                 }
-                else if (action.type === 'tool_call' || action.type === 'use_mcp_tool') {
-                    const toolName = action.args?.name || action.tool_name || '';
-                    const rawArgs = action.args?.arguments ?? action.tool_args;
+                else if (action.type === 'tool_call') {
+                    const toolName = action.args?.name || '';
+                    const rawArgs = action.args?.arguments;
                     let toolArguments: Record<string, any> = {};
                     if (typeof rawArgs === 'string') {
                         try { toolArguments = JSON.parse(rawArgs); } catch { toolArguments = {}; }

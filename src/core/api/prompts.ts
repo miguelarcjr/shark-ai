@@ -128,7 +128,6 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
             "tool_describe",
             "tool_call",
             "talk_with_user",
-            "use_mcp_tool",
             "activate_skill",
             "invoke_subagent",
             "complete_task",

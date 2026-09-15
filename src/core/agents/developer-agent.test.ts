@@ -336,7 +336,7 @@ describe('DeveloperAgent', () => {
         expect(result).toEqual({ success: true, summary: 'Conversation done' });
     });
 
-    it('should handle list_files, search_file, search_code, and use_mcp_tool actions', async () => {
+    it('should handle list_files, search_file, search_code, and tool_call actions', async () => {
         vi.mocked(handleListFiles).mockReturnValue('[FILE] file1.ts\n[FILE] file2.ts');
         vi.mocked(handleSearchFile).mockReturnValue('file1.ts');
         vi.mocked(handleSearchCode).mockReturnValue('match on line 5');
@@ -373,8 +373,10 @@ describe('DeveloperAgent', () => {
             })
             .mockResolvedValueOnce({
                 action: {
-                    type: 'use_mcp_tool',
-                    tool_name: 'test-tool',
+                    type: 'tool_call',
+                    args: {
+                        name: 'test-tool',
+                    },
                 },
                 actions: [],
                 message: 'Trying MCP tool',

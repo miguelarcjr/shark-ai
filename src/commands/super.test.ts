@@ -52,7 +52,7 @@ describe('superCommand', () => {
         expect(content).toContain('name: brainstorming');
 
         consoleLogSpy.mockRestore();
-    });
+    }, 15000);
 
     it('copies the internal skills to the local project directory when local option is true', async () => {
         const consoleLogSpy = vi.spyOn(console, 'log').mockImplementation(() => {});

@@ -42,7 +42,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
         'list_structure', 'modify_ast', 'search_ast', 'run_command',
         'tool_search', 'tool_describe', 'tool_call',
-        'talk_with_user', 'use_mcp_tool',
+        'talk_with_user',
         'activate_skill', 'invoke_subagent',
         'complete_task',
         'wait',
@@ -298,7 +298,8 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
     if (!normalizedAction && (!normalizedActions || normalizedActions.length === 0) && parsedObj && typeof parsedObj === 'object' && typeof parsedObj.type === 'string') {
         const validTypes = [
             'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
-            'talk_with_user', 'use_mcp_tool', 'list_structure', 'modify_ast', 'search_ast', 'run_command',
+            'tool_search', 'tool_describe', 'tool_call',
+            'talk_with_user', 'list_structure', 'modify_ast', 'search_ast', 'run_command',
             'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
             'complete_task', 'wait', 'notify_user'
         ];
