@@ -70,7 +70,12 @@ test-sandbox/
 
 ### 3.2 Git & Workspace Configuration
 - Add `test-sandbox/` to root `.gitignore`.
-- Run `git init` inside `test-sandbox/` and make an initial commit so Shark Dev can perform branch, diff, and status operations without affecting the main repository.
+- Run `git init` inside `test-sandbox/` and make an initial commit tagged `initial-state`.
+- **Reset Mechanism:** To repeat evaluations deterministically at any point, a reset routine runs:
+  ```bash
+  git checkout main && git reset --hard initial-state && git clean -fd
+  ```
+  This restores the sandbox to its pristine initial state in < 1 second.
 
 ---
 
@@ -109,7 +114,10 @@ The evaluation results will be logged and analyzed across 4 telemetry layers:
 1. **Raw LLM & Process Logs:** Captures DeepSeek tool call structures, reasoning tokens, and execution time.
 2. **Git Diff Inspector:** Evaluates surgery and cleanliness of generated code diffs.
 3. **Automated Test Validation:** Confirms actual execution correctness via Vitest.
-4. **Final Deliverable:** `eval-deepseek-report.md` documenting:
-   - Success rate and turn count per scenario.
-   - DeepSeek model reasoning & tool-call accuracy.
+4. **Versioned & Comparative Deliverables:**
+   - Saved under `docs/eval-reports/YYYY-MM-DD-HHmm-deepseek.md`.
+   - Includes summary table (turns, duration, success/fail).
+   - If previous evaluation runs exist, automatically computes deltas (e.g. Turn reduction: -2 turns, Latency reduction: -35s).
+   - Records DeepSeek model reasoning & tool-call accuracy.
    - Identified Shark Dev bottlenecks and architectural recommendations.
+
