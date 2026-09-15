@@ -344,10 +344,10 @@ describe('SubagentManager', () => {
         await new Promise(resolve => setTimeout(resolve, 10));
 
         expect(forkMock).toHaveBeenCalled();
-        const args = forkMock.mock.calls[0][1];
+        const args = (forkMock.mock.calls[0][1] || []) as string[];
         const taskFileIndex = args.indexOf('--task-file');
         expect(taskFileIndex).not.toBe(-1);
-        const briefFilePath = args[taskFileIndex + 1];
+        const briefFilePath = args[taskFileIndex + 1]!;
 
         expect(fs.existsSync(briefFilePath)).toBe(true);
         const instructionArg = fs.readFileSync(briefFilePath, 'utf-8');

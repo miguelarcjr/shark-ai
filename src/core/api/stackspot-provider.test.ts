@@ -6,7 +6,7 @@ import { getActiveRealm } from '../auth/get-active-realm.js';
 import { ConfigManager } from '../config-manager.js';
 import { ensureValidToken } from './stackspot-client.js';
 import { parseAgentResponse } from '../agents/agent-response-parser.js';
-import { HistoryManager } from '../workflow/history-manager.js';
+import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
 import { skillManager } from '../workflow/skill-manager.js';
 
 vi.mock('../auth/get-active-realm.js', () => ({
@@ -239,7 +239,7 @@ describe('StackSpotProvider', () => {
         } as any);
         const provider = new StackSpotProvider('developer_agent');
 
-        const mockHistory = [
+        const mockHistory: ChatMessage[] = [
             { role: 'system', content: 'Base system prompt' },
             { role: 'user', content: 'First message' },
             { role: 'assistant', content: '{"actions":[]}' }
@@ -293,7 +293,7 @@ describe('StackSpotProvider', () => {
         } as any);
         const provider = new StackSpotProvider('developer_agent');
 
-        const mockHistory = [
+        const mockHistory: ChatMessage[] = [
             { role: 'system', content: 'Base system prompt' }
         ];
         vi.mocked(HistoryManager.getHistory).mockResolvedValue(mockHistory);

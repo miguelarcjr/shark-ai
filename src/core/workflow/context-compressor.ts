@@ -48,7 +48,7 @@ export class ContextCompressor {
 
     // 1. Se a cauda cortar no meio de respostas de ferramentas (role: 'tool' ou tool_call_id),
     // retroceder tailStart até incluir a mensagem 'assistant' que as invocou.
-    while (tailStart > 2 && (history[tailStart]?.role === 'tool' || (history[tailStart] as any)?.tool_call_id)) {
+    while (tailStart > 2 && ((history[tailStart] as any)?.role === 'tool' || (history[tailStart] as any)?.tool_call_id)) {
       tailStart--;
     }
 
@@ -60,7 +60,7 @@ export class ContextCompressor {
 
     // 3. Garantir integridade no bloco pinned (Turno 0/1)
     let pinnedEnd = 2;
-    while (pinnedEnd < tailStart && (history[pinnedEnd]?.role === 'tool' || (history[pinnedEnd] as any)?.tool_call_id)) {
+    while (pinnedEnd < tailStart && ((history[pinnedEnd] as any)?.role === 'tool' || (history[pinnedEnd] as any)?.tool_call_id)) {
       pinnedEnd++;
     }
 
