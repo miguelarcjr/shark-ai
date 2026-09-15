@@ -369,4 +369,70 @@ describe('OpenAICompatibleProvider', () => {
         expect(lastCall[1][0].content).not.toContain('--- ACTIVE SKILL');
         expect(lastCall[1][2].content).toBe('World'); // user message in history remains clean
     });
+
+    it('deve podar bridge tools do schema quando hasMcpServers for falso', async () => {
+        let capturedPayload: any = null;
+        const mockFetch = vi.fn().mockImplementation((url, opts) => {
+            capturedPayload = JSON.parse(opts.body);
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                body: createMockStream([
+                    'data: {"choices": [{"delta": {"content": "{\\"thought\\":null,\\"action\\":{\\"type\\":\\"read_file\\",\\"args\\":{\\"path\\":\\"test.ts\\"}},\\"summary\\":\\"ok\\"}"}}]}\n',
+                    'data: [DONE]\n'
+                ])
+            });
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        const provider = new OpenAICompatibleProvider({
+            baseURL: 'https://api.openai.com/v1',
+            apiKey: 'test-key',
+            model: 'gpt-4o',
+            useStructuredOutputs: true
+        });
+
+        await provider.streamChat('hello', {
+            agentType: 'developer_agent',
+            hasMcpServers: false
+        });
+
+        const types = capturedPayload.response_format.json_schema.schema.properties.action.properties.type.enum;
+        expect(types).not.toContain('tool_search');
+        expect(types).not.toContain('tool_describe');
+        expect(types).not.toContain('tool_call');
+    });
+
+    it('deve manter bridge tools do schema quando hasMcpServers for verdadeiro', async () => {
+        let capturedPayload: any = null;
+        const mockFetch = vi.fn().mockImplementation((url, opts) => {
+            capturedPayload = JSON.parse(opts.body);
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                body: createMockStream([
+                    'data: {"choices": [{"delta": {"content": "{\\"thought\\":null,\\"action\\":{\\"type\\":\\"read_file\\",\\"args\\":{\\"path\\":\\"test.ts\\"}},\\"summary\\":\\"ok\\"}"}}]}\n',
+                    'data: [DONE]\n'
+                ])
+            });
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        const provider = new OpenAICompatibleProvider({
+            baseURL: 'https://api.openai.com/v1',
+            apiKey: 'test-key',
+            model: 'gpt-4o',
+            useStructuredOutputs: true
+        });
+
+        await provider.streamChat('hello', {
+            agentType: 'developer_agent',
+            hasMcpServers: true
+        });
+
+        const types = capturedPayload.response_format.json_schema.schema.properties.action.properties.type.enum;
+        expect(types).toContain('tool_search');
+        expect(types).toContain('tool_describe');
+        expect(types).toContain('tool_call');
+    });
 });

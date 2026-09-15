@@ -9,6 +9,7 @@ import { encode } from 'gpt-tokenizer';
 import { ConfigManager } from '../config-manager.js';
 import { ContextCompressor } from '../workflow/context-compressor.js';
 import { StateDB } from '../memory/state-db.js';
+import { sanitizeResponseSchema } from './schema-sanitizer.js';
 
 export function compactToolOutputRetroactively(content: string): string {
     // 1. run_command output
@@ -126,9 +127,10 @@ export class OpenAICompatibleProvider implements AIProvider {
 
         const rawHistory = [...await HistoryManager.getRawHistory(conversationId)];
         if (rawHistory.length === 0) {
+            const systemContent = options.systemPrompt || this.getAgentSystemPrompt(options.agentType);
             rawHistory.push({
                 role: 'system',
-                content: this.getAgentSystemPrompt(options.agentType)
+                content: systemContent
             });
         }
 
@@ -187,12 +189,16 @@ export class OpenAICompatibleProvider implements AIProvider {
 
         if (this.options.useStructuredOutputs) {
             const isSubagent = !!process.env.SHARK_SUBAGENT_ROLE;
+            const baseSchema = isSubagent ? SUBAGENT_RESPONSE_JSON_SCHEMA : COORDINATOR_RESPONSE_JSON_SCHEMA;
+            const sanitizedSchema = sanitizeResponseSchema(baseSchema, {
+                hasMcpServers: options.hasMcpServers !== false
+            });
             requestPayload.response_format = {
                 type: 'json_schema',
                 json_schema: {
                     name: isSubagent ? 'subagent_response' : 'agent_response',
                     strict: true,
-                    schema: toStrictOpenAISchema(isSubagent ? SUBAGENT_RESPONSE_JSON_SCHEMA : COORDINATOR_RESPONSE_JSON_SCHEMA)
+                    schema: toStrictOpenAISchema(sanitizedSchema)
                 }
             };
         } else {

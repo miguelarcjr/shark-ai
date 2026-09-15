@@ -6,6 +6,8 @@ export interface ChatOptions {
     conversationId?: string;
     agentType: 'developer_agent';
     searchQuery?: string;
+    systemPrompt?: string;
+    hasMcpServers?: boolean;
 }
 
 export interface AIProvider {
