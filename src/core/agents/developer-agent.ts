@@ -20,6 +20,10 @@ import { executeSessionSearchTool, sessionSearchToolSchema } from '../tools/sess
 import { ConfigManager } from '../config-manager.js';
 import { encode } from 'gpt-tokenizer';
 import { UNIFIED_SYSTEM_PROMPT } from '../api/prompts.js';
+import { McpManager } from '../mcp/mcp-manager.js';
+import { ToolCatalogSearch } from '../tools/bridge/tool-catalog-search.js';
+import { BridgeToolsManager } from '../tools/bridge/bridge-tools.js';
+import { loadSharkRC } from '../config/sharkrc-loader.js';
 
 export function truncateToolOutput(output: string, maxTokens: number = 2000): string {
     const tokens = encode(output);
@@ -187,6 +191,17 @@ export async function interactiveDeveloperAgent(options: {
     const isSubagent = !!options.taskId && (options.taskId.startsWith('subagent-') || subagentManager.hasSubagent(options.taskId));
     const projectRoot = process.cwd();
     const messageQueue = new MessageQueue();
+
+    const rcConfig = loadSharkRC();
+    const mcpServers = (rcConfig as any).mcpServers || {};
+    const mcpManager = new McpManager();
+    const mcpTools = await mcpManager.initialize(mcpServers);
+    const toolCatalog = new ToolCatalogSearch(mcpTools);
+    const bridgeToolsManager = new BridgeToolsManager(
+        toolCatalog,
+        (name, args) => mcpManager.executeTool(name, args),
+        mcpTools
+    );
 
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
     let activeConversationId = await conversationManager.getConversationId(conversationKey);
@@ -858,8 +873,38 @@ Your goal is to address the user's request:
                         resultMsg = `[Action search_code("${query}" in "${glob}") Failed]: ${e.message}`;
                     }
                 }
-                else if (action.type === 'use_mcp_tool') {
-                    resultMsg = `[Action use_mcp_tool Failed]: MCP tools are not configured/available in this agent.`;
+                else if (action.type === 'tool_search') {
+                    const queries = action.args?.queries || (action.query ? [action.query] : []);
+                    log.info(`🔍 Tool search: ${colors.dim(JSON.stringify(queries))}`);
+                    const res = await bridgeToolsManager.executeToolSearch({
+                        queries,
+                        limit: action.args?.limit
+                    });
+                    resultMsg = res.success ? JSON.stringify(res.output, null, 2) : res.error!;
+                }
+                else if (action.type === 'tool_describe') {
+                    const names = action.args?.names || (action.tool_name ? [action.tool_name] : []);
+                    log.info(`📋 Tool describe: ${colors.dim(names.join(', '))}`);
+                    const res = await bridgeToolsManager.executeToolDescribe({ names });
+                    resultMsg = res.success ? JSON.stringify(res.output, null, 2) : res.error!;
+                }
+                else if (action.type === 'tool_call' || action.type === 'use_mcp_tool') {
+                    const toolName = action.args?.name || action.tool_name || '';
+                    const rawArgs = action.args?.arguments ?? action.tool_args;
+                    let toolArguments: Record<string, any> = {};
+                    if (typeof rawArgs === 'string') {
+                        try { toolArguments = JSON.parse(rawArgs); } catch { toolArguments = {}; }
+                    } else if (typeof rawArgs === 'object' && rawArgs !== null) {
+                        toolArguments = rawArgs;
+                    }
+                    log.info(`🔧 Tool call: ${colors.bold(toolName)}`);
+                    const res = await bridgeToolsManager.executeToolCall({
+                        name: toolName,
+                        arguments: toolArguments
+                    });
+                    resultMsg = res.success
+                        ? `[Action tool_call("${toolName}") Success]:\n${typeof res.output === 'string' ? res.output : JSON.stringify(res.output, null, 2)}`
+                        : res.error!;
                 }
                 else if (action.type === 'activate_skill') {
                     const name = action.skill_name || '';
@@ -1156,6 +1201,7 @@ Your goal is to address the user's request:
         log.success('✅ Task Scope Completed');
         return finalResult;
     } finally {
+        await mcpManager.closeAll();
         activeOnCommandHandler = undefined;
         process.off('SIGINT', sigIntHandler);
         process.off('SIGTERM', sigTermHandler);
