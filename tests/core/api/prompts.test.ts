@@ -3,7 +3,8 @@ import {
     COORDINATOR_RESPONSE_JSON_SCHEMA, 
     SUBAGENT_RESPONSE_JSON_SCHEMA,
     UNIFIED_SYSTEM_PROMPT,
-    SUBAGENT_SYSTEM_PROMPT
+    SUBAGENT_SYSTEM_PROMPT,
+    buildUnifiedSystemPrompt
 } from '../../../src/core/api/prompts.js';
 
 describe('Prompts and Schemas', () => {
@@ -35,5 +36,19 @@ describe('Prompts and Schemas', () => {
         expect(coordinatorActions).toContain('invoke_subagent');
         expect(coordinatorActions).toContain('read_file');
         expect(coordinatorActions).toContain('talk_with_user');
+    });
+
+    it('deve incluir bloco <tools_catalog> quando toolsCatalog for fornecido', () => {
+        const prompt = buildUnifiedSystemPrompt({
+            toolsCatalog: 'mcp_server_a: tool_1, tool_2'
+        });
+        expect(prompt).toContain('<tools_catalog>');
+        expect(prompt).toContain('mcp_server_a: tool_1, tool_2');
+        expect(prompt).toContain('</tools_catalog>');
+    });
+
+    it('não deve incluir bloco <tools_catalog> quando toolsCatalog for omitido ou vazio', () => {
+        const prompt = buildUnifiedSystemPrompt();
+        expect(prompt).not.toContain('<tools_catalog>');
     });
 });

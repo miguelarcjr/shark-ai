@@ -4,6 +4,7 @@ export interface BuildPromptOptions {
   snapshot?: MemorySnapshot;
   repositoryContext?: string;
   skillsIndex?: string;
+  toolsCatalog?: string;
 }
 
 export function buildUnifiedSystemPrompt(options?: BuildPromptOptions): string {
@@ -63,6 +64,7 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
   const memoryBlock = options?.snapshot?.memory ? `<project_memory>\n${options.snapshot.memory}\n</project_memory>` : '';
   const repoBlock = options?.repositoryContext ? `<project_context>\n${options.repositoryContext}\n</project_context>` : '';
   const skillsBlock = options?.skillsIndex ? `<skills_index>\n${options.skillsIndex}\n</skills_index>` : '';
+  const toolsCatalogBlock = options?.toolsCatalog?.trim() ? `<tools_catalog>\n${options.toolsCatalog.trim()}\n</tools_catalog>` : '';
 
   return [
     corePrompt,
@@ -70,7 +72,8 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
     userBlock,
     memoryBlock,
     repoBlock,
-    skillsBlock
+    skillsBlock,
+    toolsCatalogBlock
   ].filter(Boolean).join('\n\n');
 }
 
