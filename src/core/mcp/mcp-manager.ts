@@ -38,7 +38,7 @@ export class McpManager {
           await client.connect({} as any);
           this.clients.set(serverName, { client });
         } else if (config.command) {
-          FileLogger.log(`[MCP] Conectando ao servidor stdio: ${serverName} (${config.command})`);
+          FileLogger.log('MCP', `Conectando ao servidor stdio: ${serverName} (${config.command})`);
           const transport = new StdioClientTransport({
             command: config.command,
             args: config.args || [],
@@ -54,7 +54,7 @@ export class McpManager {
           await client.connect(transport);
           this.clients.set(serverName, { client, transport });
         } else {
-          FileLogger.log(`[MCP] Servidor ${serverName} ignorado (transporte não suportado ou sem comando).`);
+          FileLogger.log('MCP', `Servidor ${serverName} ignorado (transporte não suportado ou sem comando).`);
           continue;
         }
 
@@ -79,7 +79,7 @@ export class McpManager {
           }
         }
       } catch (err: any) {
-        FileLogger.log(`[MCP] Erro ao conectar ao servidor ${serverName}: ${err?.message}`);
+        FileLogger.log('MCP', `Erro ao conectar ao servidor ${serverName}: ${err?.message}`);
         console.warn(`⚠️ [Shark AI / MCP] Falha ao inicializar servidor '${serverName}': ${err?.message}`);
       }
     }
@@ -124,7 +124,7 @@ export class McpManager {
       try {
         await entry.client.close();
       } catch (e: any) {
-        FileLogger.log(`[MCP] Erro ao fechar servidor ${serverName}: ${e?.message}`);
+        FileLogger.log('MCP', `Erro ao fechar servidor ${serverName}: ${e?.message}`);
       }
     }
     this.clients.clear();

@@ -43,6 +43,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         'list_structure', 'modify_ast', 'search_ast', 'run_command',
         'tool_search', 'tool_describe', 'tool_call',
         'talk_with_user',
+        'memory', 'session_search',
         'activate_skill', 'invoke_subagent',
         'complete_task',
         'wait',
@@ -65,6 +66,10 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     command: z.string().nullable().optional(),
     tool_name: z.string().nullable().optional(),
     tool_args: z.string().nullable().optional(), // JSON string argument
+    target: z.string().nullable().optional(),
+    action: z.string().nullable().optional(),
+    old_str: z.string().nullable().optional(),
+    limit: z.number().nullable().optional(),
  
     // search_code fields
     query: z.string().nullable().optional(),
@@ -299,7 +304,7 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         const validTypes = [
             'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
             'tool_search', 'tool_describe', 'tool_call',
-            'talk_with_user', 'list_structure', 'modify_ast', 'search_ast', 'run_command',
+            'talk_with_user', 'memory', 'session_search', 'list_structure', 'modify_ast', 'search_ast', 'run_command',
             'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
             'complete_task', 'wait', 'notify_user'
         ];

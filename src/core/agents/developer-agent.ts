@@ -917,16 +917,16 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'memory') {
-                    const target = (action.target || 'memory') as 'memory' | 'user';
-                    const act = action.action || 'read';
+                    const target = (action.args?.target || action.target || 'memory') as 'memory' | 'user';
+                    const act = action.args?.action || action.action || 'read';
                     log.info(`🧠 Memory: ${colors.bold(act)} on ${colors.bold(target)}`);
                     try {
                         const memoryStore = new MemoryStore();
                         const memArgs = memoryToolSchema.parse({
                             action: act,
                             target,
-                            content: action.content || '',
-                            old_str: action.old_str
+                            content: action.args?.content || action.content || '',
+                            old_str: action.args?.old_str || action.old_str
                         });
                         const res = await executeMemoryTool(memoryStore, memArgs);
                         resultMsg = `[Action memory(${memArgs.action}, ${memArgs.target}) Success]: ${res.usage ? `Usage: ${res.usage}` : (res.content || 'OK')}`;
@@ -944,8 +944,9 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'session_search') {
-                    const query = action.query || '';
-                    const limit = typeof action.limit === 'number' ? action.limit : 5;
+                    const query = action.args?.query || action.query || '';
+                    const rawLimit = action.args?.limit ?? action.limit;
+                    const limit = typeof rawLimit === 'number' ? rawLimit : 5;
                     log.info(`🔍 Session Search FTS5: ${colors.bold(`"${query}"`)}`);
                     try {
                         const stateDb = new StateDB();

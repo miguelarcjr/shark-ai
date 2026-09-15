@@ -113,7 +113,7 @@ export class BridgeToolsManager {
       };
     }
 
-    FileLogger.log(`[Bridge: tool_call -> ${toolName}] Dispatching execution with args: ${JSON.stringify(toolArgs)}`);
+    FileLogger.log('BRIDGE', `[tool_call -> ${toolName}] Dispatching execution with args: ${JSON.stringify(toolArgs)}`);
 
     try {
       const output = await this.toolExecutor(toolName, toolArgs);
@@ -122,7 +122,7 @@ export class BridgeToolsManager {
         output
       };
     } catch (err: any) {
-      FileLogger.log(`[Bridge: tool_call -> ${toolName}] Execution failed: ${err?.message}`);
+      FileLogger.log('BRIDGE', `[tool_call -> ${toolName}] Execution failed: ${err?.message}`);
       return {
         success: false,
         error: `[Action tool_call Failed]: Erro ao executar '${toolName}': ${err?.message || String(err)}\n💡 DICA: Verifique se os tipos de argumentos conferem com o schema obtido via 'tool_describe'.`
