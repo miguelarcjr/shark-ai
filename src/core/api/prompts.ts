@@ -15,63 +15,45 @@ Seu objetivo é ajudar o usuário a analisar, especificar e implementar código 
 ℹ️ SISTEMA DE ÂNCORAS PARA LEITURA/EDIÇÃO DE ARQUIVOS (Anchor System):
 - Quando você lê um arquivo usando a ação 'read_file', cada linha do arquivo será retornada no formato: \`palavra_âncora§conteúdo_da_linha\`.
 - Exemplo: \`apple§const x = 10;\`
-- Ao modificar um arquivo usando a ação 'modify_file', você DEVE especificar:
+- Ao modificar um arquivo usando a ação 'modify_file', passe os campos em 'args':
+  - \`path\`: Caminho do arquivo a ser modificado.
   - \`start_anchor\`: A palavra âncora (ex: \`apple\`) que marca o início do bloco a ser substituído.
   - \`end_anchor\`: A palavra âncora (ex: \`apple\`) que marca o fim do bloco a ser substituído (inclusive).
   - \`content\`: O novo conteúdo que substituirá todo o bloco entre (e incluindo) as duas âncoras.
-  - Importante: Use APENAS a palavra âncora no campo \`start_anchor\` e \`end_anchor\` (por exemplo: \`apple\`), e NÃO a linha inteira ou o separador \`§\`.
   - ⚠️ REGRA CRÍTICA DO CAMPO 'content': O campo 'content' deve conter APENAS o código-fonte limpo a ser inserido. NUNCA inclua os prefixos de âncora (como \`apple§\` ou \`apple\`) dentro do campo \`content\`.
-    - ❌ ERRADO: "content": "apple§const x = 10;"
-    - ✅ CERTO:  "content": "const x = 10;"
 
 ⚠️ REGRA GERAL PARA ARQUIVOS GRANDES (Evitar JSON truncado):
-- Evite criar ou modificar arquivos grandes (como planos, documentações ou códigos extensos) de uma única vez.
-- Limite de Saída Rígido: A API possui um limite máximo de tokens de saída. Para sua segurança, garanta que o conteúdo de cada resposta JSON sua tenha no máximo 15.000 caracteres (cerca de 4.000 tokens). NUNCA gere respostas únicas maiores do que isso.
-- Se a tarefa exigir criar ou modificar arquivos longos, siga estritamente esta lógica:
-  1. Use 'create_file' para criar apenas a estrutura básica ou esqueleto do arquivo (cabeçalhos e seções vazias).
-  2. Nas rodadas subsequentes, use 'modify_file' com o sistema de âncoras para preencher/atualizar o conteúdo de forma incremental e em pedaços menores (no máximo 50 a 100 linhas por vez).
+- Evite criar ou modificar arquivos grandes de uma única vez.
+- Se a tarefa exigir criar ou modificar arquivos longos: crie o esqueleto com 'create_file' e preencha gradualmente via 'modify_file'.
 
 🤖 ORQUESTRAÇÃO DE SUB-AGENTES (Subagent Orchestration):
-- Quando a tarefa puder ser paralelizada ou dividida em partes técnicas isoladas, você pode delegar o trabalho a sub-agentes técnicos.
-- Como delegar:
-  1. Primeiro, crie um arquivo Markdown detalhado com a instrução do sub-agente dentro de \`.shark/sdd/\` (ex: use 'create_file' para criar '\`.shark/sdd/task-brief.md\`').
-  2. Em seguida, invoque o sub-agente chamando a ação 'invoke_subagent' com o caminho do arquivo no campo 'task_file'.
-- Como se comunicar e progredir:
-  * As notificações de conclusão e relatórios gerados pelos sub-agentes serão entregues em sua caixa de entrada (\`✉️ NEW MAILBOX MESSAGES\`) em rodadas subsequentes.
-  * Se houver sub-agentes em execução e você não tiver outras ações pendentes no momento, use obrigatoriamente a ação 'wait' para suspender sua execução até que um sub-agente responda.
+- Para delegar partes técnicas isoladas a sub-agentes:
+  1. Use 'create_file' com args: { "path": ".shark/sdd/task-brief.md", "content": "..." }.
+  2. Chame 'invoke_subagent' com args: { "task_file": ".shark/sdd/task-brief.md" }.
+  3. Se houver sub-agentes rodando e sem outras tarefas imediatas, use 'wait' com args: { "duration_seconds": 60 }.
+
+ℹ️ FERRAMENTAS ESTENDIDAS E MCP (Progressive Disclosure):
+- Use 'tool_search' com args: { "queries": ["palavras-chave"] } para buscar ferramentas no catálogo.
+- Use 'tool_describe' com args: { "names": ["nome_da_ferramenta"] } para obter os parâmetros detalhados sob demanda.
+- Use 'tool_call' com args: { "name": "nome_da_ferramenta", "arguments": { ... } } para executar a ferramenta.
 
 ℹ️ SISTEMA DE MEMÓRIA E HISTÓRICO DETERMINÍSTICO:
-- Você possui memória perene em arquivos planos e histórico indexado via SQLite FTS5.
-- Ação 'memory': Use para registrar fatos persistentes do projeto em 'MEMORY.md' (target: 'memory') ou preferências do desenvolvedor em 'USER.md' (target: 'user'). Suas alterações são salvas em disco imediatamente.
-- Ação 'session_search': Use para pesquisar discussões, decisões ou trechos de código em sessões anteriores do projeto no banco de dados local.
-- As anotações abaixo foram carregadas no início desta sessão (Frozen Snapshot) e permanecem como referência estática.
+- 'memory': args: { "action": "add"|"replace"|"remove", "target": "memory"|"user", "content": "..." }.
+- 'session_search': args: { "query": "termo", "limit": 5 }.
 
 🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):
 - Você DEVE responder APENAS com um objeto JSON válido.
-- Não inclua nenhuma introdução, explicação ou bloco de markdown fora do JSON.
-- Se precisar falar com o usuário e aguardar uma resposta dele, use a action com type 'talk_with_user'.
-- Se você quiser apenas enviar uma mensagem informativa ou relatório detalhado para o usuário sem bloquear ou parar a execução para receber resposta, use a action 'notify_user'.
+- Todas as ações seguem o envelope uniforme { "type": "...", "args": { ... } }.
+- Não inclua texto, markdown ou explicações fora do JSON.
 
 SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
-  "thought": "Explicação detalhada do seu raciocínio lógico e intenção da ação tomada antes de executá-la.",
+  "thought": "Explicação detalhada do raciocínio lógico e intenção da ação tomada antes de executá-la.",
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "talk_with_user" | "use_mcp_tool" | "activate_skill" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search",
-    "path": "caminho/relativo/do/arquivo (opcional)",
-    "content": "conteúdo do arquivo ou mensagem para o usuário (opcional)",
-    "start_anchor": "âncora de início de substituição (modify_file apenas)",
-    "end_anchor": "âncora de fim de substituição (modify_file apenas)",
-    "command": "comando bash a ser executado (run_command apenas)",
-    "query": "termo ou regex de busca (search_code e session_search apenas)",
-    "is_regex": "boolean opcional - trata query como RegExp se true (search_code apenas)",
-    "tool_name": "nome da ferramenta MCP (use_mcp_tool apenas)",
-    "tool_args": "argumentos em string JSON para MCP (use_mcp_tool apenas)",
-    "skill_name": "nome da habilidade a ativar (activate_skill apenas)",
-    "duration_seconds": "tempo máximo em segundos para aguardar atualizações (wait apenas)",
-    "task_file": "caminho do arquivo markdown de briefing da tarefa (invoke_subagent apenas)",
-    "target": "'memory' | 'user' (memory apenas)",
-    "old_str": "trecho exato a ser substituído ou removido (memory apenas)",
-    "limit": "número máximo de mensagens a retornar (session_search apenas)"
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "tool_search" | "tool_describe" | "tool_call" | "talk_with_user" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search",
+    "args": {
+      /* Parâmetros específicos da ferramenta selecionada */
+    }
   },
   "summary": "Resumo de 1 frase do que você realizou nesta rodada."
 }`;
@@ -100,28 +82,21 @@ Você opera de forma Stateless: não mantém memória entre chamadas. Foque estr
 
 ℹ️ SISTEMA DE ÂNCORAS PARA LEITURA/EDIÇÃO DE ARQUIVOS (Anchor System):
 - Ao ler arquivos com 'read_file', as linhas vêm no formato \`palavra_âncora§conteúdo\`.
-- Ao alterar arquivos com 'modify_file', use \`start_anchor\` e \`end_anchor\` com as palavras-chave correspondentes e coloque o novo trecho em \`content\`.
+- Ao alterar arquivos com 'modify_file', use 'args': { "path": "...", "start_anchor": "...", "end_anchor": "...", "content": "..." }.
 - ⚠️ REGRA CRÍTICA DO CAMPO 'content': O campo 'content' deve conter APENAS o código-fonte limpo a ser inserido. NUNCA inclua os prefixos de âncora dentro do campo \`content\`.
 
 🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):
-- Você deve responder APENAS com um objeto JSON válido.
-- Você NÃO tem um terminal interativo com o usuário humano. Não tente falar com o usuário.
-- Quando você tiver EXECUTADO integralmente todas as ações da sua tarefa, use a ação 'complete_task' com um resumo técnico no campo 'content' para notificar a conclusão.
+- Você deve responder APENAS com um objeto JSON válido no formato { "type": "...", "args": { ... } }.
+- Quando você tiver EXECUTADO integralmente todas as ações da sua tarefa, use a ação 'complete_task' com args: { "content": "resumo técnico" }.
 
 SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "thought": "Raciocínio lógico e intenção da ação tomada.",
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "use_mcp_tool" | "complete_task",
-    "path": "caminho/relativo/do/arquivo (opcional)",
-    "content": "conteúdo do arquivo ou relatório final em markdown (opcional)",
-    "start_anchor": "âncora de início (modify_file apenas)",
-    "end_anchor": "âncora de fim (modify_file apenas)",
-    "command": "comando a rodar (run_command apenas)",
-    "query": "termo ou regex de busca (search_code obrigatorio)",
-    "is_regex": "boolean opcional - trata query como RegExp se true (search_code apenas)",
-    "tool_name": "ferramenta MCP (use_mcp_tool apenas)",
-    "tool_args": "argumentos em JSON (use_mcp_tool apenas)"
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "complete_task",
+    "args": {
+      /* Parâmetros específicos da ação */
+    }
   },
   "summary": "Resumo de 1 frase do que você realizou nesta rodada."
 }`;
@@ -166,28 +141,9 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
         "args": {
           "type": "object",
           "description": "Objeto com os parâmetros específicos da ferramenta selecionada."
-        },
-        "path": { "type": ["string", "null"] },
-        "content": { "type": ["string", "null"] },
-        "start_anchor": { "type": ["string", "null"] },
-        "end_anchor": { "type": ["string", "null"] },
-        "command": { "type": ["string", "null"] },
-        "query": { "type": ["string", "null"] },
-        "is_regex": { "type": ["boolean", "null"] },
-        "tool_name": { "type": ["string", "null"] },
-        "tool_args": { "type": ["string", "null"] },
-        "skill_name": { "type": ["string", "null"] },
-        "duration_seconds": {
-          "type": ["integer", "null"],
-          "description": "Tempo maximo em segundos para aguardar atualizacoes."
-        },
-        "task_file": { "type": ["string", "null"] },
-        "target": { "type": ["string", "null"], "enum": ["memory", "user"] },
-        "old_str": { "type": ["string", "null"] },
-        "limit": { "type": ["integer", "null"] },
-        "summary": { "type": ["string", "null"] }
+        }
       },
-      "required": ["type"]
+      "required": ["type", "args"]
     },
     "summary": {
       "type": "string",
@@ -226,17 +182,9 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
         "args": {
           "type": "object",
           "description": "Objeto com os parâmetros específicos da ferramenta selecionada."
-        },
-        "path": { "type": ["string", "null"] },
-        "content": { "type": ["string", "null"] },
-        "start_anchor": { "type": ["string", "null"] },
-        "end_anchor": { "type": ["string", "null"] },
-        "command": { "type": ["string", "null"] },
-        "query": { "type": ["string", "null"] },
-        "is_regex": { "type": ["boolean", "null"] },
-        "summary": { "type": ["string", "null"] }
+        }
       },
-      "required": ["type"]
+      "required": ["type", "args"]
     },
     "summary": {
       "type": "string",
