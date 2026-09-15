@@ -149,6 +149,9 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
             "search_code",
             "delete_file",
             "run_command",
+            "tool_search",
+            "tool_describe",
+            "tool_call",
             "talk_with_user",
             "use_mcp_tool",
             "activate_skill",
@@ -159,6 +162,10 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
             "memory",
             "session_search"
           ]
+        },
+        "args": {
+          "type": "object",
+          "description": "Objeto com os parâmetros específicos da ferramenta selecionada."
         },
         "path": { "type": ["string", "null"] },
         "content": { "type": ["string", "null"] },
@@ -213,9 +220,12 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
             "search_code",
             "delete_file",
             "run_command",
-            "use_mcp_tool",
             "complete_task"
           ]
+        },
+        "args": {
+          "type": "object",
+          "description": "Objeto com os parâmetros específicos da ferramenta selecionada."
         },
         "path": { "type": ["string", "null"] },
         "content": { "type": ["string", "null"] },
@@ -224,8 +234,6 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
         "command": { "type": ["string", "null"] },
         "query": { "type": ["string", "null"] },
         "is_regex": { "type": ["boolean", "null"] },
-        "tool_name": { "type": ["string", "null"] },
-        "tool_args": { "type": ["string", "null"] },
         "summary": { "type": ["string", "null"] }
       },
       "required": ["type"]
@@ -239,3 +247,4 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
 };
 
 export const AGENT_RESPONSE_JSON_SCHEMA = COORDINATOR_RESPONSE_JSON_SCHEMA;
+
