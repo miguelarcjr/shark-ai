@@ -130,3 +130,6 @@ _sharkrc/
 shark-debug.log
 .vitest_cache_membox/
 .vitest_membox_storage/
+
+# Testing Sandbox
+test-sandbox/
