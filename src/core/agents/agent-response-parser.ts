@@ -7,6 +7,14 @@ import path from 'node:path';
 // Action Schema
 export const AgentActionSchema = z.preprocess((val: any) => {
     if (val && typeof val === 'object') {
+        if (val.args && typeof val.args === 'object') {
+            for (const [k, v] of Object.entries(val.args)) {
+                if (val[k] === undefined) {
+                    val[k] = v;
+                }
+            }
+        }
+
         if (val.type === 'invoke_subagent' && val.task_file !== undefined && val.Subagents === undefined) {
             let promptContent = '';
             try {
@@ -33,6 +41,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     type: z.enum([
         'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
         'list_structure', 'modify_ast', 'search_ast', 'run_command',
+        'tool_search', 'tool_describe', 'tool_call',
         'talk_with_user', 'use_mcp_tool',
         'activate_skill', 'invoke_subagent',
         'complete_task',
@@ -48,6 +57,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         'ast_add_function', 'ast_remove_function',
         'ast_add_import', 'ast_remove_import', 'ast_organize_imports'
     ]),
+    args: z.record(z.any()).nullable().optional(),
     path: z.string().nullable().optional(), // Nullable for strict mode combatibility
     content: z.string().nullable().optional(),
     line_range: z.array(z.number()).nullable().optional(),
@@ -120,6 +130,8 @@ export const AgentResponseSchema = z.object({
     actions: z.array(AgentActionSchema).default([]), // Maintain backward compatibility
     commands: z.array(AgentCommandSchema).optional(), // Maintain backward compatibility
     summary: z.string().optional(),
+    isError: z.boolean().default(false).optional(),
+    errorMessage: z.string().optional(),
 
     // Legacy fields handling for smooth transition/fallback
     message: z.string().optional(),
@@ -350,6 +362,33 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         }).filter(Boolean);
     }
 
+    // Validate tool-specific requirements for Self-Teaching Errors
+    if (normalizedAction && normalizedAction.type === 'modify_file') {
+        const hasStart = normalizedAction.start_anchor !== undefined && normalizedAction.start_anchor !== null && String(normalizedAction.start_anchor).trim() !== '';
+        const hasEnd = normalizedAction.end_anchor !== undefined && normalizedAction.end_anchor !== null && String(normalizedAction.end_anchor).trim() !== '';
+        if (!hasStart || !hasEnd) {
+            const errorMsg = `[Action modify_file Failed]: Parâmetros inválidos em 'args'.\nCampos obrigatórios: { "path": string, "start_anchor": string, "end_anchor": string, "content": string }.\n💡 INSTRUÇÃO DE RECUPERAÇÃO:\n- Se você ainda não inspecionou este arquivo, execute 'read_file' primeiro.\n- O 'read_file' retorna linhas no formato 'palavra_ancora§conteúdo'.\n- Preencha 'start_anchor' e 'end_anchor' com as palavras-âncora exatas e envie apenas o código de substituição limpo em 'content'.`;
+            return {
+                thought: parsedObj.thought,
+                action: {
+                    type: 'talk_with_user',
+                    content: errorMsg,
+                    path: '',
+                    isSynthetic: true
+                },
+                actions: [{
+                    type: 'talk_with_user',
+                    content: errorMsg,
+                    path: '',
+                    isSynthetic: true
+                }],
+                summary: 'modify_file validation failed',
+                isError: true,
+                errorMessage: errorMsg
+            };
+        }
+    }
+
     const result = {
         thought: parsedObj.thought || '',
         action: normalizedAction,
@@ -357,7 +396,8 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         commands: normalizedCommands,
         summary: parsedObj.summary || '',
         conversation_id,
-        message: parsedObj.summary || 'Agent Action' // Backward compatibility
+        message: parsedObj.summary || 'Agent Action', // Backward compatibility
+        isError: false
     };
 
     FileLogger.log('PARSER', 'Final Result Constructed', { hasAction: !!result.action });
