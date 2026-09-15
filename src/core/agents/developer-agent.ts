@@ -19,10 +19,11 @@ import { executeMemoryTool, memoryToolSchema } from '../tools/memory-tool.js';
 import { executeSessionSearchTool, sessionSearchToolSchema } from '../tools/session-search-tool.js';
 import { ConfigManager } from '../config-manager.js';
 import { encode } from 'gpt-tokenizer';
-import { UNIFIED_SYSTEM_PROMPT } from '../api/prompts.js';
+import { UNIFIED_SYSTEM_PROMPT, buildUnifiedSystemPrompt } from '../api/prompts.js';
 import { McpManager } from '../mcp/mcp-manager.js';
 import { ToolCatalogSearch } from '../tools/bridge/tool-catalog-search.js';
 import { BridgeToolsManager } from '../tools/bridge/bridge-tools.js';
+import { generateTieredManifest } from '../tools/bridge/tiered-disclosure.js';
 import { loadSharkRC } from '../config/sharkrc-loader.js';
 
 export function truncateToolOutput(output: string, maxTokens: number = 2000): string {
@@ -202,6 +203,9 @@ export async function interactiveDeveloperAgent(options: {
         (name, args) => mcpManager.executeTool(name, args),
         mcpTools
     );
+
+    const mcpManifest = mcpTools.length > 0 ? generateTieredManifest(mcpTools).manifestText : undefined;
+    const dynamicSystemPrompt = buildUnifiedSystemPrompt({ toolsCatalog: mcpManifest });
 
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
     let activeConversationId = await conversationManager.getConversationId(conversationKey);
@@ -573,6 +577,8 @@ Your goal is to address the user's request:
                     conversationId: activeConversationId,
                     agentType: 'developer_agent',
                     searchQuery: nextPrompt,
+                    systemPrompt: dynamicSystemPrompt,
+                    hasMcpServers: mcpTools.length > 0,
                     onChunk: () => {}
                 });
 
@@ -748,7 +754,10 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'modify_file') {
-                    const filePath = action.path || '';
+                    const filePath = action.args?.path || action.path || '';
+                    const startAnchor = action.args?.start_anchor || action.start_anchor || '';
+                    const endAnchor = action.args?.end_anchor || action.end_anchor || '';
+                    const content = action.args?.content || action.content || '';
                     log.warning(`📝 Modify (Anchored): ${colors.bold(filePath)}`);
 
                     let approved = autoApproveTools;
@@ -758,7 +767,7 @@ Your goal is to address the user's request:
 
                     if (approved) {
                         try {
-                            anchorManager.applyAnchoredEdit(filePath, action.start_anchor || '', action.end_anchor || '', action.content || '');
+                            anchorManager.applyAnchoredEdit(filePath, startAnchor, endAnchor, content);
                             resultMsg = `[Action modify_file(${filePath}) Success]`;
                         } catch (e: any) {
                             resultMsg = `[Action modify_file(${filePath}) Failed]: ${e.message}`;
@@ -768,7 +777,8 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'create_file') {
-                    const filePath = action.path || '';
+                    const filePath = action.args?.path || action.path || '';
+                    const content = action.args?.content || action.content || '';
                     log.warning(`📝 Create file: ${colors.bold(filePath)}`);
 
                     let approved = autoApproveTools;
@@ -783,7 +793,7 @@ Your goal is to address the user's request:
                             if (!fs.existsSync(dir)) {
                                 fs.mkdirSync(dir, { recursive: true });
                             }
-                            fs.writeFileSync(resolvedPath, action.content || '', 'utf-8');
+                            fs.writeFileSync(resolvedPath, content, 'utf-8');
                             resultMsg = `[Action create_file(${filePath}) Success]`;
                         } catch (e: any) {
                             resultMsg = `[Action create_file(${filePath}) Failed]: ${e.message}`;
@@ -793,7 +803,7 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'delete_file') {
-                    const filePath = action.path || '';
+                    const filePath = action.args?.path || action.path || '';
                     log.warning(`🗑️ Delete file: ${colors.bold(filePath)}`);
 
                     let approved = autoApproveTools;
@@ -816,7 +826,7 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'run_command') {
-                    const cmd = action.command || '';
+                    const cmd = action.args?.command || action.command || '';
                     log.info(`💻 Executing: ${colors.dim(cmd)}`);
 
                     let approved = autoApproveTools;
@@ -842,7 +852,7 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'list_files') {
-                    const dirPath = action.path || '.';
+                    const dirPath = action.args?.path || action.path || '.';
                     log.info(`📂 Scanning: ${colors.dim(dirPath)}`);
                     try {
                         const result = handleListFiles(dirPath);
@@ -852,7 +862,7 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'search_file') {
-                    const pattern = action.path || '';
+                    const pattern = action.args?.path || action.path || '';
                     log.info(`🔍 Searching files: ${colors.dim(pattern)}`);
                     try {
                         const result = handleSearchFile(pattern);
@@ -862,9 +872,9 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'search_code') {
-                    const glob = action.path || '**/*';
-                    const query = action.query || '';
-                    const isRegex = action.is_regex === true;
+                    const glob = action.args?.path || action.path || '**/*';
+                    const query = action.args?.query || action.query || '';
+                    const isRegex = (action.args?.is_regex ?? action.is_regex) === true;
                     log.info(`🔎 Search code: ${colors.dim(`"${query}" in ${glob}`)}`);
                     try {
                         const result = handleSearchCode(glob, query, isRegex);
@@ -889,8 +899,8 @@ Your goal is to address the user's request:
                     resultMsg = res.success ? JSON.stringify(res.output, null, 2) : res.error!;
                 }
                 else if (action.type === 'tool_call') {
-                    const toolName = action.args?.name || '';
-                    const rawArgs = action.args?.arguments;
+                    const toolName = action.args?.name || action.tool_name || '';
+                    const rawArgs = action.args?.arguments ?? action.tool_args;
                     let toolArguments: Record<string, any> = {};
                     if (typeof rawArgs === 'string') {
                         try { toolArguments = JSON.parse(rawArgs); } catch { toolArguments = {}; }
@@ -898,16 +908,32 @@ Your goal is to address the user's request:
                         toolArguments = rawArgs;
                     }
                     log.info(`🔧 Tool call: ${colors.bold(toolName)}`);
-                    const res = await bridgeToolsManager.executeToolCall({
-                        name: toolName,
-                        arguments: toolArguments
-                    });
-                    resultMsg = res.success
-                        ? `[Action tool_call("${toolName}") Success]:\n${typeof res.output === 'string' ? res.output : JSON.stringify(res.output, null, 2)}`
-                        : res.error!;
+
+                    if (!autoApproveTools) {
+                        const formattedArgs = Object.keys(toolArguments).length > 0 
+                            ? JSON.stringify(toolArguments, null, 2) 
+                            : '{}';
+                        const approved = await tui.confirm({
+                            message: `Deseja executar a ferramenta MCP '${colors.bold(toolName)}'?\nArgumentos:\n${formattedArgs}`
+                        });
+                        if (!approved) {
+                            resultMsg = `[Action tool_call("${toolName}") Aborted]: Execução cancelada pelo usuário.`;
+                            log.warning(`🚫 Execução de '${toolName}' rejeitada pelo usuário.`);
+                        }
+                    }
+
+                    if (!resultMsg) {
+                        const res = await bridgeToolsManager.executeToolCall({
+                            name: toolName,
+                            arguments: toolArguments
+                        });
+                        resultMsg = res.success
+                            ? `[Action tool_call("${toolName}") Success]:\n${typeof res.output === 'string' ? res.output : JSON.stringify(res.output, null, 2)}`
+                            : res.error!;
+                    }
                 }
                 else if (action.type === 'activate_skill') {
-                    const name = action.skill_name || '';
+                    const name = action.args?.name || action.args?.skill_name || action.skill_name || '';
                     log.info(`⚡ Activating skill: ${colors.bold(name)}`);
                     try {
                         await skillManager.activateSkill(name);
@@ -1066,7 +1092,7 @@ Your goal is to address the user's request:
                 }
                 else if (action.type === 'invoke_subagent') {
                     try {
-                        const taskFile = action.task_file;
+                        const taskFile = action.args?.task_file || action.task_file;
                         if (!taskFile) {
                             throw new Error('Action invoke_subagent requires "task_file" parameter');
                         }
@@ -1085,8 +1111,8 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'complete_task') {
-                    const detailedContent = action.content || '';
-                    const taskSummary = action.summary || response.summary || 'Task completed successfully.';
+                    const detailedContent = action.args?.content || action.content || '';
+                    const taskSummary = action.args?.summary || action.summary || response.summary || 'Task completed successfully.';
                     
                     if (isSubagent) {
                         subagentManager.updateSubagentSummary(options.taskId!, taskSummary);
@@ -1134,7 +1160,7 @@ Your goal is to address the user's request:
                     }
                 }
                 else if (action.type === 'wait') {
-                    const durationSeconds = action.duration_seconds || 0;
+                    const durationSeconds = action.args?.duration_seconds ?? action.duration_seconds ?? 0;
                     const durationMs = durationSeconds > 0 ? durationSeconds * 1000 : undefined;
                     log.info(`⏳ Waiting for updates (Timeout: ${durationSeconds || 'infinite'}s)...`);
                     

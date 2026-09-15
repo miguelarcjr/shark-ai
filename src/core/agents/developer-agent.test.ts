@@ -38,11 +38,12 @@ vi.mock('../workflow/conversation-manager.js', () => ({
 }));
 
 vi.mock('node:fs', async (importOriginal) => {
-    const original = await importOriginal<typeof import('node:fs')>();
-    const mockExistsSync = vi.fn(original.default.existsSync);
-    const mockReaddirSync = vi.fn(original.default.readdirSync);
-    const mockStatSync = vi.fn(original.default.statSync);
-    const mockReadFileSync = vi.fn(original.default.readFileSync);
+    const original = await importOriginal<any>();
+    const fsActual = original.default || original;
+    const mockExistsSync = vi.fn(fsActual.existsSync);
+    const mockReaddirSync = vi.fn(fsActual.readdirSync);
+    const mockStatSync = vi.fn(fsActual.statSync);
+    const mockReadFileSync = vi.fn(fsActual.readFileSync);
     return {
         ...original,
         existsSync: mockExistsSync,
@@ -50,7 +51,7 @@ vi.mock('node:fs', async (importOriginal) => {
         statSync: mockStatSync,
         readFileSync: mockReadFileSync,
         default: {
-            ...original.default,
+            ...fsActual,
             existsSync: mockExistsSync,
             readdirSync: mockReaddirSync,
             statSync: mockStatSync,
@@ -118,12 +119,12 @@ describe('DeveloperAgent', () => {
         expect(conversationManager.getConversationId).toHaveBeenCalledWith('dev_agent_test-task');
 
         // Verify streamChat called correctly
-        expect(mockProvider.streamChat).toHaveBeenCalledWith(expect.stringContaining('Refactor developer-agent'), {
+        expect(mockProvider.streamChat).toHaveBeenCalledWith(expect.stringContaining('Refactor developer-agent'), expect.objectContaining({
             conversationId: 'existing-conv-id',
             agentType: 'developer_agent',
             searchQuery: expect.any(String),
             onChunk: expect.any(Function),
-        });
+        }));
 
         // Verify conversation id was saved
         expect(conversationManager.saveConversationId).toHaveBeenCalledWith('dev_agent_test-task', 'new-conv-id');
@@ -1499,6 +1500,74 @@ describe('DeveloperAgent', () => {
         expect(tui.confirm).not.toHaveBeenCalledWith(expect.objectContaining({
             message: expect.stringContaining('modify_file')
         }));
+    });
+
+    it('deve solicitar confirmação antes de executar tool_call quando auto for falso e respeitar cancelamento do usuário', async () => {
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: {
+                type: 'tool_call',
+                args: {
+                    name: 'destructive_mcp_tool',
+                    arguments: { key: 'value' }
+                }
+            },
+            actions: [],
+            message: 'Executing tool',
+            conversation_id: 'conv-tool-deny'
+        }).mockResolvedValueOnce({
+            action: {
+                type: 'complete_task',
+                args: {
+                    summary: 'Finished after denial'
+                }
+            },
+            actions: [],
+            message: 'TASK_COMPLETED: Finished after denial',
+            conversation_id: 'conv-tool-deny'
+        });
+
+        // User denies confirmation
+        vi.mocked(tui.confirm).mockResolvedValueOnce(false);
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'tool-deny-task',
+            taskInstruction: 'Run dangerous tool',
+            auto: false
+        });
+
+        expect(tui.confirm).toHaveBeenCalledWith(expect.objectContaining({
+            message: expect.stringContaining('destructive_mcp_tool')
+        }));
+        // Verify second turn prompt contains the Aborted notice
+        expect(mockProvider.streamChat).toHaveBeenNthCalledWith(
+            2,
+            expect.stringContaining('[Action tool_call("destructive_mcp_tool") Aborted]: Execução cancelada pelo usuário.'),
+            expect.any(Object)
+        );
+        expect(result).toEqual({ success: true, summary: 'Finished after denial' });
+    });
+
+    it('deve extrair argumentos de invoke_subagent e complete_task priorizando action.args', async () => {
+        vi.mocked(mockProvider.streamChat).mockResolvedValueOnce({
+            action: {
+                type: 'complete_task',
+                args: {
+                    content: 'Detailed markdown report',
+                    summary: 'Report generated successfully'
+                }
+            },
+            actions: [],
+            message: 'TASK_COMPLETED: Report generated successfully',
+            conversation_id: 'conv-args-test'
+        });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'args-test-task',
+            taskInstruction: 'Complete task with args',
+            auto: true
+        });
+
+        expect(result).toEqual({ success: true, summary: 'Report generated successfully' });
     });
 });
 
