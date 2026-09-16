@@ -21,9 +21,16 @@ function readLineNonTTY(promptMsg: string): Promise<string> {
         terminal: false
     });
     return new Promise((resolve) => {
+        let resolved = false;
         rl.once('line', (line) => {
+            resolved = true;
             rl.close();
             resolve(line.trim());
+        });
+        rl.once('close', () => {
+            if (!resolved) {
+                resolve('');
+            }
         });
     });
 }
@@ -55,6 +62,7 @@ class TuiMutex {
 const mutex = new TuiMutex();
 
 export const tui = {
+    _readLine: readLineNonTTY,
     async acquireLock(): Promise<void> {
         await mutex.acquireLock();
     },
@@ -111,7 +119,7 @@ export const tui = {
         try {
             if (!isInteractive()) {
                 const promptMsg = `${opts.message}${opts.initialValue ? ` [${opts.initialValue}]` : ''}: `;
-                const input = await readLineNonTTY(promptMsg);
+                const input = await this._readLine(promptMsg);
                 return input || (opts.initialValue as string) || '';
             }
             const result = await p.text(opts);
@@ -124,7 +132,7 @@ export const tui = {
 
     async password(opts: p.PasswordOptions): Promise<string> {
         if (!isInteractive()) {
-            return readLineNonTTY(`${opts.message}: `);
+            return this._readLine(`${opts.message}: `);
         }
         const result = await p.password(opts);
         this.handleCancel(result);
@@ -136,7 +144,7 @@ export const tui = {
         try {
             if (!isInteractive()) {
                 const hint = opts.initialValue ? 'Y/n' : 'y/N';
-                const input = await readLineNonTTY(`${opts.message} (${hint}): `);
+                const input = await this._readLine(`${opts.message} (${hint}): `);
                 if (!input) return Boolean(opts.initialValue);
                 const lower = input.toLowerCase();
                 return lower === 'y' || lower === 'yes' || lower === 's' || lower === 'sim';
@@ -161,7 +169,7 @@ export const tui = {
                 const defaultIdx = opts.initialValue !== undefined 
                     ? opts.options.findIndex(o => o.value === opts.initialValue) + 1 
                     : 1;
-                const input = await readLineNonTTY(`Escolha [1-${opts.options.length}] (padrão: ${defaultIdx}): `);
+                const input = await this._readLine(`Escolha [1-${opts.options.length}] (padrão: ${defaultIdx}): `);
                 const choiceNum = parseInt(input, 10);
                 if (!isNaN(choiceNum) && choiceNum >= 1 && choiceNum <= opts.options.length) {
                     return opts.options[choiceNum - 1].value;
