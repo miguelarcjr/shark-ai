@@ -193,8 +193,8 @@ export async function interactiveDeveloperAgent(options: {
     const projectRoot = process.cwd();
     const messageQueue = new MessageQueue();
 
-    const rcConfig = loadSharkRC();
-    const mcpServers = (rcConfig as any).mcpServers || {};
+    const rcConfig = loadSharkRC() || {};
+    const mcpServers = process.env.VITEST && !process.env.SHARK_TEST_MCP ? {} : ((rcConfig as any)?.mcpServers || {});
     const mcpManager = new McpManager();
     const mcpTools = await mcpManager.initialize(mcpServers);
     const toolCatalog = new ToolCatalogSearch(mcpTools);
@@ -391,6 +391,50 @@ export async function interactiveDeveloperAgent(options: {
                 tui.log.warning('Não foi possível rebobinar o histórico (histórico vazio ou sem turnos).');
             }
             return true;
+        }
+        if (command === '/skills' || command.startsWith('/skills ')) {
+            const parts = command.trim().split(/\s+/);
+            const sub = parts[1]?.toLowerCase();
+            if (sub === 'pending') {
+                const pending = await skillManager.listPending();
+                if (pending.length === 0) {
+                    tui.log.info('Nenhuma alteração de skill pendente de aprovação.');
+                } else {
+                    tui.log.info(`Encontrada(s) ${pending.length} alteração(ões) pendente(s):`);
+                    for (const p of pending) {
+                        tui.log.info(`  • ID: ${colors.bold(p.id)} [${p.params.action} em ${p.params.name}] - ${p.summary}`);
+                    }
+                }
+                return true;
+            }
+            if (sub === 'approve') {
+                const id = parts[2];
+                if (!id) {
+                    tui.log.warning('Uso: /skills approve <id>');
+                } else {
+                    try {
+                        const msg = await skillManager.approvePending(id);
+                        tui.log.success(`✔ ${msg}`);
+                    } catch (e: any) {
+                        tui.log.error(`Erro: ${e.message}`);
+                    }
+                }
+                return true;
+            }
+            if (sub === 'reject') {
+                const id = parts[2];
+                if (!id) {
+                    tui.log.warning('Uso: /skills reject <id>');
+                } else {
+                    try {
+                        const msg = await skillManager.rejectPending(id);
+                        tui.log.info(`ℹ ${msg}`);
+                    } catch (e: any) {
+                        tui.log.error(`Erro: ${e.message}`);
+                    }
+                }
+                return true;
+            }
         }
         return false;
     };
@@ -940,6 +984,52 @@ Your goal is to address the user's request:
                         resultMsg = res.success
                             ? `[Action tool_call("${toolName}") Success]:\n${typeof res.output === 'string' ? res.output : JSON.stringify(res.output, null, 2)}`
                             : res.error!;
+                    }
+                }
+                else if (action.type === 'skills_list') {
+                    const query = action.args?.query || action.query;
+                    log.info(`📋 Listing skills${query ? ` (query: "${query}")` : ''}...`);
+                    try {
+                        const catalog = await skillManager.listSkills(query);
+                        resultMsg = `[Action skills_list Success]:\n${catalog}`;
+                    } catch (e: any) {
+                        resultMsg = `[Action skills_list Failed]: ${e.message}`;
+                    }
+                }
+                else if (action.type === 'skill_view') {
+                    const name = action.args?.name || action.args?.skill_name || action.name || action.skill_name || '';
+                    const filePath = action.args?.file_path || action.file_path;
+                    log.info(`📖 Loading skill: ${colors.bold(name)}${filePath ? ` (${filePath})` : ''}`);
+                    try {
+                        const content = await skillManager.viewSkill(name, filePath, activeConversationId);
+                        resultMsg = `[Action skill_view("${name}") Success]:\n${content}`;
+                    } catch (e: any) {
+                        resultMsg = `[Action skill_view("${name}") Failed]: ${e.message}`;
+                    }
+                }
+                else if (action.type === 'skill_manage') {
+                    const act = action.args?.action || action.action;
+                    const name = action.args?.name || action.name || '';
+                    log.info(`🛠️ Skill Manage: ${colors.bold(act)} on ${colors.bold(name)}`);
+                    try {
+                        const res = await skillManager.manageSkill({
+                            action: act,
+                            name,
+                            content: action.args?.content || action.content,
+                            file_path: action.args?.file_path || action.file_path,
+                            old_string: action.args?.old_string || action.old_string,
+                            new_string: action.args?.new_string || action.new_string,
+                            scope: action.args?.scope || action.scope,
+                        });
+                        if (res.status === 'success') {
+                            resultMsg = `[Action skill_manage("${act}", "${name}") Success]: ${res.message}`;
+                        } else if (res.status === 'pending') {
+                            resultMsg = `[Action skill_manage("${act}", "${name}") Pending Approval]: ${res.message}`;
+                        } else {
+                            resultMsg = `[Action skill_manage("${act}", "${name}") Error]: ${res.message}`;
+                        }
+                    } catch (e: any) {
+                        resultMsg = `[Action skill_manage("${act}", "${name}") Failed]: ${e.message}`;
                     }
                 }
                 else if (action.type === 'activate_skill') {

@@ -518,6 +518,117 @@ describe('DeveloperAgent', () => {
         expect(result).toEqual({ success: true, summary: 'Done with skill' });
     });
 
+    it('should handle skills_list action', async () => {
+        vi.spyOn(skillManager, 'listSkills').mockResolvedValue('- **brainstorming**: Design spec [pinned]');
+
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'skills_list',
+                    args: { query: 'brain' }
+                },
+                actions: [],
+                message: 'Listing skills',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: Skills listed',
+                conversation_id: 'conv-123',
+            });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'skills-list-task',
+            taskInstruction: 'List skills',
+            auto: true,
+        });
+
+        expect(skillManager.listSkills).toHaveBeenCalledWith('brain');
+        expect(mockProvider.streamChat).toHaveBeenNthCalledWith(
+            2,
+            expect.stringContaining('[Action skills_list Success]:\n- **brainstorming**: Design spec [pinned]'),
+            expect.any(Object)
+        );
+        expect(result).toEqual({ success: true, summary: 'Skills listed' });
+    });
+
+    it('should handle skill_view action', async () => {
+        vi.spyOn(skillManager, 'viewSkill').mockResolvedValue('# Brainstorming Guidelines\nStep 1: Explore');
+
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'skill_view',
+                    args: { name: 'brainstorming', file_path: 'SKILL.md' }
+                },
+                actions: [],
+                message: 'Viewing skill',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: Skill loaded',
+                conversation_id: 'conv-123',
+            });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'skill-view-task',
+            taskInstruction: 'View skill',
+            auto: true,
+        });
+
+        expect(skillManager.viewSkill).toHaveBeenCalledWith('brainstorming', 'SKILL.md', expect.any(String));
+        expect(mockProvider.streamChat).toHaveBeenNthCalledWith(
+            2,
+            expect.stringContaining('[Action skill_view("brainstorming") Success]:\n# Brainstorming Guidelines'),
+            expect.any(Object)
+        );
+        expect(result).toEqual({ success: true, summary: 'Skill loaded' });
+    });
+
+    it('should handle skill_manage action', async () => {
+        vi.spyOn(skillManager, 'manageSkill').mockResolvedValue({
+            status: 'success',
+            message: "Skill 'my-new-skill' created successfully."
+        });
+
+        vi.mocked(mockProvider.streamChat)
+            .mockResolvedValueOnce({
+                action: {
+                    type: 'skill_manage',
+                    args: { action: 'create', name: 'my-new-skill', content: '# New Skill' }
+                },
+                actions: [],
+                message: 'Creating skill',
+                conversation_id: 'conv-123',
+            })
+            .mockResolvedValueOnce({
+                action: null,
+                actions: [],
+                message: 'TASK_COMPLETED: Skill created',
+                conversation_id: 'conv-123',
+            });
+
+        const result = await interactiveDeveloperAgent({
+            taskId: 'skill-manage-task',
+            taskInstruction: 'Create skill',
+            auto: true,
+        });
+
+        expect(skillManager.manageSkill).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'create',
+            name: 'my-new-skill',
+        }));
+        expect(mockProvider.streamChat).toHaveBeenNthCalledWith(
+            2,
+            expect.stringContaining('[Action skill_manage("create", "my-new-skill") Success]: Skill \'my-new-skill\' created successfully.'),
+            expect.any(Object)
+        );
+        expect(result).toEqual({ success: true, summary: 'Skill created' });
+    });
+
     it('should handle invoke_subagent action', async () => {
         vi.mocked(mockProvider.streamChat)
             .mockResolvedValueOnce({
