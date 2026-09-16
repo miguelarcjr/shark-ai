@@ -351,4 +351,36 @@ describe('StackSpotProvider', () => {
         expect(payload.user_prompt).toContain('Test message');
         expect(payload.user_prompt).toContain('--- ACTIVE SKILL: my-skill ---\nMy Skill Prompt Content');
     });
+
+    it('should honor options.systemPrompt when provided', async () => {
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
+            stackspot: {
+                agentId: 'test-agent-id',
+                useServerConversation: false
+            },
+            agents: {},
+            agentVersions: {}
+        } as any);
+        const provider = new StackSpotProvider('developer_agent');
+        vi.mocked(HistoryManager.getRawHistory).mockResolvedValue([]);
+
+        vi.mocked(sseClient.streamAgentResponse).mockImplementation(
+            async (url, payload, headers, callbacks) => {
+                if (callbacks?.onComplete) {
+                    callbacks.onComplete('{"actions":[]}', { conversation_id: 'custom-system-id' });
+                }
+            }
+        );
+
+        await provider.streamChat('Test message', {
+            agentType: 'developer_agent',
+            conversationId: 'custom-system-id',
+            systemPrompt: 'CUSTOM_DYNAMIC_SYSTEM_PROMPT_WITH_SKILLS'
+        });
+
+        const [, payload] = vi.mocked(sseClient.streamAgentResponse).mock.calls[0] as any;
+        expect(payload.user_prompt).toContain('SYSTEM INSTRUCTIONS:\nCUSTOM_DYNAMIC_SYSTEM_PROMPT_WITH_SKILLS');
+    });
 });
+
+

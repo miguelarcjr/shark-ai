@@ -85,7 +85,7 @@ export class StackSpotProvider implements AIProvider {
         }
 
         const isSubagent = !!process.env.SHARK_SUBAGENT_ROLE;
-        let systemPrompt = isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT;
+        let systemPrompt = options.systemPrompt || (isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT);
 
         const isFirstTurn = !options.conversationId;
         let finalPrompt = prompt;
@@ -97,7 +97,7 @@ export class StackSpotProvider implements AIProvider {
             if (rawHistory.length === 0) {
                 rawHistory.push({
                     role: 'system',
-                    content: isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT
+                    content: systemPrompt
                 });
             }
             rawHistory.push({ role: 'user', content: prompt });
@@ -116,7 +116,7 @@ export class StackSpotProvider implements AIProvider {
             history = orchestratedHistory;
 
             const skillExtension = skillManager.getSystemInstructionExtension();
-            const staticSystem = history.find(m => m.role === 'system')?.content || (isSubagent ? SUBAGENT_SYSTEM_PROMPT : UNIFIED_SYSTEM_PROMPT);
+            const staticSystem = history.find(m => m.role === 'system')?.content || systemPrompt;
             
             let compiledPrompt = `SYSTEM INSTRUCTIONS:\n${staticSystem}\n\n`;
             
