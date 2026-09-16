@@ -225,6 +225,151 @@ export const TOOL_ARGS_PROPERTIES = {
   }
 };
 
+function defineAction(type: string, argsProperties: Record<string, any>) {
+  return {
+    type: "object",
+    properties: {
+      type: {
+        type: "string",
+        enum: [type]
+      },
+      args: {
+        type: "object",
+        properties: argsProperties,
+        required: Object.keys(argsProperties),
+        additionalProperties: false
+      }
+    },
+    required: ["type", "args"],
+    additionalProperties: false
+  };
+}
+
+export const COORDINATOR_ACTION_SCHEMAS = [
+  defineAction("create_file", {
+    path: { type: "string" },
+    content: { type: "string" }
+  }),
+  defineAction("modify_file", {
+    path: { type: "string" },
+    start_anchor: { type: "string" },
+    end_anchor: { type: "string" },
+    content: { type: "string" }
+  }),
+  defineAction("read_file", {
+    path: { type: "string" }
+  }),
+  defineAction("list_files", {
+    path: { type: ["string", "null"] }
+  }),
+  defineAction("search_file", {
+    query: { type: "string" },
+    path: { type: ["string", "null"] }
+  }),
+  defineAction("search_code", {
+    query: { type: "string" },
+    path: { type: ["string", "null"] },
+    is_regex: { type: ["boolean", "null"] }
+  }),
+  defineAction("delete_file", {
+    path: { type: "string" }
+  }),
+  defineAction("run_command", {
+    command: { type: "string" }
+  }),
+  defineAction("tool_search", {
+    queries: { type: "array", items: { type: "string" } }
+  }),
+  defineAction("tool_describe", {
+    names: { type: "array", items: { type: "string" } }
+  }),
+  defineAction("tool_call", {
+    name: { type: "string" },
+    arguments: { type: ["string", "null"] }
+  }),
+  defineAction("skills_list", {
+    query: { type: ["string", "null"] }
+  }),
+  defineAction("skill_view", {
+    name: { type: "string" },
+    file_path: { type: ["string", "null"] }
+  }),
+  defineAction("skill_manage", {
+    action: { type: "string", enum: ["create", "edit", "patch", "write_file", "remove_file", "delete"] },
+    name: { type: "string" },
+    content: { type: ["string", "null"] },
+    old_string: { type: ["string", "null"] },
+    new_string: { type: ["string", "null"] },
+    file_path: { type: ["string", "null"] },
+    scope: { type: ["string", "null"], enum: ["local", "global", null] }
+  }),
+  defineAction("talk_with_user", {
+    content: { type: "string" }
+  }),
+  defineAction("activate_skill", {
+    name: { type: "string" }
+  }),
+  defineAction("invoke_subagent", {
+    task_file: { type: "string" }
+  }),
+  defineAction("complete_task", {
+    content: { type: "string" }
+  }),
+  defineAction("wait", {
+    duration_seconds: { type: "number" }
+  }),
+  defineAction("notify_user", {
+    content: { type: "string" }
+  }),
+  defineAction("memory", {
+    action: { type: "string", enum: ["add", "replace", "remove", "read"] },
+    target: { type: ["string", "null"], enum: ["memory", "user", null] },
+    content: { type: ["string", "null"] },
+    old_str: { type: ["string", "null"] }
+  }),
+  defineAction("session_search", {
+    query: { type: "string" },
+    limit: { type: ["number", "null"] }
+  })
+];
+
+export const SUBAGENT_ACTION_SCHEMAS = [
+  defineAction("create_file", {
+    path: { type: "string" },
+    content: { type: "string" }
+  }),
+  defineAction("modify_file", {
+    path: { type: "string" },
+    start_anchor: { type: "string" },
+    end_anchor: { type: "string" },
+    content: { type: "string" }
+  }),
+  defineAction("read_file", {
+    path: { type: "string" }
+  }),
+  defineAction("list_files", {
+    path: { type: ["string", "null"] }
+  }),
+  defineAction("search_file", {
+    query: { type: "string" },
+    path: { type: ["string", "null"] }
+  }),
+  defineAction("search_code", {
+    query: { type: "string" },
+    path: { type: ["string", "null"] },
+    is_regex: { type: ["boolean", "null"] }
+  }),
+  defineAction("delete_file", {
+    path: { type: "string" }
+  }),
+  defineAction("run_command", {
+    command: { type: "string" }
+  }),
+  defineAction("complete_task", {
+    content: { type: "string" }
+  })
+];
+
 export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "AgentResponse",
@@ -236,44 +381,8 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
     },
     "action": {
       "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": [
-            "create_file",
-            "modify_file",
-            "read_file",
-            "list_files",
-            "search_file",
-            "search_code",
-            "delete_file",
-            "run_command",
-            "tool_search",
-            "tool_describe",
-            "tool_call",
-            "skills_list",
-            "skill_view",
-            "skill_manage",
-            "talk_with_user",
-            "activate_skill",
-            "invoke_subagent",
-            "complete_task",
-            "wait",
-            "notify_user",
-            "memory",
-            "session_search"
-          ]
-        },
-        "args": {
-          "type": "object",
-          "description": "Objeto com os parâmetros específicos da ferramenta selecionada.",
-          "properties": TOOL_ARGS_PROPERTIES,
-          "required": Object.keys(TOOL_ARGS_PROPERTIES),
-          "additionalProperties": false
-        }
-      },
-      "required": ["type", "args"],
-      "additionalProperties": false
+      "description": "Ação selecionada e seus parâmetros específicos.",
+      "anyOf": COORDINATOR_ACTION_SCHEMAS
     },
     "summary": {
       "type": "string",
@@ -295,31 +404,8 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
     },
     "action": {
       "type": "object",
-      "properties": {
-        "type": {
-          "type": "string",
-          "enum": [
-            "create_file",
-            "modify_file",
-            "read_file",
-            "list_files",
-            "search_file",
-            "search_code",
-            "delete_file",
-            "run_command",
-            "complete_task"
-          ]
-        },
-        "args": {
-          "type": "object",
-          "description": "Objeto com os parâmetros específicos da ferramenta selecionada.",
-          "properties": TOOL_ARGS_PROPERTIES,
-          "required": Object.keys(TOOL_ARGS_PROPERTIES),
-          "additionalProperties": false
-        }
-      },
-      "required": ["type", "args"],
-      "additionalProperties": false
+      "description": "Ação selecionada e seus parâmetros específicos.",
+      "anyOf": SUBAGENT_ACTION_SCHEMAS
     },
     "summary": {
       "type": "string",

@@ -5,7 +5,8 @@ import { tui } from '../ui/tui.js';
 export const exportSchemaCommand = new Command('export-schema')
     .description('Outputs the agent response JSON Schema')
     .argument('[role]', 'The agent role: coordinator or subagent')
-    .action(async (role) => {
+    .option('-m, --minified', 'Output compact minified JSON on a single line')
+    .action(async (role, options) => {
         let selectedRole = role;
         if (!selectedRole) {
             selectedRole = await tui.select({
@@ -17,9 +18,13 @@ export const exportSchemaCommand = new Command('export-schema')
             });
         }
 
-        if (selectedRole === 'subagent' || selectedRole === 'child') {
-            console.log(JSON.stringify(SUBAGENT_RESPONSE_JSON_SCHEMA, null, 2));
+        const schema = (selectedRole === 'subagent' || selectedRole === 'child')
+            ? SUBAGENT_RESPONSE_JSON_SCHEMA
+            : COORDINATOR_RESPONSE_JSON_SCHEMA;
+
+        if (options.minified) {
+            console.log(JSON.stringify(schema));
         } else {
-            console.log(JSON.stringify(COORDINATOR_RESPONSE_JSON_SCHEMA, null, 2));
+            console.log(JSON.stringify(schema, null, 2));
         }
     });

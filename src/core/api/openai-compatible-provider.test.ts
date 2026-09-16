@@ -307,7 +307,8 @@ describe('OpenAICompatibleProvider', () => {
         expect(schema.properties.actions).toBeUndefined();
         expect(schema.required).toContain('action');
         expect(schema.required).not.toContain('actions');
-        expect(schema.properties.action.properties.type.enum).toContain('tool_call');
+        const anyOfTypes = (schema.properties.action.anyOf || []).map((s: any) => s.properties?.type?.const || s.properties?.type?.enum?.[0]);
+        expect(anyOfTypes).toContain('tool_call');
     });
 
     it('should dynamically append skill extension to system message without modifying saved history', async () => {
@@ -397,7 +398,8 @@ describe('OpenAICompatibleProvider', () => {
             hasMcpServers: false
         });
 
-        const types = capturedPayload.response_format.json_schema.schema.properties.action.properties.type.enum;
+        const actionSchema = capturedPayload.response_format.json_schema.schema.properties.action;
+        const types = (actionSchema.anyOf || []).map((s: any) => s.properties?.type?.const || s.properties?.type?.enum?.[0]);
         expect(types).not.toContain('tool_search');
         expect(types).not.toContain('tool_describe');
         expect(types).not.toContain('tool_call');
@@ -430,7 +432,8 @@ describe('OpenAICompatibleProvider', () => {
             hasMcpServers: true
         });
 
-        const types = capturedPayload.response_format.json_schema.schema.properties.action.properties.type.enum;
+        const actionSchema = capturedPayload.response_format.json_schema.schema.properties.action;
+        const types = (actionSchema.anyOf || []).map((s: any) => s.properties?.type?.const || s.properties?.type?.enum?.[0]);
         expect(types).toContain('tool_search');
         expect(types).toContain('tool_describe');
         expect(types).toContain('tool_call');

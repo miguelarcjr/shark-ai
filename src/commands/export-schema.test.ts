@@ -27,9 +27,8 @@ describe('Export Schema Command', () => {
         expect(parsed.title).toBe('AgentResponse');
         expect(parsed.additionalProperties).toBe(false);
         expect(parsed.required).toEqual(['thought', 'action', 'summary']);
-        expect(parsed.properties.action.additionalProperties).toBe(false);
-        expect(parsed.properties.action.properties.args.additionalProperties).toBe(false);
-        expect(parsed.properties.action.properties.args.required.length).toBeGreaterThan(15);
+        expect(Array.isArray(parsed.properties.action.anyOf)).toBe(true);
+        expect(parsed.properties.action.anyOf.length).toBeGreaterThan(15);
 
         logSpy.mockRestore();
     });

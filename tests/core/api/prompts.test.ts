@@ -16,7 +16,8 @@ describe('Prompts and Schemas', () => {
     });
 
     it('should have only task-level actions in subagent schema', () => {
-        const subagentActions = SUBAGENT_RESPONSE_JSON_SCHEMA.properties.action.properties.type.enum;
+        const subagentActions = (SUBAGENT_RESPONSE_JSON_SCHEMA.properties.action.anyOf || [])
+            .map((s: any) => s.properties?.type?.const || s.properties?.type?.enum?.[0]);
         
         // Allowed
         expect(subagentActions).toContain('read_file');
@@ -32,7 +33,8 @@ describe('Prompts and Schemas', () => {
     });
 
     it('should keep all orchestration tools in coordinator schema', () => {
-        const coordinatorActions = COORDINATOR_RESPONSE_JSON_SCHEMA.properties.action.properties.type.enum;
+        const coordinatorActions = (COORDINATOR_RESPONSE_JSON_SCHEMA.properties.action.anyOf || [])
+            .map((s: any) => s.properties?.type?.const || s.properties?.type?.enum?.[0]);
         expect(coordinatorActions).toContain('invoke_subagent');
         expect(coordinatorActions).toContain('read_file');
         expect(coordinatorActions).toContain('talk_with_user');

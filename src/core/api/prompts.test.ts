@@ -7,20 +7,27 @@ describe('prompts', () => {
         expect((TOOL_ARGS_PROPERTIES as any).old_str.type).toEqual(['string', 'null']);
     });
 
-    it('deve ter conformidade estrita com OpenAI Structured Outputs', () => {
+    it('deve ter conformidade estrita com OpenAI Structured Outputs usando anyOf', () => {
         const schema = COORDINATOR_RESPONSE_JSON_SCHEMA as any;
         expect(schema.additionalProperties).toBe(false);
         expect(schema.required).toEqual(['thought', 'action', 'summary']);
-        expect(schema.properties.action.additionalProperties).toBe(false);
-        expect(schema.properties.action.required).toEqual(['type', 'args']);
-        expect(schema.properties.action.properties.args.additionalProperties).toBe(false);
-        expect(schema.properties.action.properties.args.required).toEqual(Object.keys(TOOL_ARGS_PROPERTIES));
-        expect((TOOL_ARGS_PROPERTIES as any).arguments.type).toEqual(['string', 'null']);
+        expect(Array.isArray(schema.properties.action.anyOf)).toBe(true);
+        expect(schema.properties.action.anyOf.length).toBeGreaterThan(15);
+
+        // Check each action branch in anyOf
+        for (const branch of schema.properties.action.anyOf) {
+            expect(branch.additionalProperties).toBe(false);
+            expect(branch.required).toEqual(['type', 'args']);
+            expect(branch.properties.args.additionalProperties).toBe(false);
+            expect(branch.properties.args.required).toBeDefined();
+        }
     });
 
-    it('deve incluir old_str no COORDINATOR_RESPONSE_JSON_SCHEMA', () => {
-        const schemaProps = (COORDINATOR_RESPONSE_JSON_SCHEMA as any).properties.action.properties.args.properties;
-        expect(schemaProps).toHaveProperty('old_str');
+    it('deve incluir old_str no COORDINATOR_RESPONSE_JSON_SCHEMA sob memory', () => {
+        const schema = COORDINATOR_RESPONSE_JSON_SCHEMA as any;
+        const memoryBranch = schema.properties.action.anyOf.find((b: any) => b.properties.type.enum.includes('memory'));
+        expect(memoryBranch).toBeDefined();
+        expect(memoryBranch.properties.args.properties).toHaveProperty('old_str');
     });
 
     it('deve renderizar <user_profile> e <project_memory> e as regras de governança de memória quando snapshot for fornecido', () => {
@@ -55,9 +62,10 @@ describe('prompts', () => {
         expect(TOOL_ARGS_PROPERTIES).toHaveProperty('new_string');
         expect(TOOL_ARGS_PROPERTIES).toHaveProperty('scope');
 
-        const actionTypes = (COORDINATOR_RESPONSE_JSON_SCHEMA as any).properties.action.properties.type.enum;
-        expect(actionTypes).toContain('skills_list');
-        expect(actionTypes).toContain('skill_view');
-        expect(actionTypes).toContain('skill_manage');
+        const schema = COORDINATOR_RESPONSE_JSON_SCHEMA as any;
+        const allTypes = schema.properties.action.anyOf.map((b: any) => b.properties.type.enum[0]);
+        expect(allTypes).toContain('skills_list');
+        expect(allTypes).toContain('skill_view');
+        expect(allTypes).toContain('skill_manage');
     });
 });

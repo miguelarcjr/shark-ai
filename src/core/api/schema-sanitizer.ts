@@ -16,6 +16,15 @@ export function sanitizeResponseSchema(
         (t: string) => !['tool_search', 'tool_describe', 'tool_call'].includes(t)
       );
     }
+    if (Array.isArray(actionProp?.anyOf)) {
+      actionProp.anyOf = actionProp.anyOf.filter((branch: any) => {
+        const typeEnum = branch?.properties?.type?.enum;
+        if (Array.isArray(typeEnum)) {
+          return !typeEnum.some((t: string) => ['tool_search', 'tool_describe', 'tool_call'].includes(t));
+        }
+        return true;
+      });
+    }
   }
 
   return cloned;
