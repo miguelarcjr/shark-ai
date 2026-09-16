@@ -60,6 +60,9 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         'ast_add_import', 'ast_remove_import', 'ast_organize_imports'
     ]),
     args: z.record(z.any()).nullable().optional(),
+    arguments: z.union([z.record(z.any()), z.string()]).nullable().optional(),
+    names: z.array(z.string()).nullable().optional(),
+    queries: z.array(z.string()).nullable().optional(),
     path: z.string().nullable().optional(), // Nullable for strict mode combatibility
     content: z.string().nullable().optional(),
     line_range: z.array(z.number()).nullable().optional(),
