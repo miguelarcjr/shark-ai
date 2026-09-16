@@ -149,4 +149,31 @@ describe('SkillManager', () => {
             expect(skills).toEqual([]);
         });
     });
+
+    describe('getAvailableSkillsMetadata and formatSkillsIndex', () => {
+        it('extracts metadata (name and description) from skills with frontmatter and respects local precedence', async () => {
+            const metadata = await skillManager.getAvailableSkillsMetadata();
+            expect(metadata).toEqual([
+                { name: 'test-global', description: 'Global test' },
+                { name: 'test-local', description: 'Local test' },
+                { name: 'test-override', description: 'Local override' }
+            ]);
+        });
+
+        it('formats skills index into rich markdown bullet points', () => {
+            const skills = [
+                { name: 'brainstorming', description: 'Explora ideias antes de codificar' },
+                { name: 'tdd', description: 'Test driven development' }
+            ];
+            const formatted = skillManager.formatSkillsIndex(skills);
+            expect(formatted).toBe(
+                '- **brainstorming**: Explora ideias antes de codificar\n- **tdd**: Test driven development'
+            );
+        });
+
+        it('returns empty string when formatting empty skills list', () => {
+            expect(skillManager.formatSkillsIndex([])).toBe('');
+        });
+    });
 });
+

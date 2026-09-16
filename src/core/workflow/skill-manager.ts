@@ -2,9 +2,33 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 
+export interface SkillMetadata {
+    name: string;
+    description: string;
+}
+
 export class SkillManager {
     private activeSkills: Set<string> = new Set();
     private skillPrompts: Map<string, string> = new Map();
+
+    parseSkillFrontmatter(content: string): Partial<SkillMetadata> {
+        const match = content.match(/^---[\r\n]+([\s\S]*?)[\r\n]+---/);
+        if (!match) return {};
+        const yamlBlock = match[1];
+        const result: Partial<SkillMetadata> = {};
+
+        const nameMatch = yamlBlock.match(/(?:^|\n)name:\s*["']?([^"'\r\n]+)["']?/);
+        if (nameMatch) {
+            result.name = nameMatch[1].trim();
+        }
+
+        const descMatch = yamlBlock.match(/(?:^|\n)description:\s*(?:["']([\s\S]*?)["']|([^\r\n]+))/);
+        if (descMatch) {
+            result.description = (descMatch[1] || descMatch[2] || '').trim();
+        }
+
+        return result;
+    }
 
     async loadSkillFromFile(filePath: string): Promise<string> {
         const content = await fs.readFile(filePath, 'utf-8');
@@ -54,22 +78,31 @@ export class SkillManager {
     }
 
     async listAvailableSkills(): Promise<string[]> {
+        const metadata = await this.getAvailableSkillsMetadata();
+        return metadata.map(m => m.name);
+    }
+
+    async getAvailableSkillsMetadata(): Promise<SkillMetadata[]> {
         const globalSkillsDir = path.join(os.homedir(), '.shark', 'skills');
         const localSkillsDir = path.join(process.cwd(), '.agents', 'skills');
 
-        const skillNames = new Set<string>();
+        const skillsMap = new Map<string, SkillMetadata>();
 
-        const readDir = async (dir: string) => {
+        const scanDir = async (dir: string) => {
             try {
                 const entries = await fs.readdir(dir, { withFileTypes: true });
                 for (const entry of entries) {
                     if (entry.isDirectory()) {
                         const skillMdPath = path.join(dir, entry.name, 'SKILL.md');
                         try {
-                            await fs.access(skillMdPath);
-                            skillNames.add(entry.name);
+                            const content = await fs.readFile(skillMdPath, 'utf-8');
+                            const parsed = this.parseSkillFrontmatter(content);
+                            const name = parsed.name || entry.name;
+                            const description = parsed.description || '';
+                            // Insert or update (local directory scanned later will override global)
+                            skillsMap.set(entry.name, { name, description });
                         } catch {
-                            // No SKILL.md — not a valid skill directory
+                            // No SKILL.md or read error — silently skip
                         }
                     }
                 }
@@ -78,10 +111,18 @@ export class SkillManager {
             }
         };
 
-        await readDir(globalSkillsDir);
-        await readDir(localSkillsDir);
+        // Scan global first, then local so local overrides global
+        await scanDir(globalSkillsDir);
+        await scanDir(localSkillsDir);
 
-        return Array.from(skillNames).sort();
+        return Array.from(skillsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    }
+
+    formatSkillsIndex(skills: SkillMetadata[]): string {
+        if (!skills || skills.length === 0) return '';
+        return skills
+            .map(s => s.description ? `- **${s.name}**: ${s.description}` : `- **${s.name}**`)
+            .join('\n');
     }
 
     reset() {
@@ -91,3 +132,4 @@ export class SkillManager {
 }
 
 export const skillManager = new SkillManager();
+
