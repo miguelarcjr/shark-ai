@@ -31,6 +31,10 @@ export const ConfigSchema = z.object({
         dev: z.string().optional(),
         subagent: z.string().optional(),
     }).default({}),
+    skills: z.object({
+        write_approval: z.boolean().default(false),
+        pinned: z.array(z.string()).default([]),
+    }).default({}),
     agentVersions: z.object({
         dev: z.string().optional(),
         subagent: z.string().optional(),
