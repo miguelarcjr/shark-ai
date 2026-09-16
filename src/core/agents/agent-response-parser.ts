@@ -359,12 +359,14 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         });
     }
 
-    if (!normalizedAction && !normalizedActions) {
-        FileLogger.log('PARSER', 'No Action/Actions Found - Constructing Default');
-        const content = parsedObj.message || (typeof parsedObj === 'object' ? JSON.stringify(parsedObj) : String(parsedObj));
+    const hasValidType = (act: any) => act && typeof act === 'object' && typeof act.type === 'string' && act.type.trim().length > 0;
+
+    if (!hasValidType(normalizedAction) && (!Array.isArray(normalizedActions) || !normalizedActions.some(hasValidType))) {
+        FileLogger.log('PARSER', 'No Action/Actions Found or Missing Type - Constructing Default');
+        const content = normalizedAction?.content || parsedObj.content || parsedObj.message || (typeof parsedObj === 'object' ? JSON.stringify(parsedObj) : String(parsedObj));
         normalizedAction = {
             type: 'talk_with_user',
-            content: `[SYSTEM ERROR]: Nenhum bloco 'action' foi fornecido na sua resposta JSON. Você deve obrigatoriamente especificar uma ação com a ferramenta a ser executada (ex: read_file, create_file, modify_file, run_command, search_code, complete_task). Conteúdo recebido: ${content}`,
+            content: typeof content === 'string' ? content : JSON.stringify(content),
             path: '',
             isSynthetic: true
         };
