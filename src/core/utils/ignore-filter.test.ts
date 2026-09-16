@@ -15,9 +15,11 @@ describe('IgnoreFilterManager', () => {
         if (fs.existsSync(testDir)) fs.rmSync(testDir, { recursive: true, force: true });
     });
 
-    it('should ignore default paths like .shark and node_modules even without .gitignore', () => {
+    it('should ignore default paths like .shark, _sharkrc, logs, and node_modules even without .gitignore', () => {
         const filter = new IgnoreFilterManager(testDir);
         expect(filter.isIgnored('.shark/membox/graph.json')).toBe(true);
+        expect(filter.isIgnored('_sharkrc/history/123.json')).toBe(true);
+        expect(filter.isIgnored('shark-debug.log')).toBe(true);
         expect(filter.isIgnored('node_modules/express/index.js')).toBe(true);
         expect(filter.isIgnored('.git/config')).toBe(true);
         expect(filter.isIgnored('src/index.ts')).toBe(false);

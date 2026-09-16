@@ -19,15 +19,17 @@ describe('agent-tools: handleRunCommand', () => {
 });
 
 describe('agent-tools: search functions', () => {
-    it('handleSearchFile excludes .shark and gitignored files', () => {
+    it('handleSearchFile excludes .shark, _sharkrc and gitignored files', () => {
         const result = handleSearchFile('**/*');
         expect(result).not.toContain('.shark');
+        expect(result).not.toContain('_sharkrc');
         expect(result).not.toContain('node_modules');
     });
 
-    it('handleSearchCode does not search inside .shark directory', () => {
+    it('handleSearchCode does not search inside .shark or _sharkrc directory', () => {
         const result = handleSearchCode('**/*', 'membox', false);
         expect(result).not.toContain('.shark');
+        expect(result).not.toContain('_sharkrc');
     });
 });
 

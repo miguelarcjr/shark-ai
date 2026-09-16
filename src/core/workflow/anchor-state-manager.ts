@@ -160,8 +160,10 @@ export class AnchorStateManager {
         let cached = this.cache.get(absolutePath);
 
         if (!cached || cached.hash !== diskHash) {
-            const hasTrailingNewline = diskContent.endsWith('\n');
-            const lines = hasTrailingNewline ? diskContent.slice(0, -1).split('\n') : diskContent.split('\n');
+            const normalizedDiskContent = diskContent.replace(/\r\n/g, '\n');
+            const hasTrailingNewline = normalizedDiskContent.endsWith('\n');
+            const cleanContent = hasTrailingNewline ? normalizedDiskContent.slice(0, -1) : normalizedDiskContent;
+            const lines = cleanContent.length > 0 ? cleanContent.split('\n') : [];
             const usedAnchors = new Set<string>();
 
             const lineStates = lines.map(line => {
@@ -173,12 +175,14 @@ export class AnchorStateManager {
             this.cache.set(absolutePath, cached);
         }
 
-        return cached.lineStates.map(ls => `${ls.anchor}§${ls.text}`).join('\n');
+        const anchoredLines = cached.lineStates.map(ls => `${ls.anchor}§${ls.text}`);
+        return [...anchoredLines, 'EOF§'].join('\n');
     }
 
     private sanitizeContent(content: string): string {
         if (!content) return content;
-        const lines = content.split('\n');
+        const normalized = content.replace(/\r\n/g, '\n');
+        const lines = normalized.split('\n');
         const sanitizedLines = lines.map(line => line.replace(/^[a-zA-Z0-9_]+§/, ''));
         return sanitizedLines.join('\n');
     }
@@ -193,6 +197,35 @@ export class AnchorStateManager {
         }
 
         const lineStates = cached.lineStates;
+
+        // Support virtual EOF anchor for cleanly appending or replacing to end of file
+        if (startAnchor === 'EOF' || endAnchor === 'EOF') {
+            const originalContent = fs.readFileSync(absolutePath, 'utf8');
+            const normalizedOriginal = originalContent.replace(/\r\n/g, '\n');
+            const hasTrailingNewline = normalizedOriginal.endsWith('\n');
+            const sanitizedInput = this.sanitizeContent(content);
+            const cleanContent = sanitizedInput.endsWith('\n') ? sanitizedInput.slice(0, -1) : sanitizedInput;
+            const newEditLines = cleanContent.split('\n');
+            const oldLines = lineStates.map(ls => ls.text);
+
+            let updatedLines: string[];
+            if (startAnchor === 'EOF') {
+                // Append directly to the end of the file
+                updatedLines = [...oldLines, ...newEditLines];
+            } else {
+                // Replace from startAnchor through the end of the file
+                const startIndex = lineStates.findIndex(ls => ls.anchor === startAnchor);
+                if (startIndex === -1) {
+                    throw new Error(`Start anchor "${startAnchor}" not found`);
+                }
+                updatedLines = [...oldLines.slice(0, startIndex), ...newEditLines];
+            }
+
+            const fileContentToWrite = updatedLines.join('\n') + (hasTrailingNewline ? '\n' : '');
+            fs.writeFileSync(absolutePath, fileContentToWrite, 'utf8');
+            this.cache.delete(absolutePath);
+            return;
+        }
 
         const startIndex = lineStates.findIndex(ls => ls.anchor === startAnchor);
         if (startIndex === -1) {
@@ -209,7 +242,8 @@ export class AnchorStateManager {
         }
 
         const originalContent = fs.readFileSync(absolutePath, 'utf8');
-        const hasTrailingNewline = originalContent.endsWith('\n');
+        const normalizedOriginal = originalContent.replace(/\r\n/g, '\n');
+        const hasTrailingNewline = normalizedOriginal.endsWith('\n');
 
         const sanitizedInput = this.sanitizeContent(content);
         const oldLines = lineStates.map(ls => ls.text);

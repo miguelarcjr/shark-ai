@@ -9,7 +9,10 @@ describe('TUI Wrapper', () => {
         vi.resetAllMocks();
         // Mock process.exit to prevent test runner termination
         vi.spyOn(process, 'exit').mockImplementation((() => { }) as any);
+        Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+        Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
     });
+
 
     afterEach(() => {
         vi.restoreAllMocks();

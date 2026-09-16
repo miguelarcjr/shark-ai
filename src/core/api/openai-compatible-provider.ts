@@ -24,10 +24,10 @@ export function compactToolOutputRetroactively(content: string): string {
     
     // 2. read_file output
     if (content.startsWith('[Action read_file(')) {
-        const parts = content.split('Success]:\n');
-        if (parts.length > 1) {
-            const prefix = parts[0] + 'Success (Signatures Only)]:\n';
-            const fileCode = parts.slice(1).join('Success]:\n');
+        const match = content.match(/^(\[Action read_file\([^)]+\)\s+Success[^\]]*\]:\n)([\s\S]*)$/);
+        if (match) {
+            const prefix = match[1].replace(/Success[^\]]*/, 'Success (Signatures Only)');
+            const fileCode = match[2];
             
             const lines = fileCode.split('\n');
             let signatureText = '';
@@ -112,6 +112,7 @@ interface OpenAIConfig {
     apiKey: string;
     model: string;
     useStructuredOutputs: boolean;
+    stream?: boolean;
 }
 
 export class OpenAICompatibleProvider implements AIProvider {
@@ -180,10 +181,11 @@ export class OpenAICompatibleProvider implements AIProvider {
             requestMessages.push(newPromptMsg);
         }
 
+        const useStream = this.options.stream !== false;
         const requestPayload: any = {
             model: this.options.model,
             messages: requestMessages,
-            stream: true,
+            stream: useStream,
             temperature: 0.2
         };
 
@@ -240,71 +242,88 @@ export class OpenAICompatibleProvider implements AIProvider {
                 throw new Error(`OpenAI API request failed: ${res.status} ${res.statusText} - ${errBody}`);
             }
 
-            reader = res.body?.getReader();
-            if (!reader) {
-                clearTimeout(timeoutId);
-                throw new Error('Response body reader is undefined');
-            }
-
-            const decoder = new TextDecoder();
             let fullContent = '';
-            let done = false;
-            let buffer = '';
+            if (useStream) {
+                reader = res.body?.getReader();
+                if (!reader) {
+                    clearTimeout(timeoutId);
+                    throw new Error('Response body reader is undefined');
+                }
 
-            while (!done) {
-                const { value, done: doneReading } = await reader.read();
-                done = doneReading;
-                if (value) {
-                    buffer += decoder.decode(value, { stream: !done });
-                    const lines = buffer.split('\n');
-                    buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+                const decoder = new TextDecoder();
+                let done = false;
+                let buffer = '';
 
-                    for (const line of lines) {
-                        const clean = line.trim();
-                        if (!clean || clean === 'data: [DONE]') continue;
-                        if (clean.startsWith('data: ')) {
-                            let parsed: any;
-                            try {
-                                parsed = JSON.parse(clean.substring(6));
-                            } catch {
-                                // ignore JSON parse error
-                                continue;
-                            }
-                            if (parsed && parsed.error) {
-                                throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
-                            }
-                            const delta = parsed?.choices?.[0]?.delta?.content || '';
-                            if (delta) {
-                                fullContent += delta;
-                                if (options.onChunk) {
-                                    options.onChunk(delta);
+                while (!done) {
+                    const { value, done: doneReading } = await reader.read();
+                    done = doneReading;
+                    if (value) {
+                        buffer += decoder.decode(value, { stream: !done });
+                        const lines = buffer.split('\n');
+                        buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+
+                        for (const line of lines) {
+                            const clean = line.trim();
+                            if (!clean || clean === 'data: [DONE]') continue;
+                            if (clean.startsWith('data: ')) {
+                                let parsed: any;
+                                try {
+                                    parsed = JSON.parse(clean.substring(6));
+                                } catch {
+                                    // ignore JSON parse error
+                                    continue;
+                                }
+                                if (parsed && parsed.error) {
+                                    throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
+                                }
+                                const delta = parsed?.choices?.[0]?.delta?.content || '';
+                                if (delta) {
+                                    fullContent += delta;
+                                    if (options.onChunk) {
+                                        options.onChunk(delta);
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // Process any remaining data in buffer
-            if (buffer) {
-                const clean = buffer.trim();
-                if (clean && clean !== 'data: [DONE]' && clean.startsWith('data: ')) {
-                    let parsed: any;
-                    try {
-                        parsed = JSON.parse(clean.substring(6));
-                    } catch {
-                        // ignore JSON parse error
-                    }
-                    if (parsed && parsed.error) {
-                        throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
-                    }
-                    const delta = parsed?.choices?.[0]?.delta?.content || '';
-                    if (delta) {
-                        fullContent += delta;
-                        if (options.onChunk) {
-                            options.onChunk(delta);
+                // Process any remaining data in buffer
+                if (buffer) {
+                    const clean = buffer.trim();
+                    if (clean && clean !== 'data: [DONE]' && clean.startsWith('data: ')) {
+                        let parsed: any;
+                        try {
+                            parsed = JSON.parse(clean.substring(6));
+                        } catch {
+                            // ignore JSON parse error
+                        }
+                        if (parsed && parsed.error) {
+                            throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
+                        }
+                        const delta = parsed?.choices?.[0]?.delta?.content || '';
+                        if (delta) {
+                            fullContent += delta;
+                            if (options.onChunk) {
+                                options.onChunk(delta);
+                            }
                         }
                     }
+                }
+            } else {
+                const text = await res.text();
+                let parsed: any;
+                try {
+                    parsed = JSON.parse(text.trim());
+                } catch (e: any) {
+                    throw new Error(`Failed to parse OpenAI API non-streaming JSON: ${e.message} - Body: ${text.slice(0, 200)}`);
+                }
+                if (parsed && parsed.error) {
+                    throw new Error(`OpenAI API Error: ${JSON.stringify(parsed.error)}`);
+                }
+                fullContent = parsed.choices?.[0]?.message?.content || '';
+                if (options.onChunk && fullContent) {
+                    options.onChunk(fullContent);
                 }
             }
 

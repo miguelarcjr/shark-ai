@@ -219,10 +219,12 @@ export function handleSearchCode(
             '**/node_modules/**',
             '**/.git/**',
             '**/.shark/**',
+            '**/_sharkrc/**',
             '**/dist/**',
             '**/build/**',
             '**/.next/**',
             '**/coverage/**',
+            '**/*.log',
             '**/*.map',
             '**/*.min.js',
             '**/*.bundle.js'

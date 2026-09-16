@@ -320,6 +320,26 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         normalizedActions = [normalizedAction];
     }
 
+    // Hoist args onto action object so top-level properties (start_anchor, end_anchor, path, etc.) are populated early
+    const normalizeActionObject = (act: any) => {
+        if (!act || typeof act !== 'object') return act;
+        if (act.args && typeof act.args === 'object') {
+            for (const [k, v] of Object.entries(act.args)) {
+                if (k !== 'type' && act[k] === undefined && v !== null && v !== undefined) {
+                    act[k] = v;
+                }
+            }
+        }
+        return act;
+    };
+
+    if (normalizedAction) {
+        normalizedAction = normalizeActionObject(normalizedAction);
+    }
+    if (Array.isArray(normalizedActions)) {
+        normalizedActions = normalizedActions.map(act => normalizeActionObject(act));
+    }
+
     // Auto-serialize content if the LLM outputted an object instead of a string (Issue 4 / parser robustness)
     if (normalizedAction && typeof normalizedAction.content === 'object' && normalizedAction.content !== null) {
         normalizedAction.content = JSON.stringify(normalizedAction.content);
@@ -338,7 +358,7 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         const content = parsedObj.message || (typeof parsedObj === 'object' ? JSON.stringify(parsedObj) : String(parsedObj));
         normalizedAction = {
             type: 'talk_with_user',
-            content,
+            content: `[SYSTEM ERROR]: Nenhum bloco 'action' foi fornecido na sua resposta JSON. Você deve obrigatoriamente especificar uma ação com a ferramenta a ser executada (ex: read_file, create_file, modify_file, run_command, search_code, complete_task). Conteúdo recebido: ${content}`,
             path: '',
             isSynthetic: true
         };
@@ -370,8 +390,10 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
 
     // Validate tool-specific requirements for Self-Teaching Errors
     if (normalizedAction && normalizedAction.type === 'modify_file') {
-        const hasStart = normalizedAction.start_anchor !== undefined && normalizedAction.start_anchor !== null && String(normalizedAction.start_anchor).trim() !== '';
-        const hasEnd = normalizedAction.end_anchor !== undefined && normalizedAction.end_anchor !== null && String(normalizedAction.end_anchor).trim() !== '';
+        const startAnchor = normalizedAction.start_anchor ?? normalizedAction.args?.start_anchor;
+        const endAnchor = normalizedAction.end_anchor ?? normalizedAction.args?.end_anchor;
+        const hasStart = startAnchor !== undefined && startAnchor !== null && String(startAnchor).trim() !== '';
+        const hasEnd = endAnchor !== undefined && endAnchor !== null && String(endAnchor).trim() !== '';
         if (!hasStart || !hasEnd) {
             const errorMsg = `[Action modify_file Failed]: Parâmetros inválidos em 'args'.\nCampos obrigatórios: { "path": string, "start_anchor": string, "end_anchor": string, "content": string }.\n💡 INSTRUÇÃO DE RECUPERAÇÃO:\n- Se você ainda não inspecionou este arquivo, execute 'read_file' primeiro.\n- O 'read_file' retorna linhas no formato 'palavra_ancora§conteúdo'.\n- Preencha 'start_anchor' e 'end_anchor' com as palavras-âncora exatas e envie apenas o código de substituição limpo em 'content'.`;
             return {

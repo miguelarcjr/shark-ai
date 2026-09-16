@@ -16,7 +16,8 @@ export const ConfigSchema = z.object({
         baseURL: z.string().default('http://localhost:11434/v1'),
         apiKey: z.string().default('ollama'),
         model: z.string().default('llama3'),
-        useStructuredOutputs: z.boolean().default(true)
+        useStructuredOutputs: z.boolean().default(true),
+        stream: z.boolean().default(true)
     }).optional(),
     preferredStack: z.array(z.string()).default([]),
     memory: z.object({

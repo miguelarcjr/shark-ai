@@ -16,6 +16,9 @@ export class IgnoreFilterManager {
             '.shark',
             '.shark/**',
             '**/.shark/**',
+            '_sharkrc',
+            '_sharkrc/**',
+            '**/_sharkrc/**',
             '.git',
             '**/.git/**',
             'node_modules',
@@ -28,6 +31,8 @@ export class IgnoreFilterManager {
             '**/.next/**',
             'coverage',
             '**/coverage/**',
+            '*.log',
+            '**/*.log',
             '**/*.map',
             '**/*.min.js',
             '**/*.bundle.js'
@@ -38,7 +43,7 @@ export class IgnoreFilterManager {
             const gitignoreFiles = fg.sync('**/.gitignore', {
                 cwd: workspaceRoot,
                 dot: true,
-                ignore: ['**/node_modules/**', '**/.git/**', '**/.shark/**']
+                ignore: ['**/node_modules/**', '**/.git/**', '**/.shark/**', '**/_sharkrc/**']
             });
 
             for (const file of gitignoreFiles) {

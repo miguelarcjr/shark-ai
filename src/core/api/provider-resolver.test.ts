@@ -44,7 +44,8 @@ describe('ProviderResolver', () => {
             baseURL: 'http://custom-url/v1',
             apiKey: 'custom-key',
             model: 'custom-model',
-            useStructuredOutputs: false
+            useStructuredOutputs: false,
+            stream: true
         });
     });
 
@@ -60,7 +61,8 @@ describe('ProviderResolver', () => {
             baseURL: 'http://localhost:11434/v1',
             apiKey: 'ollama',
             model: 'llama3',
-            useStructuredOutputs: true
+            useStructuredOutputs: true,
+            stream: true
         });
     });
 });

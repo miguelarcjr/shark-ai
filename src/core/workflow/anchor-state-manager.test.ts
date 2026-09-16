@@ -19,12 +19,13 @@ describe('AnchorStateManager', () => {
         try {
             const anchored = manager.getAnchoredContent(testFile);
             const lines = anchored.split('\n');
-            expect(lines).toHaveLength(3);
+            expect(lines).toHaveLength(4);
             
             // Check that they follow the format: <anchor>§<content>
             expect(lines[0]).toMatch(/^\w+§line1$/);
             expect(lines[1]).toMatch(/^\w+§line2$/);
             expect(lines[2]).toMatch(/^\w+§line3$/);
+            expect(lines[3]).toBe('EOF§');
 
             // Anchors should be unique
             const anchor1 = lines[0].split('§')[0];
@@ -73,7 +74,8 @@ describe('AnchorStateManager', () => {
             // Verify the new anchored content
             const afterRead = manager.getAnchoredContent(testFile);
             const linesAfter = afterRead.split('\n');
-            expect(linesAfter).toHaveLength(4);
+            expect(linesAfter).toHaveLength(5);
+            expect(linesAfter[4]).toBe('EOF§');
 
             // Unchanged lines (line1, line4) should preserve their anchors
             expect(linesAfter[0]).toBe(`${anchor1}§line1`);
@@ -117,7 +119,8 @@ describe('AnchorStateManager', () => {
             // Verify the new anchored content
             const afterRead = manager.getAnchoredContent(testFile);
             const linesAfter = afterRead.split('\n');
-            expect(linesAfter).toHaveLength(5);
+            expect(linesAfter).toHaveLength(6);
+            expect(linesAfter[5]).toBe('EOF§');
 
             // Anchors of unchanged lines before and after the insertion remain exactly unchanged
             const finalAnchors = linesAfter.map(l => l.split('§')[0]);
@@ -140,7 +143,7 @@ describe('AnchorStateManager', () => {
 
             // There are no duplicate anchors in the updated file state
             const uniqueAnchors = new Set(finalAnchors);
-            expect(uniqueAnchors.size).toBe(5);
+            expect(uniqueAnchors.size).toBe(6);
 
             // Assert that the new anchor is indeed unique and not matching any existing one
             expect(newAnchor).not.toBe(anchor1);
@@ -231,6 +234,45 @@ describe('AnchorStateManager', () => {
             expect(secondRead).toContain('updated_gamma');
             expect(secondRead).toContain('updated_delta');
             expect(secondRead).not.toContain('initial_alpha');
+        } finally {
+            if (fs.existsSync(testFile)) {
+                fs.unlinkSync(testFile);
+            }
+        }
+    });
+
+    it('should cleanly append content to the end of the file when startAnchor and endAnchor are EOF', () => {
+        fs.writeFileSync(testFile, 'line1\nline2');
+        try {
+            manager.applyAnchoredEdit(testFile, 'EOF', 'EOF', 'line3\nline4');
+            const onDisk = fs.readFileSync(testFile, 'utf8');
+            expect(onDisk).toBe('line1\nline2\nline3\nline4');
+
+            const afterRead = manager.getAnchoredContent(testFile);
+            const lines = afterRead.split('\n');
+            expect(lines).toHaveLength(5); // 4 lines + EOF§
+            expect(lines[0]).toMatch(/^\w+§line1$/);
+            expect(lines[1]).toMatch(/^\w+§line2$/);
+            expect(lines[2]).toMatch(/^\w+§line3$/);
+            expect(lines[3]).toMatch(/^\w+§line4$/);
+            expect(lines[4]).toBe('EOF§');
+        } finally {
+            if (fs.existsSync(testFile)) {
+                fs.unlinkSync(testFile);
+            }
+        }
+    });
+
+    it('should normalize CRLF line endings without leaving carriage return in anchor text', () => {
+        fs.writeFileSync(testFile, 'line1\r\nline2\r\n');
+        try {
+            const anchored = manager.getAnchoredContent(testFile);
+            const lines = anchored.split('\n');
+            expect(lines).toHaveLength(3); // 2 lines + EOF§
+            expect(lines[0]).toMatch(/^\w+§line1$/);
+            expect(lines[1]).toMatch(/^\w+§line2$/);
+            expect(lines[2]).toBe('EOF§');
+            expect(anchored).not.toContain('\r');
         } finally {
             if (fs.existsSync(testFile)) {
                 fs.unlinkSync(testFile);

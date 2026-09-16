@@ -141,6 +141,12 @@ describe('AgentResponseParser', () => {
         expect(result.action?.content).toContain('[SYSTEM ERROR]: O modelo retornou uma resposta vazia');
     });
 
+    it('should return system error when model returns thought without action', () => {
+        const result = parseAgentResponse({ thought: 'Vou ler o arquivo' });
+        expect(result.action?.type).toBe('talk_with_user');
+        expect(result.action?.content).toContain("[SYSTEM ERROR]: Nenhum bloco 'action' foi fornecido");
+    });
+
     it('should parse and validate notify_user action', () => {
         const raw = {
             action: {
@@ -282,6 +288,28 @@ describe('AgentResponseParser', () => {
         });
         const parsed = parseAgentResponse(raw);
         expect(parsed.thought).toBe("I need to read the test file.");
+    });
+
+    it('should hoist action.args properties so modify_file with start_anchor and end_anchor in args validates successfully', () => {
+        const raw = JSON.stringify({
+            thought: "Applying anchored edit",
+            action: {
+                type: "modify_file",
+                args: {
+                    path: "src/calculator.ts",
+                    start_anchor: "river",
+                    end_anchor: "river",
+                    content: "export function calculateTax() {}"
+                }
+            },
+            summary: "Updating calculator"
+        });
+        const parsed = parseAgentResponse(raw);
+        expect(parsed.isError).toBe(false);
+        expect(parsed.action?.type).toBe("modify_file");
+        expect(parsed.action?.start_anchor).toBe("river");
+        expect(parsed.action?.end_anchor).toBe("river");
+        expect(parsed.action?.path).toBe("src/calculator.ts");
     });
 });
 

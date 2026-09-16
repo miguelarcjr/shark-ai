@@ -81,7 +81,8 @@ describe('ConfigManager', () => {
                 baseURL: 'https://custom-api.com/v1',
                 apiKey: 'custom-key',
                 model: 'custom-model',
-                useStructuredOutputs: false
+                useStructuredOutputs: false,
+                stream: true
             });
         });
 
@@ -109,7 +110,8 @@ describe('ConfigManager', () => {
                 baseURL: 'http://localhost:11434/v1',
                 apiKey: 'ollama',
                 model: 'custom-model',
-                useStructuredOutputs: true
+                useStructuredOutputs: true,
+                stream: true
             });
         });
     });

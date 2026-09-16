@@ -13,7 +13,8 @@ export class ProviderResolver {
                 baseURL: opt.baseURL || 'http://localhost:11434/v1',
                 apiKey: opt.apiKey || 'ollama',
                 model: opt.model || 'llama3',
-                useStructuredOutputs: opt.useStructuredOutputs ?? true
+                useStructuredOutputs: opt.useStructuredOutputs ?? true,
+                stream: opt.stream ?? true
             });
         }
         
