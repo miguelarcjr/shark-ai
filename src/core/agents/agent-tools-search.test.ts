@@ -17,7 +17,11 @@ describe('handleSearchCode - VS Code Style', () => {
 
     afterEach(() => {
         if (fs.existsSync(testDir)) {
-            fs.rmSync(testDir, { recursive: true, force: true });
+            try {
+                fs.rmSync(testDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+            } catch {
+                // Ignore transient cleanup locks on Windows
+            }
         }
     });
 
