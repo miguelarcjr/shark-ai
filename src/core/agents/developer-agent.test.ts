@@ -996,12 +996,13 @@ describe('DeveloperAgent', () => {
 
     it('should NOT block and wait for active subagents during the loop, allowing it to continue immediately', async () => {
         let subagentPromiseResolved = false;
+        let resolveSubagent: () => void;
         const subagentPromise = new Promise<void>(resolve => {
-            setTimeout(() => {
+            resolveSubagent = () => {
                 subagentPromiseResolved = true;
                 subagentManager.sendMessage('parent', 'Subagent result message');
                 resolve();
-            }, 50);
+            };
         });
 
         // Register a mock subagent for the parent
@@ -1045,6 +1046,9 @@ describe('DeveloperAgent', () => {
 
         // Verify it did NOT wait during streamChat execution
         expect(resolvedDuringStreamChat).toBe(false);
+
+        // Clean up subagent promise
+        resolveSubagent!();
 
         expect(result).toEqual({ success: true, summary: 'Done immediately' });
     });
