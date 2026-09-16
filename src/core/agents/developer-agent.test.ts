@@ -133,6 +133,66 @@ describe('DeveloperAgent', () => {
         expect(result).toEqual({ success: true, summary: 'Refactoring complete' });
     });
 
+    it('should inject memory snapshot and rich skills index into dynamicSystemPrompt', async () => {
+        const expectedResponse = {
+            actions: [],
+            message: 'TASK_COMPLETED: Done',
+            conversation_id: 'conv-id-1',
+        };
+
+        vi.mocked(mockProvider.streamChat).mockResolvedValue(expectedResponse);
+
+        await interactiveDeveloperAgent({
+            taskId: 'test-memory-task',
+            taskInstruction: 'Test memory prompt injection',
+            auto: true,
+        });
+
+        expect(mockProvider.streamChat).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.objectContaining({
+                systemPrompt: expect.stringMatching(/<user_profile>[\s\S]*<\/user_profile>/)
+            })
+        );
+    });
+
+    it('should refresh memory snapshot when memory action is executed', async () => {
+        let callCount = 0;
+        vi.mocked(mockProvider.streamChat).mockImplementation(async () => {
+            callCount++;
+            if (callCount === 1) {
+                return {
+                    action: {
+                        type: 'memory',
+                        args: {
+                            action: 'add',
+                            target: 'memory',
+                            content: 'New project convention: Vitest ESM'
+                        }
+                    },
+                    summary: 'Added memory',
+                };
+            }
+            return {
+                message: 'TASK_COMPLETED: Done',
+                summary: 'Completed',
+            };
+        });
+
+
+        await interactiveDeveloperAgent({
+            taskId: 'test-memory-refresh',
+            taskInstruction: 'Update memory',
+            auto: true,
+        });
+
+        expect(callCount).toBe(2);
+        const secondCallArgs = vi.mocked(mockProvider.streamChat).mock.calls[1];
+        expect(secondCallArgs[1].systemPrompt).toContain('New project convention: Vitest ESM');
+    });
+
+
+
     it('should handle read_file action using AnchorStateManager', async () => {
         const mockGetAnchoredContent = vi.fn().mockReturnValue('anchor1§const x = 1;');
         vi.mocked(AnchorStateManager).mockImplementation(() => ({

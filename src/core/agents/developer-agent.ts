@@ -205,7 +205,15 @@ export async function interactiveDeveloperAgent(options: {
     );
 
     const mcpManifest = mcpTools.length > 0 ? generateTieredManifest(mcpTools).manifestText : undefined;
-    const dynamicSystemPrompt = buildUnifiedSystemPrompt({ toolsCatalog: mcpManifest });
+    const memoryStore = new MemoryStore();
+    let memorySnapshot = await memoryStore.loadSnapshot();
+    const skillsMetadata = await skillManager.getAvailableSkillsMetadata();
+    const skillsIndex = skillManager.formatSkillsIndex(skillsMetadata);
+    let dynamicSystemPrompt = buildUnifiedSystemPrompt({
+        snapshot: memorySnapshot,
+        toolsCatalog: mcpManifest,
+        skillsIndex: skillsIndex || undefined
+    });
 
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
     let activeConversationId = await conversationManager.getConversationId(conversationKey);
@@ -744,11 +752,13 @@ Your goal is to address the user's request:
                 let resultMsg = "";
 
                 if (action.type === 'read_file') {
-                    const filePath = action.path || '';
+                    const filePath = action.args?.path || action.path || '';
                     log.info(`📖 Reading (Anchored): ${colors.dim(filePath)}`);
                     try {
                         const content = anchorManager.getAnchoredContent(filePath);
-                        resultMsg = `[Action read_file(${filePath}) Success]:\n${content}`;
+                        const lines = content.split('\n');
+                        const totalLines = Math.max(0, lines.length - 1);
+                        resultMsg = `[Action read_file(${filePath}) Success - ${totalLines} linhas, Arquivo completo]:\n[START_OF_FILE]\n${content}\n[END_OF_FILE]`;
                     } catch (e: any) {
                         resultMsg = `[Action read_file(${filePath}) Failed]: ${e.message}`;
                     }
@@ -947,7 +957,6 @@ Your goal is to address the user's request:
                     const act = action.args?.action || action.action || 'read';
                     log.info(`🧠 Memory: ${colors.bold(act)} on ${colors.bold(target)}`);
                     try {
-                        const memoryStore = new MemoryStore();
                         const memArgs = memoryToolSchema.parse({
                             action: act,
                             target,
@@ -956,6 +965,14 @@ Your goal is to address the user's request:
                         });
                         const res = await executeMemoryTool(memoryStore, memArgs);
                         resultMsg = `[Action memory(${memArgs.action}, ${memArgs.target}) Success]: ${res.usage ? `Usage: ${res.usage}` : (res.content || 'OK')}`;
+                        if (['add', 'replace', 'remove'].includes(memArgs.action)) {
+                            memorySnapshot = await memoryStore.loadSnapshot();
+                            dynamicSystemPrompt = buildUnifiedSystemPrompt({
+                                snapshot: memorySnapshot,
+                                toolsCatalog: mcpManifest,
+                                skillsIndex: skillsIndex || undefined
+                            });
+                        }
                     } catch (e: any) {
                         if (e.current_entries) {
                             resultMsg = `[Action memory Failed]: ${JSON.stringify({
