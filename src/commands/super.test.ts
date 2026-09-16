@@ -44,12 +44,17 @@ describe('superCommand', () => {
             expect.stringContaining('Superpowers skills installed successfully')
         );
 
-        // Verify that global skills directory was created and contains brainstorming skill
+        // Verify that global skills directory was created and contains brainstorming and mcp-configuration skills
         const targetPath = path.join(mockHome, '.shark', 'skills', 'brainstorming', 'SKILL.md');
         await expect(fs.access(targetPath)).resolves.not.toThrow();
 
         const content = await fs.readFile(targetPath, 'utf-8');
         expect(content).toContain('name: brainstorming');
+
+        const mcpSkillPath = path.join(mockHome, '.shark', 'skills', 'mcp-configuration', 'SKILL.md');
+        await expect(fs.access(mcpSkillPath)).resolves.not.toThrow();
+        const mcpContent = await fs.readFile(mcpSkillPath, 'utf-8');
+        expect(mcpContent).toContain('name: mcp-configuration');
 
         consoleLogSpy.mockRestore();
     }, 15000);
@@ -66,9 +71,14 @@ describe('superCommand', () => {
             expect.stringContaining('Superpowers skills installed successfully')
         );
 
-        // Verify that local skills directory was created and contains brainstorming skill
+        // Verify that local skills directory was created and contains brainstorming and mcp-configuration skills
         const targetPath = path.join(mockCwd, '.agents', 'skills', 'brainstorming', 'SKILL.md');
         await expect(fs.access(targetPath)).resolves.not.toThrow();
+
+        const mcpSkillPath = path.join(mockCwd, '.agents', 'skills', 'mcp-configuration', 'SKILL.md');
+        await expect(fs.access(mcpSkillPath)).resolves.not.toThrow();
+        const mcpContent = await fs.readFile(mcpSkillPath, 'utf-8');
+        expect(mcpContent).toContain('name: mcp-configuration');
 
         cwdSpy.mockRestore();
         consoleLogSpy.mockRestore();
