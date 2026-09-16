@@ -1,5 +1,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { DeferredToolEntry } from '../tools/bridge/tool-catalog-search.js';
 import { FileLogger } from '../debug/file-logger.js';
 
@@ -9,6 +11,7 @@ export interface McpServerConfig {
   env?: Record<string, string>;
   cwd?: string;
   url?: string;
+  type?: 'stdio' | 'http' | 'sse' | 'streamableHttp' | string;
   headers?: Record<string, string>;
 }
 
@@ -53,8 +56,24 @@ export class McpManager {
 
           await client.connect(transport);
           this.clients.set(serverName, { client, transport });
+        } else if (config.url) {
+          FileLogger.log('MCP', `Conectando ao servidor HTTP/SSE: ${serverName} (${config.url})`);
+          const url = new URL(config.url);
+          const requestInit = config.headers ? { headers: config.headers } : undefined;
+
+          const transport = config.type === 'sse'
+            ? new SSEClientTransport(url, requestInit ? { requestInit } : undefined)
+            : new StreamableHTTPClientTransport(url, requestInit ? { requestInit } : undefined);
+
+          client = new Client(
+            { name: 'shark-dev', version: '0.5.0' },
+            { capabilities: {} }
+          );
+
+          await client.connect(transport);
+          this.clients.set(serverName, { client, transport });
         } else {
-          FileLogger.log('MCP', `Servidor ${serverName} ignorado (transporte não suportado ou sem comando).`);
+          FileLogger.log('MCP', `Servidor ${serverName} ignorado (transporte não suportado ou sem comando/url).`);
           continue;
         }
 

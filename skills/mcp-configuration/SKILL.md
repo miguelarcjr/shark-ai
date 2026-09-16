@@ -42,6 +42,7 @@ Shark AI supports two configuration scopes. Local settings override global setti
 
 In `.sharkrc`, MCP servers must be defined under the `"mcpServers"` object:
 
+### 1. Stdio Server (Local Process)
 ```json
 {
   "mcpServers": {
@@ -60,16 +61,33 @@ In `.sharkrc`, MCP servers must be defined under the `"mcpServers"` object:
 }
 ```
 
+### 2. HTTP / Remote Server (Streamable HTTP / SSE)
+```json
+{
+  "mcpServers": {
+    "<server-name>": {
+      "type": "http",
+      "url": "http://127.0.0.1:9225/mcp",
+      "headers": {
+        "Authorization": "Bearer <token>"
+      }
+    }
+  }
+}
+```
+
 ### Field Definitions
 
-- **`<server-name>`** (*string*, required): Unique identifier for the server (kebab-case or snake_case recommended, e.g. `"chrome-devtools"`, `"sqlite"`, `"github"`).
-- **`command`** (*string*, required): The executable to run:
-  - Node/NPM: `"npx"` or `"node"`
-  - Python: `"uvx"` or `"python"`
-  - Containers / Binaries: `"docker"` or direct binary path
-- **`args`** (*string[]*, optional): Arguments passed to the command. E.g. `["-y", "chrome-devtools-mcp@latest", "--no-usage-statistics"]`.
-- **`env`** (*Record<string, string>*, optional): Environment variables passed to the server process (e.g. API keys, access tokens, credentials).
-- **`cwd`** (*string*, optional): Working directory from which the MCP server process will be launched.
+- **`<server-name>`** (*string*, required): Unique identifier for the server (kebab-case or snake_case recommended, e.g. `"chrome-devtools"`, `"sqlite"`, `"safari-mcp"`).
+- **Transport: `command` (stdio)**:
+  - **`command`** (*string*, required for stdio): The executable to run (`"npx"`, `"node"`, `"uvx"`, `"python"`, docker, etc.).
+  - **`args`** (*string[]*, optional): Arguments passed to the command. E.g. `["-y", "chrome-devtools-mcp@latest"]`.
+  - **`env`** (*Record<string, string>*, optional): Environment variables passed to the process.
+  - **`cwd`** (*string*, optional): Working directory from which the process is launched.
+- **Transport: `url` (HTTP / SSE)**:
+  - **`url`** (*string*, required for remote/daemon servers): The HTTP/SSE endpoint (e.g. `"http://127.0.0.1:9225/mcp"`).
+  - **`type`** (*string*, optional): `"http"` (default Streamable HTTP) or `"sse"`.
+  - **`headers`** (*Record<string, string>*, optional): Custom HTTP headers (e.g. auth tokens).
 
 ---
 
