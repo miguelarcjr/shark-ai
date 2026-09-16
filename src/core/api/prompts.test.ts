@@ -2,9 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { buildUnifiedSystemPrompt, COORDINATOR_RESPONSE_JSON_SCHEMA, TOOL_ARGS_PROPERTIES } from './prompts.js';
 
 describe('prompts', () => {
-    it('deve incluir old_str nas propriedades de TOOL_ARGS_PROPERTIES', () => {
+    it('deve incluir old_str nas propriedades de TOOL_ARGS_PROPERTIES como anulável', () => {
         expect(TOOL_ARGS_PROPERTIES).toHaveProperty('old_str');
-        expect((TOOL_ARGS_PROPERTIES as any).old_str.type).toBe('string');
+        expect((TOOL_ARGS_PROPERTIES as any).old_str.type).toEqual(['string', 'null']);
+    });
+
+    it('deve ter conformidade estrita com OpenAI Structured Outputs', () => {
+        const schema = COORDINATOR_RESPONSE_JSON_SCHEMA as any;
+        expect(schema.additionalProperties).toBe(false);
+        expect(schema.required).toEqual(['thought', 'action', 'summary']);
+        expect(schema.properties.action.additionalProperties).toBe(false);
+        expect(schema.properties.action.required).toEqual(['type', 'args']);
+        expect(schema.properties.action.properties.args.additionalProperties).toBe(false);
+        expect(schema.properties.action.properties.args.required).toEqual(Object.keys(TOOL_ARGS_PROPERTIES));
+        expect((TOOL_ARGS_PROPERTIES as any).arguments.type).toEqual(['string', 'null']);
     });
 
     it('deve incluir old_str no COORDINATOR_RESPONSE_JSON_SCHEMA', () => {

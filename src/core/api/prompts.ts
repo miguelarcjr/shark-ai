@@ -138,89 +138,89 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 
 export const TOOL_ARGS_PROPERTIES = {
   path: {
-    type: "string",
+    type: ["string", "null"],
     description: "Caminho do arquivo ou diretório."
   },
   content: {
-    type: "string",
+    type: ["string", "null"],
     description: "Conteúdo a ser escrito em create_file ou novo código para modify_file."
   },
   start_anchor: {
-    type: "string",
+    type: ["string", "null"],
     description: "Palavra âncora de início para modify_file."
   },
   end_anchor: {
-    type: "string",
+    type: ["string", "null"],
     description: "Palavra âncora de fim para modify_file."
   },
   command: {
-    type: "string",
+    type: ["string", "null"],
     description: "Comando de terminal a ser executado via run_command."
   },
   query: {
-    type: "string",
+    type: ["string", "null"],
     description: "Termo ou padrão de busca para search_code ou session_search."
   },
   is_regex: {
-    type: "boolean",
+    type: ["boolean", "null"],
     description: "Indica se query em search_code é regex."
   },
   queries: {
-    type: "array",
+    type: ["array", "null"],
     items: { type: "string" },
     description: "Lista de consultas textuais para tool_search."
   },
   names: {
-    type: "array",
+    type: ["array", "null"],
     items: { type: "string" },
     description: "Lista de nomes de ferramentas para tool_describe."
   },
   name: {
-    type: "string",
+    type: ["string", "null"],
     description: "Nome da ferramenta para tool_call."
   },
   arguments: {
-    type: "object",
-    description: "Argumentos da ferramenta chamada via tool_call."
+    type: ["string", "null"],
+    description: "Argumentos da ferramenta chamada via tool_call formatados em string JSON."
   },
   action: {
-    type: "string",
+    type: ["string", "null"],
     description: "Ação a executar em memory (add, replace, remove, read)."
   },
   target: {
-    type: "string",
+    type: ["string", "null"],
     description: "Alvo da memória (memory ou user)."
   },
   old_str: {
-    type: "string",
+    type: ["string", "null"],
     description: "Trecho exato a ser substituído em 'replace' ou excluído em 'remove' na ação de memory."
   },
   limit: {
-    type: "number",
+    type: ["number", "null"],
     description: "Limite máximo de resultados retornados."
   },
   task_file: {
-    type: "string",
+    type: ["string", "null"],
     description: "Caminho do arquivo com briefing da tarefa para invoke_subagent."
   },
   duration_seconds: {
-    type: "number",
+    type: ["number", "null"],
     description: "Duração em segundos para a ação wait."
   },
   file_path: {
-    type: "string",
+    type: ["string", "null"],
     description: "Caminho relativo do arquivo dentro do pacote da skill em skill_view ou skill_manage."
   },
   old_string: {
-    type: "string",
+    type: ["string", "null"],
     description: "Trecho exato de texto a ser substituído na ação patch de skill_manage."
   },
   new_string: {
-    type: "string",
+    type: ["string", "null"],
     description: "Novo trecho de texto a ser inserido na ação patch de skill_manage."
   },
   scope: {
-    type: "string",
+    type: ["string", "null"],
     description: "Escopo da skill: local (projeto) ou global (~/.shark/skills)."
   }
 };
@@ -267,17 +267,21 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
         "args": {
           "type": "object",
           "description": "Objeto com os parâmetros específicos da ferramenta selecionada.",
-          "properties": TOOL_ARGS_PROPERTIES
+          "properties": TOOL_ARGS_PROPERTIES,
+          "required": Object.keys(TOOL_ARGS_PROPERTIES),
+          "additionalProperties": false
         }
       },
-      "required": ["type", "args"]
+      "required": ["type", "args"],
+      "additionalProperties": false
     },
     "summary": {
       "type": "string",
       "description": "Resumo de uma única frase muito curta e sucinta do que você realizou nesta rodada. Evite explicações longas."
     }
   },
-  "required": ["action"]
+  "required": ["thought", "action", "summary"],
+  "additionalProperties": false
 };
 
 export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
@@ -309,17 +313,21 @@ export const SUBAGENT_RESPONSE_JSON_SCHEMA = {
         "args": {
           "type": "object",
           "description": "Objeto com os parâmetros específicos da ferramenta selecionada.",
-          "properties": TOOL_ARGS_PROPERTIES
+          "properties": TOOL_ARGS_PROPERTIES,
+          "required": Object.keys(TOOL_ARGS_PROPERTIES),
+          "additionalProperties": false
         }
       },
-      "required": ["type", "args"]
+      "required": ["type", "args"],
+      "additionalProperties": false
     },
     "summary": {
       "type": "string",
       "description": "Resumo de uma única frase muito curta e sucinta do que você realizou nesta rodada. Evite explicações longas."
     }
   },
-  "required": ["action"]
+  "required": ["thought", "action", "summary"],
+  "additionalProperties": false
 };
 
 
