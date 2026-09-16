@@ -33,7 +33,20 @@ describe('prompts', () => {
     it('deve conter regras mandatórias de consulta e ativação de skills quando skillsIndex for fornecido', () => {
         const prompt = buildUnifiedSystemPrompt({ skillsIndex: '- **brainstorming**: Design spec' });
         expect(prompt).toContain('<skills_index>\n- **brainstorming**: Design spec\n</skills_index>');
-        expect(prompt).toContain('REGRA DE CONSULTA ANTES DA AÇÃO');
-        expect(prompt).toContain('activate_skill');
+        expect(prompt).toContain('skill_view');
+        expect(prompt).toContain('skills_list');
+        expect(prompt).toContain('skill_manage');
+    });
+
+    it('deve incluir novos argumentos de skills em TOOL_ARGS_PROPERTIES e COORDINATOR_RESPONSE_JSON_SCHEMA', () => {
+        expect(TOOL_ARGS_PROPERTIES).toHaveProperty('file_path');
+        expect(TOOL_ARGS_PROPERTIES).toHaveProperty('old_string');
+        expect(TOOL_ARGS_PROPERTIES).toHaveProperty('new_string');
+        expect(TOOL_ARGS_PROPERTIES).toHaveProperty('scope');
+
+        const actionTypes = (COORDINATOR_RESPONSE_JSON_SCHEMA as any).properties.action.properties.type.enum;
+        expect(actionTypes).toContain('skills_list');
+        expect(actionTypes).toContain('skill_view');
+        expect(actionTypes).toContain('skill_manage');
     });
 });

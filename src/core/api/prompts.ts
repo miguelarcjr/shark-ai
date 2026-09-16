@@ -39,15 +39,14 @@ Seu objetivo é ajudar o usuário a analisar, especificar e implementar código 
 - Use 'tool_describe' com args: { "names": ["nome_da_ferramenta"] } para obter os parâmetros detalhados sob demanda.
 - Use 'tool_call' com args: { "name": "nome_da_ferramenta", "arguments": { ... } } para executar a ferramenta.
 
-⚡ CATÁLOGO DE SKILLS E ESPECIALIZAÇÃO TÉCNICA:
-Em <skills_index> estão listadas as habilidades e diretrizes técnicas disponíveis neste ambiente, com suas descrições e objetivos.
-1. REGRA DE CONSULTA ANTES DA AÇÃO:
-   - Ao receber uma tarefa técnica (planejamento, criação de funcionalidade, testes, depuração, revisão), você DEVE consultar o <skills_index>.
-   - Se houver uma skill relevante para a tarefa solicitada, execute IMEDIATAMENTE a ação:
-     { "type": "activate_skill", "args": { "name": "nome_da_skill" } }
-     antes de começar a escrever arquivos ou executar comandos de implementação.
-2. APLICAÇÃO DAS DIRETRIZES:
-   - Ao ativar uma skill, suas diretrizes especializadas serão injetadas no seu contexto prioritário (<EXTREMELY_IMPORTANT>). Você deve seguir rigorosamente as regras da skill ativada durante toda a execução daquela tarefa.
+⚡ CATÁLOGO DE SKILLS E MEMÓRIA PROCEDURAL (Progressive Disclosure):
+Em <skills_index> estão listados os procedimentos e especializações disponíveis com descrições curtas de até 60 caracteres.
+1. CONSULTA E CARREGAMENTO SOB DEMANDA:
+   - Ao receber uma tarefa técnica (planejamento, criação de funcionalidade, testes, depuração, revisão), consulte o <skills_index> ou execute 'skills_list' com args: { "query": "termo" }.
+   - Para carregar as diretrizes e procedimentos detalhados antes de iniciar a execução, chame 'skill_view' com args: { "name": "nome_da_skill" }.
+   - Se precisar de arquivos de apoio ou scripts da pasta da skill, chame 'skill_view' com args: { "name": "...", "file_path": "references/..." }.
+2. APRENDIZADO PROCEDURAL E MANUTENÇÃO ('skill_manage'):
+   - Para registrar novos procedimentos aprendidos, refinar diretrizes ou gerenciar skills, use 'skill_manage' com args: { "action": "create" | "edit" | "patch" | "write_file" | "remove_file" | "delete", "name": "...", ... }.
 
 🧠 SISTEMA DE MEMÓRIA PERSISTENTE E APRENDIZADO:
 Você possui memória persistente que é carregada em todas as sessões. Use a ação 'memory' para registrar fatos que você deve lembrar no futuro:
@@ -82,7 +81,7 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "thought": "Explicação detalhada do raciocínio lógico e intenção da ação tomada antes de executá-la.",
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "tool_search" | "tool_describe" | "tool_call" | "activate_skill" | "talk_with_user" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "tool_search" | "tool_describe" | "tool_call" | "skills_list" | "skill_view" | "skill_manage" | "talk_with_user" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search",
     "args": {
       /* Parâmetros específicos da ferramenta selecionada */
     }
@@ -207,6 +206,22 @@ export const TOOL_ARGS_PROPERTIES = {
   duration_seconds: {
     type: "number",
     description: "Duração em segundos para a ação wait."
+  },
+  file_path: {
+    type: "string",
+    description: "Caminho relativo do arquivo dentro do pacote da skill em skill_view ou skill_manage."
+  },
+  old_string: {
+    type: "string",
+    description: "Trecho exato de texto a ser substituído na ação patch de skill_manage."
+  },
+  new_string: {
+    type: "string",
+    description: "Novo trecho de texto a ser inserido na ação patch de skill_manage."
+  },
+  scope: {
+    type: "string",
+    description: "Escopo da skill: local (projeto) ou global (~/.shark/skills)."
   }
 };
 
@@ -236,6 +251,9 @@ export const COORDINATOR_RESPONSE_JSON_SCHEMA = {
             "tool_search",
             "tool_describe",
             "tool_call",
+            "skills_list",
+            "skill_view",
+            "skill_manage",
             "talk_with_user",
             "activate_skill",
             "invoke_subagent",
