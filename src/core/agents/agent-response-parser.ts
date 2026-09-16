@@ -44,6 +44,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         'tool_search', 'tool_describe', 'tool_call',
         'talk_with_user',
         'memory', 'session_search',
+        'skills_list', 'skill_view', 'skill_manage',
         'activate_skill', 'invoke_subagent',
         'complete_task',
         'wait',
@@ -104,7 +105,11 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     end_anchor: z.string().nullable().optional(),
  
     // Superpowers fields
+    name: z.string().nullable().optional(),
     skill_name: z.string().nullable().optional(),
+    old_string: z.string().nullable().optional(),
+    new_string: z.string().nullable().optional(),
+    scope: z.string().nullable().optional(),
     duration_seconds: z.number().nullable().optional(),
     Subagents: z.array(z.object({
         TypeName: z.string(),
@@ -305,6 +310,7 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
             'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
             'tool_search', 'tool_describe', 'tool_call',
             'talk_with_user', 'memory', 'session_search', 'list_structure', 'modify_ast', 'search_ast', 'run_command',
+            'skills_list', 'skill_view', 'skill_manage',
             'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
             'complete_task', 'wait', 'notify_user'
         ];
