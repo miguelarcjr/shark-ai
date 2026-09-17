@@ -39,7 +39,7 @@
   export function buildReviewSystemPrompt(options: ReviewPromptOptions): string;
   ```
 
-- [ ] **Step 1: Write unit tests for `buildReviewSystemPrompt`**
+- [x] **Step 1: Write unit tests for `buildReviewSystemPrompt`**
 
 Create `src/core/api/review-prompts.test.ts`:
 ```typescript
@@ -98,12 +98,12 @@ describe('Review Prompts', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/api/review-prompts.test.ts`  
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement `src/core/api/review-prompts.ts`**
+- [x] **Step 3: Implement `src/core/api/review-prompts.ts`**
 
 ```typescript
 export const MEMORY_REVIEW_PROMPT = `
@@ -201,12 +201,12 @@ export function buildReviewSystemPrompt(options: ReviewPromptOptions): string {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/core/api/review-prompts.test.ts`  
 Expected: PASS (5 tests passing).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/api/review-prompts.ts src/core/api/review-prompts.test.ts
@@ -252,7 +252,7 @@ git commit -m "feat(learning): implement dynamic review prompts and prompt build
   }
   ```
 
-- [ ] **Step 1: Write failing unit tests for `ForkReviewAgent`**
+- [x] **Step 1: Write failing unit tests for `ForkReviewAgent`**
 
 Create `src/core/workflow/fork-review-agent.test.ts`:
 ```typescript
@@ -410,12 +410,12 @@ describe('ForkReviewAgent', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `npx vitest run src/core/workflow/fork-review-agent.test.ts`  
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement `ForkReviewAgent` in `src/core/workflow/fork-review-agent.ts`**
+- [x] **Step 3: Implement `ForkReviewAgent` in `src/core/workflow/fork-review-agent.ts`**
 
 ```typescript
 import crypto from 'node:crypto';
@@ -667,12 +667,12 @@ export class ForkReviewAgent {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/core/workflow/fork-review-agent.test.ts`  
 Expected: PASS (all 5 tests passing).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/workflow/fork-review-agent.ts src/core/workflow/fork-review-agent.test.ts
@@ -695,7 +695,7 @@ git commit -m "feat(learning): implement ForkReviewAgent with isolated agent loo
   - Command `/refine [focus]`: triggers `forkReviewAgent.triggerManualReview(history, focus)`.
   - Notification dispatch to `tui.log.info` / subtle status.
 
-- [ ] **Step 1: Write integration tests for `developer-agent.ts` review wiring**
+- [x] **Step 1: Write integration tests for `developer-agent.ts` review wiring**
 
 Create `src/core/workflow/fork-review-integration.test.ts`:
 ```typescript
@@ -725,12 +725,12 @@ describe('ForkReviewAgent Integration Logic', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it passes**
+- [x] **Step 2: Run test to verify it passes**
 
 Run: `npx vitest run src/core/workflow/fork-review-integration.test.ts`  
 Expected: PASS.
 
-- [ ] **Step 3: Modify `src/core/agents/developer-agent.ts` to instantiate and trigger `ForkReviewAgent`**
+- [x] **Step 3: Modify `src/core/agents/developer-agent.ts` to instantiate and trigger `ForkReviewAgent`**
 
 1. Import `ForkReviewAgent` from `../workflow/fork-review-agent.js`.
 2. Instantiate `forkReviewAgent` alongside `memoryStore` and `skillManager`:
@@ -770,12 +770,12 @@ Expected: PASS.
    void forkReviewAgent.maybeTriggerReview(rawHistory);
    ```
 
-- [ ] **Step 4: Run all related tests to ensure no regressions**
+- [x] **Step 4: Run all related tests to ensure no regressions**
 
 Run: `npx vitest run src/core/workflow/fork-review-agent.test.ts src/core/api/review-prompts.test.ts src/core/workflow/fork-review-integration.test.ts`  
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/agents/developer-agent.ts src/core/workflow/fork-review-integration.test.ts
@@ -790,21 +790,21 @@ git commit -m "feat(learning): integrate ForkReviewAgent and /refine command int
 - Test: Run complete test suite on memory, skills, and agents
 - Create: `src/core/workflow/verify-learning-loop.ts`
 
-- [ ] **Step 1: Create verification script**
+- [x] **Step 1: Create verification script**
 
 Create `src/core/workflow/verify-learning-loop.ts` to test prompt selection, counter tracking, and multi-turn action loop with a mocked provider.
 
-- [ ] **Step 2: Run verification script**
+- [x] **Step 2: Run verification script**
 
 Run: `npx tsx src/core/workflow/verify-learning-loop.ts`  
 Expected: Success output demonstrating counters, mock review loop, memory updates, and notifications.
 
-- [ ] **Step 3: Run full Vitest test suite**
+- [x] **Step 3: Run full Vitest test suite**
 
 Run: `npx vitest run`  
 Expected: All tests pass.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/core/workflow/verify-learning-loop.ts
