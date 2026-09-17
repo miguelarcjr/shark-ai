@@ -162,19 +162,19 @@ export const tui = {
         try {
             if (!isInteractive()) {
                 console.log(opts.message);
-                opts.options.forEach((opt, idx) => {
+                opts.options.forEach((opt: any, idx: number) => {
                     const hintStr = opt.hint ? ` (${opt.hint})` : '';
                     console.log(`  [${idx + 1}] ${opt.label || String(opt.value)}${hintStr}`);
                 });
                 const defaultIdx = opts.initialValue !== undefined 
-                    ? opts.options.findIndex(o => o.value === opts.initialValue) + 1 
+                    ? opts.options.findIndex((o: any) => o.value === opts.initialValue) + 1 
                     : 1;
                 const input = await this._readLine(`Escolha [1-${opts.options.length}] (padrão: ${defaultIdx}): `);
                 const choiceNum = parseInt(input, 10);
                 if (!isNaN(choiceNum) && choiceNum >= 1 && choiceNum <= opts.options.length) {
                     return opts.options[choiceNum - 1].value;
                 }
-                const matchByValOrLabel = opts.options.find(o => 
+                const matchByValOrLabel = opts.options.find((o: any) => 
                     String(o.value) === input || String(o.label) === input
                 );
                 if (matchByValOrLabel) {
@@ -195,7 +195,7 @@ export const tui = {
         try {
             if (!isInteractive()) {
                 console.log(opts.message);
-                opts.options.forEach((opt, idx) => {
+                opts.options.forEach((opt: any, idx: number) => {
                     const hintStr = opt.hint ? ` (${opt.hint})` : '';
                     console.log(`  [${idx + 1}] ${opt.label || String(opt.value)}${hintStr}`);
                 });

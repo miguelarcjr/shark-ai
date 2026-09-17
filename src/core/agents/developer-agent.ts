@@ -232,7 +232,7 @@ export async function interactiveDeveloperAgent(options: {
     const onCommandHandler = async (command: string): Promise<boolean> => {
         if (command === '/refine' || command.startsWith('/refine ') || command.startsWith('/refine')) {
             const focus = command.startsWith('/refine ') ? command.slice(8).trim() : undefined;
-            tui.log.info(colors.cyan('🧠 Acionando revisão do Learning Loop em segundo plano...'));
+            tui.log.info(colors.primary('🧠 Acionando revisão do Learning Loop em segundo plano...'));
             if (activeConversationId) {
                 const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
                 const triggered = await forkReviewAgent.triggerManualReview(rawHistory, focus);

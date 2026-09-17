@@ -88,7 +88,7 @@ describe('ForkReviewAgent', () => {
       memoryStore: mockMemoryStore,
       skillManager: mockSkillManager,
       provider: mockProvider,
-      onNotification: msg => notifications.push(msg)
+      onNotification: (msg: string) => notifications.push(msg)
     });
 
     for (let i = 0; i < 10; i++) agent.onToolIteration();

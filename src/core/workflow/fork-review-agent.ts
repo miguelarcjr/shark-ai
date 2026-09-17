@@ -134,8 +134,8 @@ export class ForkReviewAgent {
 
         const response = await this.provider.streamChat(currentPrompt, {
           conversationId: reviewSessionId,
-          systemPrompt,
-          isSubagent: true
+          agentType: 'developer_agent',
+          systemPrompt
         });
 
         const actions = response.actions || [];
@@ -165,12 +165,12 @@ export class ForkReviewAgent {
               if (memAction === 'read') {
                 const text = await this.memoryStore.readFile(target);
                 actionObservations.push(`[Action memory read(${target}) Success]:\n${text}`);
-              } else {
+              } else if (memAction === 'add' || memAction === 'replace') {
                 const res = await this.memoryStore.updateFile(
                   target,
                   memAction,
                   act.content || '',
-                  act.old_str
+                  act.old_str || undefined
                 );
                 memoryUpdated = true;
                 actionObservations.push(`[Action memory ${memAction}(${target}) Success]: ${res.usage}`);
@@ -178,30 +178,30 @@ export class ForkReviewAgent {
             } catch (err: any) {
               actionObservations.push(`[Action memory Failed]: ${err.message}`);
             }
-          } else if (actionType === 'skill_view') {
+          } else if (actionType === 'skill_view' && act.name) {
             try {
-              const skillContent = await this.skillManager.viewSkill(act.name, act.file_path, reviewSessionId);
+              const skillContent = await this.skillManager.viewSkill(act.name, act.file_path || undefined, reviewSessionId);
               actionObservations.push(`[Action skill_view(${act.name}) Success]:\n${skillContent}`);
             } catch (err: any) {
               actionObservations.push(`[Action skill_view Failed]: ${err.message}`);
             }
           } else if (actionType === 'skills_list') {
             try {
-              const list = await this.skillManager.listSkills(act.query);
+              const list = await this.skillManager.listSkills(act.query || undefined);
               actionObservations.push(`[Action skills_list Success]:\n${list}`);
             } catch (err: any) {
               actionObservations.push(`[Action skills_list Failed]: ${err.message}`);
             }
-          } else if (actionType === 'skill_manage') {
+          } else if (actionType === 'skill_manage' && act.name && act.action) {
             try {
               const res = await this.skillManager.manageSkill({
-                action: act.action,
+                action: act.action as 'create' | 'edit' | 'patch' | 'write_file' | 'remove_file' | 'delete',
                 name: act.name,
-                content: act.content,
-                file_path: act.file_path,
-                old_string: act.old_string,
-                new_string: act.new_string,
-                scope: act.scope || 'local'
+                content: act.content || undefined,
+                file_path: act.file_path || undefined,
+                old_string: act.old_string || undefined,
+                new_string: act.new_string || undefined,
+                scope: (act.scope === 'global' ? 'global' : 'local')
               });
               if (res.status === 'success') {
                 skillUpdatedName = act.name;

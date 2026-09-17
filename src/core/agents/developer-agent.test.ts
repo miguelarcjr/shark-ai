@@ -170,13 +170,22 @@ describe('DeveloperAgent', () => {
                             content: 'New project convention: Vitest ESM'
                         }
                     },
+                    actions: [{
+                        type: 'memory',
+                        args: {
+                            action: 'add',
+                            target: 'memory',
+                            content: 'New project convention: Vitest ESM'
+                        }
+                    }],
                     summary: 'Added memory',
-                };
+                } as any;
             }
             return {
                 message: 'TASK_COMPLETED: Done',
                 summary: 'Completed',
-            };
+                actions: []
+            } as any;
         });
 
 
