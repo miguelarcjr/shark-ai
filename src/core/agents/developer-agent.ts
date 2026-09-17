@@ -15,6 +15,7 @@ import { MessageQueue, type QueueMessage } from '../workflow/message-queue.js';
 import { ContextCompressor } from '../workflow/context-compressor.js';
 import { MemoryStore } from '../memory/memory-store.js';
 import { StateDB } from '../memory/state-db.js';
+import { ForkReviewAgent } from '../workflow/fork-review-agent.js';
 import { executeMemoryTool, memoryToolSchema } from '../tools/memory-tool.js';
 import { executeSessionSearchTool, sessionSearchToolSchema } from '../tools/session-search-tool.js';
 import { ConfigManager } from '../config-manager.js';
@@ -218,7 +219,33 @@ export async function interactiveDeveloperAgent(options: {
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
     let activeConversationId = await conversationManager.getConversationId(conversationKey);
 
+    const activeProvider = ProviderResolver.getProvider('developer_agent');
+    const forkReviewAgent = new ForkReviewAgent({
+        memoryStore,
+        skillManager,
+        provider: activeProvider,
+        onNotification: (msg) => {
+            tui.log.info(colors.dim(msg));
+        }
+    });
+
     const onCommandHandler = async (command: string): Promise<boolean> => {
+        if (command === '/refine' || command.startsWith('/refine ') || command.startsWith('/refine')) {
+            const focus = command.startsWith('/refine ') ? command.slice(8).trim() : undefined;
+            tui.log.info(colors.cyan('🧠 Acionando revisão do Learning Loop em segundo plano...'));
+            if (activeConversationId) {
+                const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                const triggered = await forkReviewAgent.triggerManualReview(rawHistory, focus);
+                if (!triggered) {
+                    tui.log.warning('⚠️ [Review em andamento, aguarde a conclusão...]');
+                } else {
+                    tui.log.success('Revisão iniciada com sucesso.');
+                }
+            } else {
+                tui.log.warning('Nenhuma conversação ativa para revisar.');
+            }
+            return true;
+        }
         if (command.trim() === '/auto') {
             autoApproveTools = !autoApproveTools;
             if (autoApproveTools) {
@@ -454,6 +481,7 @@ export async function interactiveDeveloperAgent(options: {
             if (tui.isCancel(userTask) || !userTask) {
                 return { success: false, summary: 'Task execution cancelled.' };
             }
+            forkReviewAgent.onUserTurn();
             currentTask = userTask;
         }
     }
@@ -672,6 +700,11 @@ Your goal is to address the user's request:
                         break;
                     }
 
+                    if (activeConversationId) {
+                        const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                        void forkReviewAgent.maybeTriggerReview(rawHistory);
+                    }
+
                     if (!isBatchMode || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
@@ -681,6 +714,7 @@ Your goal is to address the user's request:
                             userDraftBuffer = (nextMsg as any).draft || '';
                         }
                         if (nextMsg.type === 'user') {
+                            forkReviewAgent.onUserTurn();
                             if (tui.isCancel(nextMsg.content)) {
                                 keepGoing = false;
                                 break;
@@ -739,6 +773,10 @@ Your goal is to address the user's request:
 
                 const action = response.action;
 
+                if (action) {
+                    forkReviewAgent.onToolIteration();
+                }
+
                 if (action && options.taskId) {
                     subagentManager.updateSubagentAction(options.taskId, action.type, action);
                 }
@@ -761,6 +799,10 @@ Your goal is to address the user's request:
                     if (response.message) {
                         log.info(colors.primary('🤖 Shark Dev:'));
                         console.log(response.message);
+                        if (activeConversationId) {
+                            const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                            void forkReviewAgent.maybeTriggerReview(rawHistory);
+                        }
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
@@ -768,6 +810,7 @@ Your goal is to address the user's request:
                             nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
                         }
                         if (nextMsg.type === 'user') {
+                            forkReviewAgent.onUserTurn();
                             if (tui.isCancel(nextMsg.content)) {
                                 keepGoing = false;
                                 break;
@@ -776,6 +819,10 @@ Your goal is to address the user's request:
                         nextPrompt = nextMsg.content;
                     } else {
                         log.warning('No action or message returned by the agent.');
+                        if (activeConversationId) {
+                            const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                            void forkReviewAgent.maybeTriggerReview(rawHistory);
+                        }
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
@@ -783,6 +830,7 @@ Your goal is to address the user's request:
                             nextMsg = await waitForInputOrNotification(messageQueue, 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', subagentPrefix, undefined, isBatchMode);
                         }
                         if (nextMsg.type === 'user') {
+                            forkReviewAgent.onUserTurn();
                             if (tui.isCancel(nextMsg.content)) {
                                 keepGoing = false;
                                 break;
@@ -1155,6 +1203,11 @@ Your goal is to address the user's request:
 
                             finalSummary = contentStr.split('TASK_COMPLETED:')[1].trim();
                             log.success(`✔ Task Completed: ${finalSummary}`);
+                            if (activeConversationId) {
+                                const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                                void forkReviewAgent.maybeTriggerReview(rawHistory);
+                            }
+
                             if (!isBatchMode || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
                                 let nextMsg: QueueMessage;
                                 if (!messageQueue.isEmpty()) {
@@ -1164,6 +1217,7 @@ Your goal is to address the user's request:
                                     userDraftBuffer = (nextMsg as any).draft || '';
                                 }
                                 if (nextMsg.type === 'user') {
+                                    forkReviewAgent.onUserTurn();
                                     if (tui.isCancel(nextMsg.content)) {
                                         keepGoing = false;
                                         break;
@@ -1179,6 +1233,10 @@ Your goal is to address the user's request:
 
                         log.info(colors.primary('🤖 Shark Dev:'));
                         console.log(contentStr);
+                        if (activeConversationId) {
+                            const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                            void forkReviewAgent.maybeTriggerReview(rawHistory);
+                        }
                         let nextMsg: QueueMessage;
                         if (!messageQueue.isEmpty()) {
                             nextMsg = await messageQueue.next();
@@ -1187,6 +1245,7 @@ Your goal is to address the user's request:
                             userDraftBuffer = (nextMsg as any).draft || '';
                         }
                         if (nextMsg.type === 'user') {
+                            forkReviewAgent.onUserTurn();
                             if (tui.isCancel(nextMsg.content)) {
                                 keepGoing = false;
                                 break;
