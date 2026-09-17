@@ -35,7 +35,7 @@
   }
   ```
 
-- [ ] **Step 1: Write the failing tests for `InterruptManager`**
+- [x] **Step 1: Write the failing tests for `InterruptManager`**
 
 ```typescript
 // src/core/terminal/interrupt-manager.test.ts
@@ -109,12 +109,12 @@ describe('InterruptManager', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/terminal/interrupt-manager.test.ts`  
 Expected: FAIL (module not found)
 
-- [ ] **Step 3: Implement `InterruptManager`**
+- [x] **Step 3: Implement `InterruptManager`**
 
 ```typescript
 // src/core/terminal/interrupt-manager.ts
@@ -200,12 +200,12 @@ export class InterruptManager {
 }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/core/terminal/interrupt-manager.test.ts`  
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/terminal/interrupt-manager.ts src/core/terminal/interrupt-manager.test.ts
@@ -228,7 +228,7 @@ git commit -m "feat(terminal): add InterruptManager for Esc key handling and raw
 - Consumes: `signal?: AbortSignal` from `ChatOptions`
 - Produces: `killActiveCommand(): void` in `agent-tools.ts` and `signal` passed to `fetch` calls.
 
-- [ ] **Step 1: Add `signal?: AbortSignal` to `ChatOptions`**
+- [x] **Step 1: Add `signal?: AbortSignal` to `ChatOptions`**
 
 Update `src/core/api/provider.interface.ts`:
 ```typescript
@@ -244,7 +244,7 @@ export interface ChatOptions {
 }
 ```
 
-- [ ] **Step 2: Support `signal` in `SSEClient`**
+- [x] **Step 2: Support `signal` in `SSEClient`**
 
 Update `streamAgentResponse` in `src/core/api/sse-client.ts`:
 ```typescript
@@ -267,7 +267,7 @@ Update `streamAgentResponse` in `src/core/api/sse-client.ts`:
         });
 ```
 
-- [ ] **Step 3: Pass `options.signal` in `StackSpotProvider` and `OpenAICompatibleProvider`**
+- [x] **Step 3: Pass `options.signal` in `StackSpotProvider` and `OpenAICompatibleProvider`**
 
 In `src/core/api/stackspot-provider.ts`:
 ```typescript
@@ -290,7 +290,7 @@ In `src/core/api/openai-compatible-provider.ts`:
         });
 ```
 
-- [ ] **Step 4: Expose `killActiveCommand` in `agent-tools.ts`**
+- [x] **Step 4: Expose `killActiveCommand` in `agent-tools.ts`**
 
 Update `src/core/agents/agent-tools.ts`:
 ```typescript
@@ -334,12 +334,12 @@ export async function handleRunCommand(command: string): Promise<string> {
 }
 ```
 
-- [ ] **Step 5: Run existing tests to ensure compatibility**
+- [x] **Step 5: Run existing tests to ensure compatibility**
 
 Run: `npx vitest run src/core/api/`  
 Expected: PASS
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/api/provider.interface.ts src/core/api/sse-client.ts src/core/api/stackspot-provider.ts src/core/api/openai-compatible-provider.ts src/core/agents/agent-tools.ts
@@ -358,7 +358,7 @@ git commit -m "feat(api): propagate AbortSignal to streamChat and expose killAct
 - Consumes: `InterruptManager`, `killActiveCommand`, `subagentManager.killSubagent`
 - Produces: Clean interruption handling with warning message, history persistence, and immediate prompt recovery.
 
-- [ ] **Step 1: Write integration test for interruption in `developer-agent.test.ts`**
+- [x] **Step 1: Write integration test for interruption in `developer-agent.test.ts`**
 
 Add test case to `src/core/agents/developer-agent.test.ts`:
 ```typescript
@@ -394,12 +394,12 @@ it('should handle user Esc abort cleanly, log notice in history and return to pr
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/agents/developer-agent.test.ts -t "handle user Esc abort cleanly"`  
 Expected: FAIL
 
-- [ ] **Step 3: Integrate `InterruptManager` into `developer-agent.ts`**
+- [x] **Step 3: Integrate `InterruptManager` into `developer-agent.ts`**
 
 1. Import `InterruptManager` and `killActiveCommand`:
    ```typescript
@@ -469,12 +469,12 @@ Expected: FAIL
    }
    ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/core/agents/developer-agent.test.ts -t "handle user Esc abort cleanly"`  
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/agents/developer-agent.ts src/core/agents/developer-agent.test.ts
@@ -488,19 +488,19 @@ git commit -m "feat(agent): integrate InterruptManager into developer agent exec
 **Files:**
 - Test: All tests in `src/`
 
-- [ ] **Step 1: Run complete test suite**
+- [x] **Step 1: Run complete test suite**
 
 Run: `npm test`  
 Expected: All test suites PASS with 0 regressions.
 
-- [ ] **Step 2: Manual validation in terminal**
+- [x] **Step 2: Manual validation in terminal**
 
 Run `node bin/shark.js dev` in test sandbox, trigger an instruction, press `Esc` while Shark Dev is working, and verify:
 1. `🛑 Execução interrompida pelo usuário.` is shown.
 2. Prompt `Your answer:` is presented immediately.
 3. Typing a new instruction works and history is retained without needing `/chat`.
 
-- [ ] **Step 3: Commit final plan validation**
+- [x] **Step 3: Commit final plan validation**
 
 ```bash
 git add .
