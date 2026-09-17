@@ -233,16 +233,29 @@ export async function interactiveDeveloperAgent(options: {
         if (command === '/refine' || command.startsWith('/refine ') || command.startsWith('/refine')) {
             const focus = command.startsWith('/refine ') ? command.slice(8).trim() : undefined;
             tui.log.info(colors.primary('🧠 Acionando revisão do Learning Loop em segundo plano...'));
+            let historyToReview: Array<{ role: string; content: string }> = [];
             if (activeConversationId) {
-                const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
-                const triggered = await forkReviewAgent.triggerManualReview(rawHistory, focus);
-                if (!triggered) {
-                    tui.log.warning('⚠️ [Review em andamento, aguarde a conclusão...]');
-                } else {
-                    tui.log.success('Revisão iniciada com sucesso.');
+                historyToReview = await HistoryManager.getRawHistory(activeConversationId);
+            }
+            if (historyToReview.length === 0) {
+                const historyDir = path.resolve(projectRoot, '_sharkrc', 'history');
+                if (fs.existsSync(historyDir)) {
+                    const files = fs.readdirSync(historyDir).filter(f => f.endsWith('.raw.json') && !f.startsWith('review_'));
+                    if (files.length > 0) {
+                        const sorted = files.map(f => ({
+                            file: f,
+                            mtime: fs.statSync(path.join(historyDir, f)).mtimeMs
+                        })).sort((a, b) => b.mtime - a.mtime);
+                        const latestId = sorted[0].file.replace('.raw.json', '');
+                        historyToReview = await HistoryManager.getRawHistory(latestId);
+                    }
                 }
+            }
+            const triggered = await forkReviewAgent.triggerManualReview(historyToReview, focus);
+            if (!triggered) {
+                tui.log.warning('⚠️ [Review em andamento, aguarde a conclusão...]');
             } else {
-                tui.log.warning('Nenhuma conversação ativa para revisar.');
+                tui.log.success('Revisão iniciada com sucesso.');
             }
             return true;
         }
@@ -484,6 +497,19 @@ export async function interactiveDeveloperAgent(options: {
             forkReviewAgent.onUserTurn();
             currentTask = userTask;
         }
+    } else {
+        if (currentTask.startsWith('/')) {
+            const handled = await onCommandHandler(currentTask);
+            if (handled) {
+                if (forkReviewAgent.currentReviewPromise) {
+                    await forkReviewAgent.currentReviewPromise.catch(() => {});
+                }
+                return { success: true, summary: `Command ${currentTask} executed.` };
+            }
+        }
+        if (!isSubagent) {
+            forkReviewAgent.onUserTurn();
+        }
     }
 
     let subagentPrefix = '';
@@ -556,6 +582,7 @@ Your goal is to address the user's request:
     const anchorManager = new AnchorStateManager();
 
     const spinner = tui.spinner();
+    const recentReadCounts = new Map<string, number>();
 
     const handleCleanupSignal = (exitCode: number) => {
         const currentId = options.taskId || 'parent';
@@ -846,13 +873,23 @@ Your goal is to address the user's request:
                 if (action.type === 'read_file') {
                     const filePath = action.args?.path || action.path || '';
                     log.info(`📖 Reading (Anchored): ${colors.dim(filePath)}`);
-                    try {
-                        const content = anchorManager.getAnchoredContent(filePath);
-                        const lines = content.split('\n');
-                        const totalLines = Math.max(0, lines.length - 1);
-                        resultMsg = `[Action read_file(${filePath}) Success - ${totalLines} linhas, Arquivo completo]:\n[START_OF_FILE]\n${content}\n[END_OF_FILE]`;
-                    } catch (e: any) {
-                        resultMsg = `[Action read_file(${filePath}) Failed]: ${e.message}`;
+                    const readCount = (recentReadCounts.get(filePath) || 0) + 1;
+                    recentReadCounts.set(filePath, readCount);
+
+                    if (readCount >= 3) {
+                        resultMsg = `[Action read_file(${filePath}) Blocked]: Leitura redundante bloqueada para evitar loop infinito. Você já leu este arquivo ${readCount - 1} vezes e o conteúdo completo já está no seu contexto acima. NÃO chame read_file novamente neste arquivo. Prossiga IMEDIATAMENTE para aplicar alterações com 'create_file' ou 'modify_file', ou verificar com testes via 'run_command'.`;
+                    } else {
+                        try {
+                            const content = anchorManager.getAnchoredContent(filePath);
+                            const lines = content.split('\n');
+                            const totalLines = Math.max(0, lines.length - 1);
+                            resultMsg = `[Action read_file(${filePath}) Success - ${totalLines} linhas, Arquivo completo]:\n[START_OF_FILE]\n${content}\n[END_OF_FILE]`;
+                            if (readCount === 2) {
+                                resultMsg += `\n\n⚠️ [LOOP NOTICE]: Você já leu '${filePath}' anteriormente. O arquivo completo já está disponível. Prossiga com a implementação ('create_file' / 'modify_file') ou testes ('run_command').`;
+                            }
+                        } catch (e: any) {
+                            resultMsg = `[Action read_file(${filePath}) Failed]: ${e.message}`;
+                        }
                     }
                 }
                 else if (action.type === 'modify_file') {
@@ -870,6 +907,7 @@ Your goal is to address the user's request:
                     if (approved) {
                         try {
                             anchorManager.applyAnchoredEdit(filePath, startAnchor, endAnchor, content);
+                            recentReadCounts.clear();
                             resultMsg = `[Action modify_file(${filePath}) Success]`;
                         } catch (e: any) {
                             resultMsg = `[Action modify_file(${filePath}) Failed]: ${e.message}`;
@@ -896,6 +934,7 @@ Your goal is to address the user's request:
                                 fs.mkdirSync(dir, { recursive: true });
                             }
                             fs.writeFileSync(resolvedPath, content, 'utf-8');
+                            recentReadCounts.clear();
                             resultMsg = `[Action create_file(${filePath}) Success]`;
                         } catch (e: any) {
                             resultMsg = `[Action create_file(${filePath}) Failed]: ${e.message}`;
@@ -1280,6 +1319,11 @@ Your goal is to address the user's request:
                     const detailedContent = action.args?.content || action.content || '';
                     const taskSummary = action.args?.summary || action.summary || response.summary || 'Task completed successfully.';
                     
+                    if (activeConversationId) {
+                        const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                        void forkReviewAgent.maybeTriggerReview(rawHistory);
+                    }
+                    
                     if (isSubagent) {
                         subagentManager.updateSubagentSummary(options.taskId!, taskSummary);
                         subagentManager.terminateSubagent(options.taskId!, true);
@@ -1365,6 +1409,11 @@ Your goal is to address the user's request:
                 FileLogger.log('TOOL_EXECUTION', `Action: ${action.type}`, { action, result: resultMsg });
                 nextPrompt = resultMsg;
 
+                if (activeConversationId) {
+                    const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                    void forkReviewAgent.maybeTriggerReview(rawHistory);
+                }
+
             } catch (e: any) {
                 log.error(e.message);
                 if (options.taskId && process.env.SHARK_PARENT_ID) {
@@ -1395,6 +1444,9 @@ Your goal is to address the user's request:
         return finalResult;
     } finally {
         await mcpManager.closeAll();
+        if (forkReviewAgent.currentReviewPromise) {
+            await forkReviewAgent.currentReviewPromise.catch(() => {});
+        }
         activeOnCommandHandler = undefined;
         process.off('SIGINT', sigIntHandler);
         process.off('SIGTERM', sigTermHandler);

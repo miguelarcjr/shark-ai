@@ -151,4 +151,29 @@ describe('ForkReviewAgent', () => {
     expect(mockProvider.streamChat.mock.calls.length).toBeLessThanOrEqual(2);
     expect(agent.isReviewing).toBe(false);
   });
+
+  it('should gracefully exit review loop when complete_task is called', async () => {
+    mockProvider.streamChat
+      .mockResolvedValueOnce({
+        thought: 'Updating memory',
+        actions: [{ type: 'memory', action: 'add', target: 'memory', content: 'Vitest used' }]
+      })
+      .mockResolvedValueOnce({
+        thought: 'Completed review',
+        actions: [{ type: 'complete_task', summary: 'Captured Vitest convention' }]
+      });
+
+    const agent = new ForkReviewAgent({
+      memoryStore: mockMemoryStore,
+      skillManager: mockSkillManager,
+      provider: mockProvider
+    });
+
+    const history = [{ role: 'user', content: 'use vitest' }];
+    await agent.triggerManualReview(history);
+
+    expect(mockMemoryStore.updateFile).toHaveBeenCalledWith('memory', 'add', 'Vitest used', undefined);
+    expect(mockProvider.streamChat).toHaveBeenCalledTimes(2);
+    expect(agent.isReviewing).toBe(false);
+  });
 });

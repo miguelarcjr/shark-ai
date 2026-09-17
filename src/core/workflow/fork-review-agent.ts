@@ -220,6 +220,12 @@ export class ForkReviewAgent {
             } catch (err: any) {
               actionObservations.push(`[Action read_file Failed]: ${err.message}`);
             }
+          } else if (actionType === 'complete_task') {
+            FileLogger.log('FORK_REVIEW', 'Review completed via complete_task', {
+              summary: act.summary || act.content || act.args?.summary || act.args?.content
+            });
+            loopActive = false;
+            break;
           } else {
             actionObservations.push(
               `[Action ${actionType} Rejected]: Tool '${actionType}' is not allowed in background review mode.`
