@@ -6,7 +6,8 @@ import { colors } from '../../ui/colors.js';
 import { AnchorStateManager } from '../workflow/anchor-state-manager.js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { handleRunCommand, handleListFiles, handleSearchFile, handleSearchCode } from './agent-tools.js';
+import { handleRunCommand, handleListFiles, handleSearchFile, handleSearchCode, killActiveCommand } from './agent-tools.js';
+import { InterruptManager } from '../terminal/interrupt-manager.js';
 import { skillManager } from '../workflow/skill-manager.js';
 import { subagentManager } from '../workflow/subagent-manager.js';
 import { FileLogger } from '../debug/file-logger.js';
@@ -654,6 +655,24 @@ Your goal is to address the user's request:
             // Append skill extension to this turn's prompt
             const promptToSend = currentTurnPrompt;
 
+            const interruptManager = new InterruptManager();
+            let abortSignal: AbortSignal | undefined = undefined;
+            if (!isBatchMode) {
+                abortSignal = interruptManager.start(() => {
+                    try {
+                        spinner.stop('🛑 Execução interrompida pelo usuário.');
+                    } catch {}
+                    log.warning('Interrupção solicitada via Esc. Cancelando operações...');
+                    killActiveCommand();
+
+                    const currentId = options.taskId || 'parent';
+                    const activeSubagents = subagentManager.getActiveSubagentsForParent(currentId);
+                    for (const sub of activeSubagents) {
+                        subagentManager.killSubagent(sub.id);
+                    }
+                });
+            }
+
             try {
                 const activeSubagents = subagentManager.getActiveSubagents();
                 const activeCount = activeSubagents.length;
@@ -686,6 +705,7 @@ Your goal is to address the user's request:
                     searchQuery: nextPrompt,
                     systemPrompt: dynamicSystemPrompt,
                     hasMcpServers: mcpTools.length > 0,
+                    signal: abortSignal,
                     onChunk: () => {}
                 });
 
@@ -695,6 +715,7 @@ Your goal is to address the user's request:
                 }
 
                 spinner.stop('Response received');
+                interruptManager.stop();
 
                 if (response.summary) {
                     if (options.taskId) {
@@ -977,10 +998,26 @@ Your goal is to address the user's request:
 
                     if (approved) {
                         try {
+                            if (!isBatchMode && process.stdin.isTTY) {
+                                interruptManager.start(() => {
+                                    log.warning('🛑 Interrupção de comando solicitada via Esc.');
+                                    killActiveCommand();
+                                });
+                            }
                             const output = await handleRunCommand(cmd);
+                            if (interruptManager.isInterrupted()) {
+                                const err: any = new Error('Command aborted by user via Esc.');
+                                err.name = 'AbortError';
+                                throw err;
+                            }
                             resultMsg = `[Action run_command(${cmd}) Success]:\n${output}`;
                         } catch (e: any) {
+                            if (e.name === 'AbortError' || interruptManager.isInterrupted()) {
+                                throw e;
+                            }
                             resultMsg = `[Action run_command(${cmd}) Failed]: ${e.message}`;
+                        } finally {
+                            interruptManager.stop();
                         }
                     } else {
                         resultMsg = `[Action run_command(${cmd}) User Denied]`;
@@ -1415,6 +1452,48 @@ Your goal is to address the user's request:
                 }
 
             } catch (e: any) {
+                interruptManager.stop();
+                if (e.name === 'AbortError' || interruptManager.isInterrupted() || e.message?.includes('aborted')) {
+                    try {
+                        spinner.stop();
+                    } catch {}
+                    log.warning('🛑 Execução interrompida pelo usuário.');
+
+                    const targetConvoId = activeConversationId || conversationKey;
+                    if (targetConvoId) {
+                        try {
+                            const rawHistory = await HistoryManager.getRawHistory(targetConvoId);
+                            rawHistory.push({
+                                role: 'user',
+                                content: '[Execução interrompida pelo usuário via Esc. A ação anterior foi cancelada antes de sua conclusão.]'
+                            });
+                            await HistoryManager.saveRawHistory(targetConvoId, rawHistory);
+                        } catch {}
+                    }
+
+                    if (!isBatchMode) {
+                        let nextMsg: QueueMessage;
+                        if (!messageQueue.isEmpty()) {
+                            nextMsg = await messageQueue.next();
+                        } else {
+                            nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                            userDraftBuffer = (nextMsg as any).draft || '';
+                        }
+                        if (nextMsg.type === 'user') {
+                            forkReviewAgent.onUserTurn();
+                            if (tui.isCancel(nextMsg.content)) {
+                                keepGoing = false;
+                                break;
+                            }
+                        }
+                        nextPrompt = nextMsg.content;
+                        continue;
+                    } else {
+                        keepGoing = false;
+                        return { success: false, summary: 'Execution aborted by user via Esc.' };
+                    }
+                }
+
                 log.error(e.message);
                 if (options.taskId && process.env.SHARK_PARENT_ID) {
                     const parentId = process.env.SHARK_PARENT_ID;
@@ -1426,6 +1505,8 @@ Your goal is to address the user's request:
                 }
                 keepGoing = false;
                 return { success: false, summary: `Error: ${e.message}` };
+            } finally {
+                interruptManager.stop();
             }
         }
 

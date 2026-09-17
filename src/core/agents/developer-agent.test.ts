@@ -1753,6 +1753,47 @@ describe('DeveloperAgent', () => {
 
         expect(result).toEqual({ success: true, summary: 'Report generated successfully' });
     });
+
+    it('should handle user Esc abort cleanly, log notice in history and return to prompt', async () => {
+        let callCount = 0;
+        vi.mocked(mockProvider.streamChat).mockImplementation(async (_prompt, opts) => {
+            callCount++;
+            if (callCount === 1) {
+                const err: any = new Error('The user aborted a request.');
+                err.name = 'AbortError';
+                throw err;
+            }
+            return {
+                message: 'TASK_COMPLETED: Done after correction',
+                actions: []
+            };
+        });
+
+        vi.mocked(tui.isCancel).mockImplementation((val) => val === 'cancel');
+        vi.mocked(tui.text)
+            .mockResolvedValueOnce('Corrective instruction after abort')
+            .mockResolvedValueOnce('cancel');
+
+        vi.mocked(conversationManager.getConversationId).mockResolvedValue('test-conv-esc');
+        const saveRawHistorySpy = vi.spyOn(HistoryManager, 'saveRawHistory').mockResolvedValue();
+        vi.spyOn(HistoryManager, 'getRawHistory').mockResolvedValue([]);
+
+        const result = await interactiveDeveloperAgent({
+            taskInstruction: 'Initial task',
+            auto: false
+        });
+
+        expect(result.success).toBe(true);
+        expect(saveRawHistorySpy).toHaveBeenCalledWith(
+            expect.any(String),
+            expect.arrayContaining([
+                expect.objectContaining({
+                    role: 'user',
+                    content: expect.stringContaining('Execução interrompida pelo usuário via Esc')
+                })
+            ])
+        );
+    });
 });
 
 
