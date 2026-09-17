@@ -8,6 +8,7 @@ export interface ChatOptions {
     searchQuery?: string;
     systemPrompt?: string;
     hasMcpServers?: boolean;
+    signal?: AbortSignal;
 }
 
 export interface AIProvider {

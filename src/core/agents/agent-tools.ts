@@ -325,6 +325,18 @@ export function startSmartReplace(filePath: string, newContent: string, targetCo
 }
 
 let nextShellProcess: ExecaChildProcess | null = null;
+let currentRunningShell: ExecaChildProcess | null = null;
+
+export function killActiveCommand(): void {
+    if (currentRunningShell) {
+        try {
+            currentRunningShell.kill('SIGTERM');
+        } catch {
+            // Ignore kill errors
+        }
+        currentRunningShell = null;
+    }
+}
 
 export function prewarmShell() {
     const isWindows = process.platform === 'win32';
@@ -345,6 +357,7 @@ export function prewarmShell() {
 
 // Clean up background shell on Node process exit
 process.on('exit', () => {
+    killActiveCommand();
     if (nextShellProcess) {
         try {
             nextShellProcess.kill();
@@ -362,6 +375,7 @@ export async function handleRunCommand(command: string): Promise<string> {
             prewarmShell();
         }
         const currentShell = nextShellProcess!;
+        currentRunningShell = currentShell;
 
         // Pre-warm the next process immediately in background
         prewarmShell();
@@ -369,9 +383,14 @@ export async function handleRunCommand(command: string): Promise<string> {
         currentShell.stdin?.write(`${command}\nexit\n`);
 
         const { stdout, stderr } = await currentShell;
+        currentRunningShell = null;
         const output = stdout.trim() || stderr.trim();
         return output || 'Command executed successfully (no output).';
     } catch (e: any) {
+        currentRunningShell = null;
+        if (e.isCanceled || e.killed) {
+            return `Command aborted by user.`;
+        }
         return `Error executing command: ${e.message}`;
     }
 }

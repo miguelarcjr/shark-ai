@@ -226,6 +226,14 @@ export class OpenAICompatibleProvider implements AIProvider {
 
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
+        const onSignalAbort = () => controller.abort();
+        if (options.signal) {
+            if (options.signal.aborted) {
+                controller.abort();
+            } else {
+                options.signal.addEventListener('abort', onSignalAbort);
+            }
+        }
 
         let reader: ReadableStreamDefaultReader<Uint8Array> | undefined = undefined;
         try {
@@ -356,10 +364,17 @@ export class OpenAICompatibleProvider implements AIProvider {
         } catch (error: any) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
+                if (options.signal?.aborted) {
+                    throw error;
+                }
                 throw new Error(`OpenAI API request timed out after 5 minutes.`);
             }
             throw error;
         } finally {
+            clearTimeout(timeoutId);
+            if (options.signal) {
+                options.signal.removeEventListener('abort', onSignalAbort);
+            }
             if (reader && typeof reader.releaseLock === 'function') {
                 reader.releaseLock();
             }

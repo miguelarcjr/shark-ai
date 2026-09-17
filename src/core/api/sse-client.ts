@@ -19,7 +19,8 @@ export class SSEClient {
         url: string,
         requestPayload: unknown,
         headers: HeadersInit,
-        callbacks: SSECallbacks = {}
+        callbacks: SSECallbacks = {},
+        signal?: AbortSignal
     ): Promise<void> {
         const { onChunk, onComplete, onError } = callbacks;
 
@@ -36,6 +37,7 @@ export class SSEClient {
                     'Content-Type': 'application/json',
                 },
                 body: JSON.stringify(requestPayload),
+                signal,
             });
 
             FileLogger.log('SSE', `Response Status: ${response.status} ${response.statusText}`);

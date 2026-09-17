@@ -209,7 +209,8 @@ export class StackSpotProvider implements AIProvider {
                 onError: (error) => {
                     throw error;
                 },
-            }
+            },
+            options.signal
         );
 
         FileLogger.log('PROVIDER_RESPONSE', 'Raw response from StackSpot API', { rawResponse });
