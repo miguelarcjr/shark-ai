@@ -27,6 +27,8 @@ import { ToolCatalogSearch } from '../tools/bridge/tool-catalog-search.js';
 import { BridgeToolsManager } from '../tools/bridge/bridge-tools.js';
 import { generateTieredManifest } from '../tools/bridge/tiered-disclosure.js';
 import { loadSharkRC } from '../config/sharkrc-loader.js';
+import { AgentEngine } from '../engine/agent-engine.js';
+import { CliAdapter } from '../adapters/cli/cli-adapter.js';
 
 export function truncateToolOutput(output: string, maxTokens: number = 2000): string {
     const tokens = encode(output);
@@ -219,6 +221,13 @@ export async function interactiveDeveloperAgent(options: {
 
     const conversationKey = options.taskId ? `dev_agent_${options.taskId}` : `dev_agent_${Date.now()}`;
     let activeConversationId = await conversationManager.getConversationId(conversationKey);
+
+    const engine = new AgentEngine({
+        sessionId: activeConversationId || conversationKey,
+        auto: isBatchMode
+    });
+    const cliAdapter = new CliAdapter({ auto: isBatchMode });
+    engine.attachAdapter(cliAdapter);
 
     const activeProvider = ProviderResolver.getProvider('developer_agent');
     const forkReviewAgent = new ForkReviewAgent({
