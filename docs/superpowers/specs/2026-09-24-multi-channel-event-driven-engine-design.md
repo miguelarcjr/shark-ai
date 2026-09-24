@@ -224,6 +224,12 @@ Elimina `await waitFor(...)` em memória, permitindo pausas indeterminadas e tol
 
 ### 5.2 `WhatsAppAdapter` (Redes de Mensagens Assíncronas)
 * **Objetivo:** Comunicação estável, anti-spam, anti-ban e resiliente a falhas de rede.
+* **Separação Arquitetural (Adapter vs. Driver/Transport):**
+  - **`WhatsAppAdapter`:** Implementa `AgentChannelAdapter`. Responsável estritamente pela lógica comportamental e tradução de eventos (debouncing, throttling, fatiamento de caracteres, parsing de respostas numéricas e conversão de markdown). **Não depende diretamente de nenhuma biblioteca pesada de WhatsApp**, evitando inchar o CLI.
+  - **`WhatsAppTransport` (Interface de Rede Plugável):** Interface injetada no adapter (`sendText`, `sendMedia`, `editMessage`, `onRawMessage`). Pode ser implementada por diferentes drivers de acordo com o ambiente:
+    1. *Driver Baileys:* Conexão direta via WebSockets/QR Code local em Node.js.
+    2. *Driver Evolution API / Z-API:* Comunicação via chamadas HTTP REST / Webhooks para um microserviço intermediário.
+    3. *Driver Meta Cloud API Oficial:* Conexão oficial via Graph API e Webhooks.
 * **Entradas:**
   - **Quiet-Period Debouncer (0.8s):** Mensagens consecutivas do mesmo usuário em um intervalo inferior a 800ms são consolidadas em um único `UserMessage`.
   - **Filtro de Menção em Grupos:** Em grupos de WhatsApp, ignora conversas paralelas e só aciona o agente se houver menção explícita (`@Shark`) ou resposta direta (*quote*) a uma mensagem do bot.
