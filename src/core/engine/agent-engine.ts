@@ -4,6 +4,7 @@ import type { AgentInboundEvent, AgentOutboundEvent, InboundUserMessage } from '
 import { SessionLeaseManager } from './session-lease.js';
 import { PendingApprovalsManager } from './pending-approvals.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
+import { interactiveDeveloperAgent } from '../agents/developer-agent.js';
 
 export interface AgentEngineOptions {
     sessionId?: string;
@@ -87,9 +88,18 @@ export class AgentEngine {
             emojiReaction: '👀'
         });
 
+        const originalCwd = process.cwd();
         try {
             if (abortController.signal.aborted) {
                 return;
+            }
+
+            if (this.projectRoot && this.projectRoot !== originalCwd) {
+                try {
+                    process.chdir(this.projectRoot);
+                } catch (e: any) {
+                    console.error(`Falha ao mudar para projectRoot ${this.projectRoot}:`, e.message);
+                }
             }
 
             if (message.text.includes('long running')) {
@@ -106,37 +116,19 @@ export class AgentEngine {
                 return;
             }
 
-            let fullText = '';
             try {
-                const provider = ProviderResolver.getProvider('developer_agent');
-                const response = await provider.streamChat(message.text, {
-                    agentType: 'developer_agent',
-                    signal: abortController.signal,
-                    onChunk: (chunk) => {
-                        fullText += chunk;
-                        this.emitOutbound({
-                            type: 'text_delta',
-                            sessionId: effectiveSessionId,
-                            delta: chunk
-                        });
-                    }
+                // Executa o agente completo com todo o loop de ferramentas do Shark
+                const result = await interactiveDeveloperAgent({
+                    taskInstruction: message.text,
+                    auto: true
                 });
 
                 if (abortController.signal.aborted) return;
 
-                const talkContent = (response?.action?.type === 'talk_with_user' && response.action.content) ||
-                                    (response as any)?.actions?.find((a: any) => a.type === 'talk_with_user')?.content ||
-                                    (response as any)?.user_message ||
-                                    (response as any)?.explanation ||
-                                    (response?.action?.type === 'complete_task' && (response.action.content || response.summary)) ||
-                                    response?.summary ||
-                                    fullText ||
-                                    `Processed: ${message.text}`;
-
                 this.emitOutbound({
                     type: 'turn_completed',
                     sessionId: effectiveSessionId,
-                    summary: talkContent
+                    summary: result.summary || `Tarefa concluída com sucesso.`
                 });
             } catch (err: any) {
                 if (abortController.signal.aborted) return;
@@ -145,7 +137,7 @@ export class AgentEngine {
                 this.emitOutbound({
                     type: 'turn_completed',
                     sessionId: effectiveSessionId,
-                    summary: fullText || `Processed: ${message.text}`
+                    summary: `Processed: ${message.text}`
                 });
             }
         } catch (error: any) {
@@ -155,6 +147,11 @@ export class AgentEngine {
                 reason: error.message
             });
         } finally {
+            if (process.cwd() !== originalCwd) {
+                try {
+                    process.chdir(originalCwd);
+                } catch {}
+            }
             this.leaseManager.releaseLease(effectiveSessionId, holderId);
             if (this.currentTurnAbort === abortController) {
                 this.currentTurnAbort = undefined;

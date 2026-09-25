@@ -7,6 +7,15 @@ import { PendingApprovalsManager } from './pending-approvals.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
+vi.mock('../agents/developer-agent.js', () => ({
+    interactiveDeveloperAgent: vi.fn().mockImplementation(async (opts) => {
+        if (opts.taskInstruction?.includes('long running')) {
+            await new Promise((r) => setTimeout(r, 200));
+        }
+        return { success: true, summary: `Processed: ${opts.taskInstruction}` };
+    })
+}));
+
 class MockAdapter implements AgentChannelAdapter {
     readonly channelId = 'mock';
     public emittedEvents: AgentOutboundEvent[] = [];
