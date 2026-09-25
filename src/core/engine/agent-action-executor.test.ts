@@ -85,7 +85,7 @@ describe('AgentActionExecutor', () => {
         });
 
         expect(result.success).toBe(false);
-        expect(result.output).toContain('User Denied');
+        expect(result.output).toContain('Aborted');
         expect(fs.existsSync(createdPath)).toBe(false);
     });
 });

@@ -37,13 +37,21 @@ export class CliAdapter implements AgentChannelAdapter {
                 process.stdout.write(event.delta);
                 break;
             case 'reasoning_delta':
-                process.stdout.write(colors.dim(event.delta));
+                if (event.delta.startsWith('[info] ')) {
+                    tui.log.info(event.delta.replace(/^\[info\]\s*/, ''));
+                } else if (event.delta.startsWith('[warning] ')) {
+                    tui.log.warning(event.delta.replace(/^\[warning\]\s*/, ''));
+                } else if (event.delta.startsWith('[success] ')) {
+                    tui.log.success(event.delta.replace(/^\[success\]\s*/, ''));
+                } else {
+                    process.stdout.write(colors.dim(event.delta));
+                }
                 break;
             case 'tool_progress':
-                if (event.status === 'starting' || event.status === 'running') {
-                    tui.log.info(colors.primary(`⚙️ [${event.toolName}] ${event.details || 'executando...'}`));
+                if (event.status === 'starting') {
+                    this.logToolStarting(event.toolName, event.details);
                 } else if (event.status === 'completed') {
-                    tui.log.success(colors.success(`✅ [${event.toolName}] concluído`));
+                    // opcional log de sucesso
                 } else if (event.status === 'failed') {
                     tui.log.error(colors.error(`❌ [${event.toolName}] falhou: ${event.error || event.details || ''}`));
                 }
@@ -57,7 +65,8 @@ export class CliAdapter implements AgentChannelAdapter {
                         decision: 'approved'
                     });
                 } else {
-                    tui.confirm({ message: `${event.fallbackText || `Approve ${event.toolName}?`}` }).then((approved) => {
+                    const promptMsg = event.fallbackText || `Approve ${event.toolName}?`;
+                    tui.confirm({ message: promptMsg }).then((approved) => {
                         this.inboundHandler?.({
                             type: 'action_approval_response',
                             sessionId: event.sessionId,
@@ -68,10 +77,64 @@ export class CliAdapter implements AgentChannelAdapter {
                 }
                 break;
             case 'turn_completed':
-                tui.box(event.summary, 'Tarefa Concluída');
+                tui.log.success(`✔ Task Completed: ${event.summary}`);
                 break;
             case 'turn_interrupted':
                 tui.log.warn(colors.warning(`🛑 Turno interrompido: ${event.reason}`));
+                break;
+        }
+    }
+
+    private logToolStarting(toolName: string, details?: string) {
+        const raw = details || '';
+        switch (toolName) {
+            case 'modify_file':
+                tui.log.warning(`📝 Modify (Anchored): ${colors.bold(raw.replace(/^File:\s*/, ''))}`);
+                break;
+            case 'create_file':
+                tui.log.warning(`📝 Create file: ${colors.bold(raw.replace(/^File:\s*/, ''))}`);
+                break;
+            case 'delete_file':
+                tui.log.warning(`🗑️ Delete file: ${colors.bold(raw.replace(/^File:\s*/, ''))}`);
+                break;
+            case 'read_file':
+                tui.log.info(`📖 Reading (Anchored): ${colors.dim(raw.replace(/^File:\s*/, ''))}`);
+                break;
+            case 'list_files':
+                tui.log.info(`📂 Scanning: ${colors.dim(raw.replace(/^Dir:\s*/, ''))}`);
+                break;
+            case 'search_file':
+                tui.log.info(`🔍 Searching files: ${colors.dim(raw.replace(/^File:\s*/, ''))}`);
+                break;
+            case 'search_code':
+                tui.log.info(`🔎 Search code: ${colors.dim(raw)}`);
+                break;
+            case 'run_command':
+                tui.log.info(`💻 Executing: ${colors.dim(raw.replace(/^Cmd:\s*/, ''))}`);
+                break;
+            case 'tool_call':
+                tui.log.info(`🔧 Tool call: ${colors.bold(raw.replace(/^MCP Tool:\s*/, ''))}`);
+                break;
+            case 'memory':
+                tui.log.info(`🧠 Memory: ${raw}`);
+                break;
+            case 'invoke_subagent':
+                tui.log.info(`🚀 Invoking subagent from brief: ${raw.replace(/^TaskFile:\s*/, '')}`);
+                break;
+            case 'skills_list':
+                tui.log.info(`📋 Listing skills...`);
+                break;
+            case 'skill_view':
+                tui.log.info(`📖 Loading skill: ${raw}`);
+                break;
+            case 'skill_manage':
+                tui.log.info(`🛠️ Skill Manage: ${raw}`);
+                break;
+            case 'activate_skill':
+                tui.log.info(`⚡ Activating skill: ${colors.bold(raw)}`);
+                break;
+            default:
+                tui.log.info(colors.primary(`⚙️ [${toolName}] ${raw || 'executando...'}`));
                 break;
         }
     }
