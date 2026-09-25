@@ -23,6 +23,8 @@ lerna-debug.log*
 *.pem
 *.p12
 *.pfx
+.baileys_auth/
+examples/**/.baileys_auth/
 
 # Shark CLI specific - Configuration files with potential tokens
 .sharkrc
