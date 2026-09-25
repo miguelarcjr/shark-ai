@@ -1,5 +1,6 @@
 import { AIProvider, ChatOptions } from './provider.interface.js';
 import { AgentResponse, parseAgentResponse } from '../agents/agent-response-parser.js';
+import { toCanonicalAssistantMessage } from '../agents/canonical-response.js';
 import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from './stackspot-client.js';
 import { sseClient } from './sse-client.js';
 import { tokenStorage } from '../auth/token-storage.js';
@@ -127,7 +128,7 @@ export class StackSpotProvider implements AIProvider {
                 if (msg.role === 'user') {
                     compiledPrompt += `USER REQUEST:\n${msg.content}\n\n`;
                 } else if (msg.role === 'assistant') {
-                    compiledPrompt += `ASSISTANT RESPONSE:\n${msg.content}\n\n`;
+                    compiledPrompt += `ASSISTANT RESPONSE:\n${toCanonicalAssistantMessage(msg.content)}\n\n`;
                 }
             }
             
@@ -218,18 +219,18 @@ export class StackSpotProvider implements AIProvider {
 
         if (!this.useServerConversation) {
             parsedResponse.conversation_id = conversationId;
-            const cleanedResponse = cleanResponseObject(parsedResponse);
+            const canonicalResponse = toCanonicalAssistantMessage(parsedResponse);
             
             const rawHistory = [...await HistoryManager.getRawHistory(conversationId)];
-            rawHistory.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+            rawHistory.push({ role: 'assistant', content: canonicalResponse });
             await HistoryManager.saveRawHistory(conversationId, rawHistory);
             try {
                 const stateDb = new StateDB();
-                stateDb.recordMessage(conversationId, 'assistant', JSON.stringify(cleanedResponse));
+                stateDb.recordMessage(conversationId, 'assistant', canonicalResponse);
                 stateDb.close();
             } catch {}
 
-            history.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+            history.push({ role: 'assistant', content: canonicalResponse });
             await HistoryManager.saveHistory(conversationId, history);
         }
 

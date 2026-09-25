@@ -267,7 +267,7 @@ describe('StackSpotProvider', () => {
         expect(payload.conversation_id).toBe('local-session-id');
         expect(payload.user_prompt).toContain('SYSTEM INSTRUCTIONS:\nBase system prompt');
         expect(payload.user_prompt).toContain('USER REQUEST:\nFirst message');
-        expect(payload.user_prompt).toContain('ASSISTANT RESPONSE:\n{"actions":[]}');
+        expect(payload.user_prompt).toContain('ASSISTANT RESPONSE:\n{"thought":"","action":{"type":"talk_with_user","args":{}},"summary":""}');
         expect(payload.user_prompt).toContain('USER REQUEST:\nSecond message');
 
         expect(HistoryManager.saveHistory).toHaveBeenCalledWith(
@@ -277,7 +277,7 @@ describe('StackSpotProvider', () => {
                 { role: 'user', content: 'First message' },
                 { role: 'assistant', content: '{"actions":[]}' },
                 { role: 'user', content: 'Second message' },
-                { role: 'assistant', content: expect.stringContaining('actions') }
+                { role: 'assistant', content: expect.stringContaining('talk_with_user') }
             ])
         );
     });

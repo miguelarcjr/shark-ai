@@ -1,5 +1,6 @@
 import { AIProvider, ChatOptions } from './provider.interface.js';
 import { AgentResponse, parseAgentResponse } from '../agents/agent-response-parser.js';
+import { toCanonicalAssistantMessage } from '../agents/canonical-response.js';
 import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
 import { UNIFIED_SYSTEM_PROMPT, SUBAGENT_SYSTEM_PROMPT, COORDINATOR_RESPONSE_JSON_SCHEMA, SUBAGENT_RESPONSE_JSON_SCHEMA, AGENT_RESPONSE_JSON_SCHEMA } from './prompts.js';
 import crypto from 'node:crypto';
@@ -167,8 +168,17 @@ export class OpenAICompatibleProvider implements AIProvider {
         // Extract the latest user query (which was just pushed to history)
         const newPromptMsg = historyCopy.pop();
         
-        // 2. Messages 1..N-2: Chat history (Fully cached stable prefix)
-        requestMessages.push(...historyCopy);
+        // 2. Messages 1..N-2: Chat history (Fully cached stable prefix, with assistant messages canonicalized)
+        const sanitizedHistory = historyCopy.map(msg => {
+            if (msg.role === 'assistant') {
+                return {
+                    ...msg,
+                    content: toCanonicalAssistantMessage(msg.content)
+                };
+            }
+            return msg;
+        });
+        requestMessages.push(...sanitizedHistory);
         
         // 3. Message N-1: Dynamic support context (Skill Extensions)
         const skillExtension = skillManager.getSystemInstructionExtension();
@@ -341,19 +351,19 @@ export class OpenAICompatibleProvider implements AIProvider {
             const parsedResponse = parseAgentResponse(fullContent);
             parsedResponse.conversation_id = conversationId;
 
-            // Save LLM response to history
-            const cleanedResponse = cleanResponseObject(parsedResponse);
+            // Save LLM response to history in canonical format
+            const canonicalResponse = toCanonicalAssistantMessage(parsedResponse);
             
             const rawHistory = [...await HistoryManager.getRawHistory(conversationId)];
-            rawHistory.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+            rawHistory.push({ role: 'assistant', content: canonicalResponse });
             await HistoryManager.saveRawHistory(conversationId, rawHistory);
             try {
                 const stateDb = new StateDB();
-                stateDb.recordMessage(conversationId, 'assistant', JSON.stringify(cleanedResponse));
+                stateDb.recordMessage(conversationId, 'assistant', canonicalResponse);
                 stateDb.close();
             } catch {}
 
-            orchestratedHistory.push({ role: 'assistant', content: JSON.stringify(cleanedResponse) });
+            orchestratedHistory.push({ role: 'assistant', content: canonicalResponse });
             await HistoryManager.saveHistory(conversationId, orchestratedHistory);
 
             if (options.onComplete) {

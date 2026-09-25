@@ -179,7 +179,7 @@ describe('OpenAICompatibleProvider', () => {
         expect(payload.messages).toHaveLength(4);
         expect(payload.messages[0]).toEqual({ role: 'system', content: 'You are the Developer Agent...' });
         expect(payload.messages[1]).toEqual({ role: 'user', content: 'Initial setup' });
-        expect(payload.messages[2]).toEqual({ role: 'assistant', content: '{"actions":[],"summary":"Done"}' });
+        expect(payload.messages[2]).toEqual({ role: 'assistant', content: '{"thought":"","action":{"type":"talk_with_user","args":{}},"summary":"Done"}' });
         expect(payload.messages[3]).toEqual({ role: 'user', content: 'Next step' });
 
         // Save history should have been called with the updated array including the assistant's response
@@ -437,5 +437,113 @@ describe('OpenAICompatibleProvider', () => {
         expect(types).toContain('tool_search');
         expect(types).toContain('tool_describe');
         expect(types).toContain('tool_call');
+    });
+
+    it('saves assistant message in canonical format without runtime aliases', async () => {
+        let savedRawHistory: any = null;
+        vi.spyOn(HistoryManager, 'saveRawHistory').mockImplementation(async (id, history) => {
+            savedRawHistory = history;
+        });
+
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            body: createMockStream([
+                'data: {"choices": [{"delta": {"content": "{\\"thought\\":\\"thinking\\",\\"action\\":{\\"type\\":\\"talk_with_user\\",\\"args\\":{\\"content\\":\\"Hello\\"}},\\"summary\\":\\"said hello\\"}"}}]}\n',
+                'data: [DONE]\n'
+            ])
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        const provider = new OpenAICompatibleProvider({
+            baseURL: 'https://api.openai.com/v1',
+            apiKey: 'test-key',
+            model: 'gpt-4o',
+            useStructuredOutputs: false
+        });
+
+        await provider.streamChat('hello', {
+            conversationId: 'test-conv-1'
+        });
+
+        expect(savedRawHistory).toBeDefined();
+        const assistantEntry = savedRawHistory.find((m: any) => m.role === 'assistant');
+        expect(assistantEntry).toBeDefined();
+
+        const parsedContent = JSON.parse(assistantEntry.content);
+        expect(parsedContent).toEqual({
+            thought: 'thinking',
+            action: {
+                type: 'talk_with_user',
+                args: { content: 'Hello' }
+            },
+            summary: 'said hello'
+        });
+        expect(parsedContent.actions).toBeUndefined();
+        expect(parsedContent.message).toBeUndefined();
+        expect(parsedContent.conversation_id).toBeUndefined();
+    });
+
+    it('retroactively sanitizes existing assistant history in request payload', async () => {
+        let capturedPayload: any = null;
+        const mockFetch = vi.fn().mockImplementation((url, opts) => {
+            capturedPayload = JSON.parse(opts.body);
+            return Promise.resolve({
+                ok: true,
+                status: 200,
+                body: createMockStream([
+                    'data: {"choices": [{"delta": {"content": "{\\"thought\\":null,\\"action\\":{\\"type\\":\\"talk_with_user\\",\\"args\\":{\\"content\\":\\"Fine\\"}},\\"summary\\":\\"ok\\"}"}}]}\n',
+                    'data: [DONE]\n'
+                ])
+            });
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        const bloatedHistory: ChatMessage[] = [
+            {
+                role: 'user',
+                content: 'First turn'
+            },
+            {
+                role: 'assistant',
+                content: JSON.stringify({
+                    thought: 'Pondering',
+                    action: { type: 'talk_with_user', args: { content: 'Hi' }, content: 'Hi', isSynthetic: true },
+                    actions: [{ type: 'talk_with_user', args: { content: 'Hi' }, content: 'Hi' }],
+                    summary: 'Greeting',
+                    message: 'Greeting',
+                    conversation_id: 'old-conv'
+                })
+            }
+        ];
+        vi.spyOn(HistoryManager, 'getRawHistory').mockResolvedValue(bloatedHistory);
+
+        const provider = new OpenAICompatibleProvider({
+            baseURL: 'https://api.openai.com/v1',
+            apiKey: 'test-key',
+            model: 'gpt-4o',
+            useStructuredOutputs: false
+        });
+
+        await provider.streamChat('Second turn', {
+            conversationId: 'test-conv-2'
+        });
+
+        expect(capturedPayload).toBeDefined();
+        const assistantMsgInPayload = capturedPayload.messages.find((m: any) => m.role === 'assistant');
+        expect(assistantMsgInPayload).toBeDefined();
+
+        const sanitizedAssistant = JSON.parse(assistantMsgInPayload.content);
+        expect(sanitizedAssistant).toEqual({
+            thought: 'Pondering',
+            action: {
+                type: 'talk_with_user',
+                args: { content: 'Hi' }
+            },
+            summary: 'Greeting'
+        });
+        expect(sanitizedAssistant.actions).toBeUndefined();
+        expect(sanitizedAssistant.message).toBeUndefined();
+        expect(sanitizedAssistant.conversation_id).toBeUndefined();
     });
 });
