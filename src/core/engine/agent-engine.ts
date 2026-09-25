@@ -4,7 +4,8 @@ import type { AgentInboundEvent, AgentOutboundEvent, InboundUserMessage } from '
 import { SessionLeaseManager } from './session-lease.js';
 import { PendingApprovalsManager } from './pending-approvals.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
-import { interactiveDeveloperAgent } from '../agents/developer-agent.js';
+import { AgentActionExecutor } from './agent-action-executor.js';
+import { BridgeToolsManager } from '../tools/bridge/bridge-tools.js';
 
 export interface AgentEngineOptions {
     sessionId?: string;
@@ -12,6 +13,7 @@ export interface AgentEngineOptions {
     leaseManager?: SessionLeaseManager;
     approvalsManager?: PendingApprovalsManager;
     projectRoot?: string;
+    bridgeToolsManager?: BridgeToolsManager;
 }
 
 export class AgentEngine {
@@ -22,6 +24,8 @@ export class AgentEngine {
     private approvalsManager: PendingApprovalsManager;
     private currentTurnAbort?: AbortController;
     private isAuto: boolean;
+    private bridgeToolsManager?: BridgeToolsManager;
+    private activeConversationId?: string;
 
     constructor(options: AgentEngineOptions = {}) {
         this.sessionId = options.sessionId || `session_${Date.now()}`;
@@ -29,6 +33,7 @@ export class AgentEngine {
         this.isAuto = options.auto === true;
         this.leaseManager = options.leaseManager || new SessionLeaseManager();
         this.approvalsManager = options.approvalsManager || new PendingApprovalsManager();
+        this.bridgeToolsManager = options.bridgeToolsManager;
     }
 
     public attachAdapter(adapter: AgentChannelAdapter) {
@@ -102,45 +107,128 @@ export class AgentEngine {
                 }
             }
 
-            if (message.text.includes('long running')) {
-                await new Promise((resolve) => {
-                    const timer = setTimeout(resolve, 100);
-                    abortController.signal.addEventListener('abort', () => {
-                        clearTimeout(timer);
-                        resolve(null);
+            const actionExecutor = new AgentActionExecutor({
+                projectRoot: this.projectRoot,
+                sessionId: effectiveSessionId,
+                autoApprove: this.isAuto,
+                emitOutbound: (ev) => this.emitOutbound(ev),
+                requestApproval: async (toolName, toolArgs) => {
+                    const approval = this.approvalsManager.createApproval({
+                        sessionId: effectiveSessionId,
+                        checkpointMessageId: `msg_${Date.now()}`,
+                        toolName,
+                        toolArgs,
+                        ttlMs: 300000
                     });
+
+                    this.emitOutbound({
+                        type: 'action_approval_request',
+                        sessionId: effectiveSessionId,
+                        approvalId: approval.id,
+                        toolName,
+                        toolArgs,
+                        riskLevel: 'medium',
+                        ttlMs: 300000,
+                        fallbackText: `Aprovar execução de ${toolName}?`
+                    });
+
+                    // Em modo não interativo ou com adapter, espera resposta
+                    return false;
+                },
+                bridgeToolsManager: this.bridgeToolsManager
+            });
+
+            const provider = ProviderResolver.getProvider('developer_agent');
+            let nextPrompt: string = message.text;
+            let keepGoing = true;
+            let iterations = 0;
+            const maxIterations = 25;
+            let finalSummary = '';
+
+            while (keepGoing && iterations < maxIterations) {
+                iterations++;
+
+                if (abortController.signal.aborted) {
+                    return;
+                }
+
+                const response = await provider.streamChat(nextPrompt, {
+                    conversationId: this.activeConversationId,
+                    agentType: 'developer_agent',
+                    signal: abortController.signal,
+                    onChunk: (chunk: string) => {
+                        this.emitOutbound({
+                            type: 'text_delta',
+                            sessionId: effectiveSessionId,
+                            delta: chunk
+                        });
+                    }
                 });
+
+                if (abortController.signal.aborted) {
+                    return;
+                }
+
+                if (response.conversation_id) {
+                    this.activeConversationId = response.conversation_id;
+                }
+
+                // Tarefa completada explicitamente
+                if (response.message && response.message.includes('TASK_COMPLETED:')) {
+                    finalSummary = response.message.split('TASK_COMPLETED:')[1]?.trim() || response.summary || 'Tarefa concluída com sucesso.';
+                    keepGoing = false;
+                    break;
+                }
+
+                // Tarefa falhou
+                if (response.message && response.message.includes('TASK_FAILED:')) {
+                    const failureReason = response.message.split('TASK_FAILED:')[1]?.trim() || 'A tarefa falhou.';
+                    this.emitOutbound({
+                        type: 'turn_interrupted',
+                        sessionId: effectiveSessionId,
+                        reason: failureReason
+                    });
+                    keepGoing = false;
+                    return;
+                }
+
+                // Execução de ação / ferramenta
+                if (response.action) {
+                    const actionResult = await actionExecutor.executeAction(response.action);
+                    nextPrompt = actionResult.output;
+                    continue;
+                }
+
+                // Resposta conversacional direta sem ação
+                if (response.message) {
+                    finalSummary = response.message;
+                    keepGoing = false;
+                    break;
+                }
+
+                if (response.summary) {
+                    finalSummary = response.summary;
+                    keepGoing = false;
+                    break;
+                }
+
+                keepGoing = false;
             }
 
             if (abortController.signal.aborted) {
                 return;
             }
 
-            try {
-                // Executa o agente completo com todo o loop de ferramentas do Shark
-                const result = await interactiveDeveloperAgent({
-                    taskInstruction: message.text,
-                    auto: true
-                });
+            this.emitOutbound({
+                type: 'turn_completed',
+                sessionId: effectiveSessionId,
+                summary: finalSummary || `Tarefa finalizada.`
+            });
 
-                if (abortController.signal.aborted) return;
-
-                this.emitOutbound({
-                    type: 'turn_completed',
-                    sessionId: effectiveSessionId,
-                    summary: result.summary || `Tarefa concluída com sucesso.`
-                });
-            } catch (err: any) {
-                if (abortController.signal.aborted) return;
-
-                // Em caso de erro ou ambiente de teste sem credencial, envia fallback informativo
-                this.emitOutbound({
-                    type: 'turn_completed',
-                    sessionId: effectiveSessionId,
-                    summary: `Processed: ${message.text}`
-                });
-            }
         } catch (error: any) {
+            if (abortController.signal.aborted) {
+                return;
+            }
             this.emitOutbound({
                 type: 'turn_interrupted',
                 sessionId: effectiveSessionId,
