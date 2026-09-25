@@ -27,7 +27,7 @@
 - Consumes: `EngineContextBuilder.prepare(options: EngineContextOptions)`
 - Produces: Test coverage asserting that empty history produces `🟢 EXECUTION MODE` while non-empty history produces raw `instruction`.
 
-- [ ] **Step 1: Write the failing tests in `engine-context-builder.test.ts`**
+- [x] **Step 1: Write the failing tests in `engine-context-builder.test.ts`**
 
 Add two test cases:
 1. `prepares initial turn with EXECUTION MODE when history is empty`:
@@ -60,12 +60,12 @@ it('prepares continuation turn with clean raw instruction when history exists', 
 });
 ```
 
-- [ ] **Step 2: Run tests to verify failure**
+- [x] **Step 2: Run tests to verify failure**
 
 Run: `npx vitest run src/core/engine/engine-context-builder.test.ts`
 Expected: FAIL on the continuation test because `basePrompt` still contains `EXECUTION MODE`.
 
-- [ ] **Step 3: Implement minimal code in `src/core/engine/engine-context-builder.ts`**
+- [x] **Step 3: Implement minimal code in `src/core/engine/engine-context-builder.ts`**
 
 In `src/core/engine/engine-context-builder.ts`:
 1. Import `HistoryManager` from `../workflow/history-manager.js`.
@@ -78,17 +78,17 @@ In `src/core/engine/engine-context-builder.ts`:
    }
    ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/core/engine/engine-context-builder.test.ts`
 Expected: All tests PASS.
 
-- [ ] **Step 5: Run full engine test suite**
+- [x] **Step 5: Run full engine test suite**
 
 Run: `npx vitest run src/core/engine`
 Expected: All engine tests PASS.
 
-- [ ] **Step 6: Commit changes**
+- [x] **Step 6: Commit changes**
 
 ```bash
 git add src/core/engine/engine-context-builder.ts src/core/engine/engine-context-builder.test.ts
