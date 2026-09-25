@@ -29,4 +29,28 @@ describe('CliAdapter', () => {
         expect(writeSpy).toHaveBeenCalledWith('Chunk de texto');
         writeSpy.mockRestore();
     });
+
+    it('handles action_approval_request and prompts user', async () => {
+        const adapter = new CliAdapter({ auto: true });
+        let dispatchedInbound: any = null;
+        adapter.onInbound(async (event) => {
+            dispatchedInbound = event;
+        });
+
+        await adapter.emit({
+            type: 'action_approval_request',
+            sessionId: 'session-cli',
+            approvalId: 'appr-123',
+            toolName: 'run_command',
+            toolArgs: { command: 'ls' },
+            riskLevel: 'medium',
+            ttlMs: 60000,
+            fallbackText: 'Approve?'
+        });
+
+        expect(dispatchedInbound).toBeDefined();
+        expect(dispatchedInbound.type).toBe('action_approval_response');
+        expect(dispatchedInbound.approvalId).toBe('appr-123');
+        expect(dispatchedInbound.decision).toBe('approved');
+    });
 });

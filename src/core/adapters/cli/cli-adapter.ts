@@ -48,6 +48,25 @@ export class CliAdapter implements AgentChannelAdapter {
                     tui.log.error(colors.error(`❌ [${event.toolName}] falhou: ${event.error || event.details || ''}`));
                 }
                 break;
+            case 'action_approval_request':
+                if (this.isAuto) {
+                    this.inboundHandler?.({
+                        type: 'action_approval_response',
+                        sessionId: event.sessionId,
+                        approvalId: event.approvalId,
+                        decision: 'approved'
+                    });
+                } else {
+                    tui.confirm({ message: `${event.fallbackText || `Approve ${event.toolName}?`}` }).then((approved) => {
+                        this.inboundHandler?.({
+                            type: 'action_approval_response',
+                            sessionId: event.sessionId,
+                            approvalId: event.approvalId,
+                            decision: approved ? 'approved' : 'rejected'
+                        });
+                    });
+                }
+                break;
             case 'turn_completed':
                 tui.box(event.summary, 'Tarefa Concluída');
                 break;

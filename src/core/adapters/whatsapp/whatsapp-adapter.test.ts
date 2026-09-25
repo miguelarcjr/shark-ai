@@ -57,4 +57,38 @@ describe('WhatsAppAdapter', () => {
         adapter.receiveRawFromTransport('u123', '/stop');
         expect(aborted).toBe(true);
     });
+
+    it('emits tool_progress notifications to WhatsApp chat', async () => {
+        const transport: WhatsAppTransport = {
+            sendText: vi.fn().mockResolvedValue(undefined),
+            onRawMessage: vi.fn()
+        };
+        const adapter = new WhatsAppAdapter(transport);
+
+        await adapter.emit({
+            type: 'tool_progress',
+            sessionId: 'whatsapp:dm:u123',
+            toolName: 'read_file',
+            status: 'starting',
+            details: 'File: src/index.ts'
+        });
+
+        expect(transport.sendText).toHaveBeenCalledWith('u123', expect.stringContaining('[read_file]'));
+    });
+
+    it('emits turn_interrupted notification when aborted', async () => {
+        const transport: WhatsAppTransport = {
+            sendText: vi.fn().mockResolvedValue(undefined),
+            onRawMessage: vi.fn()
+        };
+        const adapter = new WhatsAppAdapter(transport);
+
+        await adapter.emit({
+            type: 'turn_interrupted',
+            sessionId: 'whatsapp:dm:u123',
+            reason: 'Task cancelled by user'
+        });
+
+        expect(transport.sendText).toHaveBeenCalledWith('u123', expect.stringContaining('Turno interrompido'));
+    });
 });

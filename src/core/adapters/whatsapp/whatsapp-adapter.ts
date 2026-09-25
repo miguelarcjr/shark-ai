@@ -71,11 +71,16 @@ export class WhatsAppAdapter implements AgentChannelAdapter {
 
     public async emit(event: AgentOutboundEvent): Promise<void> {
         const chatId = event.sessionId.replace(/^whatsapp:dm:/, '');
-        if (event.type === 'turn_completed') {
+        if (event.type === 'tool_progress' && event.status === 'starting') {
+            const detailText = event.details ? ` (${event.details})` : '';
+            await this.transport.sendText(chatId, `⚙️ *[${event.toolName}]* executando...${detailText}`);
+        } else if (event.type === 'turn_completed') {
             const chunks = splitWhatsAppMessage(event.summary);
             for (const chunk of chunks) {
                 await this.transport.sendText(chatId, chunk);
             }
+        } else if (event.type === 'turn_interrupted') {
+            await this.transport.sendText(chatId, `🛑 *Turno interrompido:* ${event.reason}`);
         } else if (event.type === 'action_approval_request') {
             const text = `⚠️ *Aprovação Solicitada*\nFerramenta: \`${event.toolName}\`\n\n${event.fallbackText}\n_Responda 1 para Aprovar ou 2 para Rejeitar_`;
             await this.transport.sendText(chatId, text);
