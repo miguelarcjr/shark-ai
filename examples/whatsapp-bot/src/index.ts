@@ -84,7 +84,7 @@ async function startWhatsAppBot() {
     let currentWorkspace = process.env.SHARK_PROJECT_ROOT || process.cwd();
 
     const engine = new AgentEngine({
-        sessionId: 'whatsapp:main_session',
+        sessionId: '*',
         projectRoot: currentWorkspace
     });
     engine.attachAdapter(whatsappAdapter);

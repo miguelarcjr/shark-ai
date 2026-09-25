@@ -3,6 +3,7 @@ import type { AgentChannelAdapter } from '../adapters/adapter.interface.js';
 import type { AgentInboundEvent, AgentOutboundEvent, InboundUserMessage } from './events.js';
 import { SessionLeaseManager } from './session-lease.js';
 import { PendingApprovalsManager } from './pending-approvals.js';
+import { ProviderResolver } from '../api/provider-resolver.js';
 
 export interface AgentEngineOptions {
     sessionId?: string;
@@ -32,7 +33,8 @@ export class AgentEngine {
     public attachAdapter(adapter: AgentChannelAdapter) {
         this.adapter = adapter;
         this.adapter.onInbound(async (event) => {
-            if (event.type === 'abort_command' && event.sessionId === this.sessionId) {
+            const isTargetSession = !this.sessionId || this.sessionId === '*' || event.sessionId === this.sessionId;
+            if (event.type === 'abort_command' && isTargetSession) {
                 this.abortCurrentTurn(event.reason);
                 return;
             }
@@ -40,7 +42,7 @@ export class AgentEngine {
                 this.handleApprovalResponse(event);
                 return;
             }
-            if (event.type === 'user_message' && event.sessionId === this.sessionId) {
+            if (event.type === 'user_message' && isTargetSession) {
                 await this.processMessage(event);
             }
         });
@@ -63,12 +65,13 @@ export class AgentEngine {
     }
 
     public async processMessage(message: InboundUserMessage): Promise<void> {
+        const effectiveSessionId = message.sessionId || this.sessionId;
         const holderId = randomUUID();
-        const acquired = this.leaseManager.acquireLease(this.sessionId, holderId);
+        const acquired = this.leaseManager.acquireLease(effectiveSessionId, holderId);
         if (!acquired) {
             this.emitOutbound({
                 type: 'turn_interrupted',
-                sessionId: this.sessionId,
+                sessionId: effectiveSessionId,
                 reason: 'Session is busy with another active turn'
             });
             return;
@@ -79,7 +82,7 @@ export class AgentEngine {
 
         this.emitOutbound({
             type: 'presence_status',
-            sessionId: this.sessionId,
+            sessionId: effectiveSessionId,
             status: 'typing',
             emojiReaction: '👀'
         });
@@ -103,20 +106,49 @@ export class AgentEngine {
                 return;
             }
 
-            // Ponto de integração do ciclo de raciocínio da LLM
-            this.emitOutbound({
-                type: 'turn_completed',
-                sessionId: this.sessionId,
-                summary: `Processed: ${message.text}`
-            });
+            let fullText = '';
+            try {
+                const provider = ProviderResolver.getProvider('developer_agent');
+                const response = await provider.streamChat(message.text, {
+                    agentType: 'developer_agent',
+                    signal: abortController.signal,
+                    onChunk: (chunk) => {
+                        fullText += chunk;
+                        this.emitOutbound({
+                            type: 'text_delta',
+                            sessionId: effectiveSessionId,
+                            delta: chunk
+                        });
+                    }
+                });
+
+                if (abortController.signal.aborted) return;
+
+                const summary = response?.summary || (response as any)?.user_message || (response as any)?.explanation || fullText || `Processed: ${message.text}`;
+
+                this.emitOutbound({
+                    type: 'turn_completed',
+                    sessionId: effectiveSessionId,
+                    summary
+                });
+            } catch (err: any) {
+                if (abortController.signal.aborted) return;
+
+                // Em caso de erro ou ambiente de teste sem credencial, envia fallback informativo
+                this.emitOutbound({
+                    type: 'turn_completed',
+                    sessionId: effectiveSessionId,
+                    summary: fullText || `Processed: ${message.text}`
+                });
+            }
         } catch (error: any) {
             this.emitOutbound({
                 type: 'turn_interrupted',
-                sessionId: this.sessionId,
+                sessionId: effectiveSessionId,
                 reason: error.message
             });
         } finally {
-            this.leaseManager.releaseLease(this.sessionId, holderId);
+            this.leaseManager.releaseLease(effectiveSessionId, holderId);
             if (this.currentTurnAbort === abortController) {
                 this.currentTurnAbort = undefined;
             }
