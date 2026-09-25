@@ -22,6 +22,7 @@ O bot atua como um consumidor leve e independente do Shark AI:
        │
        ▼ (Inbound / Outbound Events)
 [AgentEngine Core (shark-ai)]
+   ├── projectRoot configurável (pasta do projeto ativo)
    ├── Trava de Sessão no SQLite (SessionTurnLease)
    ├── Aprovações Duráveis com TTL (PendingApprovals)
    └── Cancelamento Ativo via AbortController
@@ -41,22 +42,39 @@ cd examples/whatsapp-bot
 npm install
 ```
 
-### 3. Iniciar o bot
+### 3. (Opcional) Definir o projeto padrão
+Você pode definir em qual projeto o bot começará trabalhando através da variável `SHARK_PROJECT_ROOT`:
+```bash
+# Windows PowerShell
+$env:SHARK_PROJECT_ROOT = "D:\projetos\meu-sistema"
+
+# Linux / Mac
+export SHARK_PROJECT_ROOT="/home/user/projetos/meu-sistema"
+```
+Se não for definida, ele começará na pasta atual.
+
+### 4. Iniciar o bot
 ```bash
 npm start
 ```
 
-### 4. Escanear o QR Code
+### 5. Escanear o QR Code
 - Um QR Code será renderizado diretamente no seu terminal.
 - Abra o WhatsApp no celular -> **Aparelhos Conectados** -> **Conectar um aparelho**.
 - Escaneie o QR Code.
 
 ---
 
-## 💬 Recursos Suportados
+## 💬 Comandos e Recursos Disponíveis no WhatsApp
 
-1. **Conversas Diretas (DMs):** Envie qualquer instrução de desenvolvimento (ex: *"Crie um componente de botão em React"*).
-2. **Debouncing Automático:** Se enviar várias mensagens picadas seguidas (*"olha"*, *"gera uma função"*, *"que soma 2 números"*), o Shark aguarda 800ms de silêncio e processa tudo junto.
-3. **Interrupção:** Digite `/stop` ou `/abort` a qualquer momento para cancelar o turno em execução imediatamente.
-4. **Filtro de Grupos:** Em grupos, o bot só responderá caso seja mencionado explicitamente ou se a mensagem começar com `/shark`.
-5. **Aprovações Interativas:** Se o agente executar uma ação sensível, ele envia a solicitação numerada (*"Responda 1 para Aprovar ou 2 para Rejeitar"*).
+* **Gerenciar Projetos / Workspaces:**
+  * `/pwd` ou `/workspace`: Exibe a pasta do projeto onde o agente está trabalhando atualmente.
+  * `/use <caminho>`: Altera a pasta de trabalho do agente dinamicamente (ex: `/use D:\projetos\meu-app`).
+* **Interrupção:**
+  * `/stop` ou `/abort`: Cancela a tarefa do agente em execução imediatamente.
+* **Conversas Diretas (DMs):**
+  * Envie qualquer instrução de desenvolvimento (ex: *"Crie um endpoint de healthcheck com Express"*).
+* **Debouncing Automático:**
+  * Mensagens picadas consecutivas são agrupadas com 800ms de silêncio antes de acionar a IA.
+* **Filtro em Grupos:**
+  * Em grupos de WhatsApp, o bot só responderá caso seja mencionado explicitamente (`@Shark`) ou se a mensagem começar com `/shark`.

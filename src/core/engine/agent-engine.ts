@@ -9,10 +9,12 @@ export interface AgentEngineOptions {
     auto?: boolean;
     leaseManager?: SessionLeaseManager;
     approvalsManager?: PendingApprovalsManager;
+    projectRoot?: string;
 }
 
 export class AgentEngine {
     public readonly sessionId: string;
+    public projectRoot: string;
     private adapter?: AgentChannelAdapter;
     private leaseManager: SessionLeaseManager;
     private approvalsManager: PendingApprovalsManager;
@@ -21,6 +23,7 @@ export class AgentEngine {
 
     constructor(options: AgentEngineOptions = {}) {
         this.sessionId = options.sessionId || `session_${Date.now()}`;
+        this.projectRoot = options.projectRoot || process.cwd();
         this.isAuto = options.auto === true;
         this.leaseManager = options.leaseManager || new SessionLeaseManager();
         this.approvalsManager = options.approvalsManager || new PendingApprovalsManager();

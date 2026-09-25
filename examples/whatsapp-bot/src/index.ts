@@ -6,6 +6,7 @@ import makeWASocket, {
 import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 
 // Importa os módulos desacoplados do Shark AI (Core + WhatsApp Adapter)
 import {
@@ -78,9 +79,13 @@ async function startWhatsAppBot() {
         debounceMs: 800
     });
 
-    // 4. Instancia o motor agnóstico do Shark AI e anexa o adaptador
+    // 4. Instancia o motor agnóstico do Shark AI apontando para o workspace inicial
+    // Pode ser configurado via variável de ambiente SHARK_PROJECT_ROOT ou usar o diretório pai
+    let currentWorkspace = process.env.SHARK_PROJECT_ROOT || process.cwd();
+
     const engine = new AgentEngine({
-        sessionId: 'whatsapp:main_session'
+        sessionId: 'whatsapp:main_session',
+        projectRoot: currentWorkspace
     });
     engine.attachAdapter(whatsappAdapter);
 
@@ -89,35 +94,63 @@ async function startWhatsAppBot() {
         if (type !== 'notify') return;
 
         for (const msg of messages) {
-            // Ignora mensagens enviadas pelo próprio bot
             if (msg.key.fromMe) continue;
 
             const chatId = msg.key.remoteJid;
             if (!chatId) continue;
 
-            // Extrai texto de mensagem simples, extendida ou legenda de imagem
-            const text = msg.message?.conversation ||
-                         msg.message?.extendedTextMessage?.text ||
-                         msg.message?.imageMessage?.caption ||
-                         '';
+            const text = (msg.message?.conversation ||
+                          msg.message?.extendedTextMessage?.text ||
+                          msg.message?.imageMessage?.caption ||
+                          '').trim();
 
-            if (!text.trim()) continue;
+            if (!text) continue;
 
             const isGroup = chatId.endsWith('@g.us');
             const senderId = msg.key.participant || chatId;
 
-            // Regra para Grupos: só responde se for mencionado (@Shark ou prefixo /shark) ou em DM privada
+            // Filtro de grupos: só responde se for mencionado com @Shark ou prefixo /shark
             if (isGroup) {
                 const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
                 const botJid = sock.user?.id.split(':')[0] + '@s.whatsapp.net';
                 const isMentioned = mentions.includes(botJid) || text.toLowerCase().startsWith('/shark');
 
                 if (!isMentioned) {
-                    continue; // Ignora conversas paralelas no grupo
+                    continue;
                 }
             }
 
             console.log(`📩 Mensagem recebida [${chatId}]: "${text}"`);
+
+            // --- Comandos de Controle Rápido via WhatsApp ---
+            if (text === '/pwd' || text === '/workspace') {
+                await transport.sendText(chatId, `📁 *Workspace ativo:*\n\`${engine.projectRoot}\``);
+                continue;
+            }
+
+            if (text.startsWith('/use ') || text.startsWith('/workspace ')) {
+                const targetDir = text.replace(/^(\/use|\/workspace)\s+/, '').trim();
+                const resolved = path.resolve(targetDir);
+                if (fs.existsSync(resolved)) {
+                    engine.projectRoot = resolved;
+                    await transport.sendText(chatId, `✅ *Workspace alterado para:*\n\`${resolved}\``);
+                } else {
+                    await transport.sendText(chatId, `❌ *Diretório não encontrado:*\n\`${resolved}\``);
+                }
+                continue;
+            }
+
+            if (text === '/help') {
+                await transport.sendText(
+                    chatId,
+                    `🦈 *Shark AI WhatsApp Bot*\n\n` +
+                    `• Envie qualquer comando em linguagem natural para o agente.\n` +
+                    `• \`/pwd\` - Exibe o diretório/projeto onde o agente está trabalhando.\n` +
+                    `• \`/use <caminho>\` - Altera o diretório do projeto ativo.\n` +
+                    `• \`/stop\` ou \`/abort\` - Cancela a tarefa em execução imediatamente.\n`
+                );
+                continue;
+            }
 
             // Despacha para o WhatsAppAdapter (onde passa pelo debouncer de 800ms antes do turno)
             if (rawMessageHandler) {
