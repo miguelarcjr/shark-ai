@@ -28,7 +28,7 @@
   - Input: Raw JSON string, non-JSON string, or parsed object (with potential runtime aliases like `actions`, `message`, `conversation_id`, `isSynthetic`, etc.).
   - Output: Compact JSON string strictly matching `{ thought, action: { type, args }, summary }`.
 
-- [ ] **Step 1: Write the failing tests in `src/core/agents/canonical-response.test.ts`**
+- [x] **Step 1: Write the failing tests in `src/core/agents/canonical-response.test.ts`**
 
 ```typescript
 import { describe, it, expect } from 'vitest';
@@ -107,12 +107,12 @@ describe('toCanonicalAssistantMessage', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `npx vitest run src/core/agents/canonical-response.test.ts`
 Expected: FAIL because `src/core/agents/canonical-response.ts` does not exist yet.
 
-- [ ] **Step 3: Implement minimal code in `src/core/agents/canonical-response.ts`**
+- [x] **Step 3: Implement minimal code in `src/core/agents/canonical-response.ts`**
 
 ```typescript
 export interface CanonicalAssistantResponse {
@@ -169,12 +169,12 @@ export function toCanonicalAssistantMessage(rawOrParsed: any): string {
 }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/core/agents/canonical-response.test.ts`
 Expected: All tests PASS.
 
-- [ ] **Step 5: Commit changes**
+- [x] **Step 5: Commit changes**
 
 ```bash
 git add src/core/agents/canonical-response.ts src/core/agents/canonical-response.test.ts
@@ -194,18 +194,18 @@ git commit -m "feat(agents): add canonical assistant response serializer"
 - Consumes: `toCanonicalAssistantMessage` from `../agents/canonical-response.js`
 - Produces: Clean assistant messages in both `rawHistory` saves and `requestMessages` sent to LLM APIs.
 
-- [ ] **Step 1: Write failing tests in `src/core/api/openai-compatible-provider.test.ts`**
+- [x] **Step 1: Write failing tests in `src/core/api/openai-compatible-provider.test.ts`**
 
 Add tests to verify:
 1. When saving to `HistoryManager`, `role: 'assistant'` is stored as canonical JSON without `actions`, `message`, or `conversation_id`.
 2. When building the request payload, preexisting assistant messages in history containing `actions` or `message` are sanitized to canonical format before being sent in `requestPayload.messages`.
 
-- [ ] **Step 2: Run test to verify failure**
+- [x] **Step 2: Run test to verify failure**
 
 Run: `npx vitest run src/core/api/openai-compatible-provider.test.ts`
 Expected: FAIL because providers still save uncanonicalized responses and do not clean assistant history.
 
-- [ ] **Step 3: Implement minimal code in `openai-compatible-provider.ts` and `stackspot-provider.ts`**
+- [x] **Step 3: Implement minimal code in `openai-compatible-provider.ts` and `stackspot-provider.ts`**
 
 In `src/core/api/openai-compatible-provider.ts`:
 1. Import `toCanonicalAssistantMessage` from `../agents/canonical-response.js`.
@@ -225,17 +225,17 @@ In `src/core/api/openai-compatible-provider.ts`:
    ```
 4. Do the corresponding update in `src/core/api/stackspot-provider.ts`.
 
-- [ ] **Step 4: Run provider tests to verify they pass**
+- [x] **Step 4: Run provider tests to verify they pass**
 
 Run: `npx vitest run src/core/api`
 Expected: All tests PASS.
 
-- [ ] **Step 5: Run full test suite across the workspace**
+- [x] **Step 5: Run full test suite across the workspace**
 
 Run: `npx vitest run src/core/agents src/core/api src/core/engine`
 Expected: All tests PASS.
 
-- [ ] **Step 6: Commit changes**
+- [x] **Step 6: Commit changes**
 
 ```bash
 git add src/core/api/openai-compatible-provider.ts src/core/api/stackspot-provider.ts src/core/api/openai-compatible-provider.test.ts
