@@ -81,19 +81,25 @@ export class SkillManager {
     }
 
     private async resolveSkillDir(skillName: string): Promise<{ skillDir: string; isLocal: boolean }> {
-        const localPath = path.join(process.cwd(), '.agents', 'skills', skillName);
-        const globalPath = path.join(os.homedir(), '.shark', 'skills', skillName);
+        const candidatePaths = [
+            path.join(process.cwd(), '.agents', 'skills', skillName),
+            path.join(process.cwd(), '.agent', 'skills', skillName),
+            path.join(process.cwd(), 'skills', skillName)
+        ];
 
-        try {
-            await fs.access(localPath);
-            return { skillDir: localPath, isLocal: true };
-        } catch {
+        for (const localPath of candidatePaths) {
             try {
-                await fs.access(globalPath);
-                return { skillDir: globalPath, isLocal: false };
-            } catch {
-                throw new Error(`Skill '${skillName}' not found globally or locally.`);
-            }
+                await fs.access(localPath);
+                return { skillDir: localPath, isLocal: true };
+            } catch {}
+        }
+
+        const globalPath = path.join(os.homedir(), '.shark', 'skills', skillName);
+        try {
+            await fs.access(globalPath);
+            return { skillDir: globalPath, isLocal: false };
+        } catch {
+            throw new Error(`Skill '${skillName}' not found globally or locally.`);
         }
     }
 
@@ -439,7 +445,11 @@ export class SkillManager {
 
     async getAvailableSkillsMetadata(): Promise<SkillMetadata[]> {
         const globalSkillsDir = path.join(os.homedir(), '.shark', 'skills');
-        const localSkillsDir = path.join(process.cwd(), '.agents', 'skills');
+        const localCandidates = [
+            path.join(process.cwd(), '.agents', 'skills'),
+            path.join(process.cwd(), '.agent', 'skills'),
+            path.join(process.cwd(), 'skills')
+        ];
 
         const skillsMap = new Map<string, SkillMetadata>();
         const pinnedList = this.getPinnedSkills();
@@ -467,9 +477,11 @@ export class SkillManager {
             }
         };
 
-        // Scan global first, then local so local overrides global
+        // Scan global first, then local candidates so local overrides global
         await scanDir(globalSkillsDir);
-        await scanDir(localSkillsDir);
+        for (const localDir of localCandidates) {
+            await scanDir(localDir);
+        }
 
         return Array.from(skillsMap.values()).sort((a, b) => a.name.localeCompare(b.name));
     }

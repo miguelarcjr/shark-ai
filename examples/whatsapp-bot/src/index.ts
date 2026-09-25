@@ -15,6 +15,13 @@ import {
     type WhatsAppTransport
 } from '../../../src/core/index.js';
 
+// Suprime timeouts internos de rede do Baileys para não poluir o processo
+process.on('unhandledRejection', (err: any) => {
+    if (err?.message?.includes('Timed Out') || err?.output?.statusCode === 408) {
+        return;
+    }
+});
+
 async function startWhatsAppBot() {
     const logger = pino({ level: 'warn' });
     const authDir = path.resolve(process.cwd(), '.baileys_auth');
@@ -147,6 +154,7 @@ async function startWhatsAppBot() {
                     `• Envie qualquer comando em linguagem natural para o agente.\n` +
                     `• \`/pwd\` - Exibe o diretório/projeto onde o agente está trabalhando.\n` +
                     `• \`/use <caminho>\` - Altera o diretório do projeto ativo.\n` +
+                    `• \`/refine [foco]\` - Aciona o aprendizado reflexivo (Learning Loop) para atualizar memória e skills.\n` +
                     `• \`/stop\` ou \`/abort\` - Cancela a tarefa em execução imediatamente.\n`
                 );
                 continue;

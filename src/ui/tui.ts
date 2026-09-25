@@ -106,7 +106,13 @@ export const tui = {
                 message: (msg) => { if (msg) console.log(`[INFO] ${msg}`); },
             };
         }
+        const prevListeners = process.listeners('unhandledRejection');
         const s = p.spinner();
+        const newListeners = process.listeners('unhandledRejection');
+        const clackListener = newListeners.find(l => !prevListeners.includes(l));
+        if (clackListener) {
+            process.removeListener('unhandledRejection', clackListener);
+        }
         return {
             start: (msg) => s.start(msg),
             stop: (msg, code = 0) => s.stop(msg, code),

@@ -18,6 +18,7 @@ vi.mock('./agent-tools.js', () => ({
     handleListFiles: vi.fn(),
     handleSearchFile: vi.fn(),
     handleSearchCode: vi.fn(),
+    cleanupAgentTools: vi.fn(),
 }));
 
 vi.mock('../workflow/anchor-state-manager.js', () => ({

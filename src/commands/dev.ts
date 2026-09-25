@@ -66,6 +66,9 @@ export const devCommand = new Command('dev')
                 console.error('Task execution failed:', result.summary);
                 process.exit(1);
             }
+            if (taskInstruction && !process.env.VITEST) {
+                process.exit(0);
+            }
         } catch (error: any) {
             console.error('Error during development agent execution:', error.message);
             process.exit(1);

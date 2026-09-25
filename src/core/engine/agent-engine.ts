@@ -26,6 +26,7 @@ import { MessageQueue, type QueueMessage } from '../workflow/message-queue.js';
 import { promptUser, waitForInputOrNotification, formatRoleForUI } from '../workflow/interactive-prompt.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
+import { cleanupAgentTools } from '../agents/agent-tools.js';
 
 export interface AgentEngineOptions {
     sessionId?: string;
@@ -45,6 +46,7 @@ export interface EngineRunOptions {
     history?: string;
     auto?: boolean;
     messageQueue?: MessageQueue;
+    sessionId?: string;
 }
 
 export interface DevelopmentResult {
@@ -69,6 +71,7 @@ export class AgentEngine {
     private bridgeToolsManager?: BridgeToolsManager;
     private taskId?: string;
     private contextPath?: string;
+    private forkReviewAgents = new Map<string, ForkReviewAgent>();
 
     constructor(options: AgentEngineOptions = {}) {
         this.sessionId = options.sessionId || `session_${Date.now()}`;
@@ -158,18 +161,30 @@ export class AgentEngine {
             skillsIndex: skillsIndex || undefined
         });
 
-        const conversationKey = effectiveTaskId ? `dev_agent_${effectiveTaskId}` : `dev_agent_${Date.now()}`;
+        const effectiveSessionId = options.sessionId || this.sessionId || 'default';
+        const conversationKey = effectiveTaskId
+            ? `dev_agent_${effectiveTaskId}`
+            : (effectiveSessionId && effectiveSessionId !== '*' ? `session_${effectiveSessionId}` : `dev_agent_${Date.now()}`);
         let activeConversationId = await conversationManager.getConversationId(conversationKey);
 
         const activeProvider = ProviderResolver.getProvider('developer_agent');
-        const forkReviewAgent = new ForkReviewAgent({
-            memoryStore,
-            skillManager,
-            provider: activeProvider,
-            onNotification: (msg) => {
-                tui.log.info(colors.dim(msg));
-            }
-        });
+        let forkReviewAgent = this.forkReviewAgents.get(effectiveSessionId);
+        if (!forkReviewAgent) {
+            forkReviewAgent = new ForkReviewAgent({
+                memoryStore,
+                skillManager,
+                provider: activeProvider,
+                onNotification: (msg) => {
+                    tui.log.info(colors.dim(msg));
+                    this.emitOutbound({
+                        type: 'turn_completed',
+                        sessionId: effectiveSessionId,
+                        summary: msg
+                    });
+                }
+            });
+            this.forkReviewAgents.set(effectiveSessionId, forkReviewAgent);
+        }
 
         const onSlashCommand = async (cmd: string): Promise<boolean> => {
             const res = await handleSlashCommand(cmd, {
@@ -657,17 +672,18 @@ Your goal is to address the user's request:
 
                 // talk_with_user action
                 if (action.type === 'talk_with_user') {
-                    const isSystemError = action.content?.startsWith?.('[SYSTEM ERROR]');
+                    const talkContent = action.content || action.args?.content || action.message || action.args?.message || '';
+                    const isSystemError = typeof talkContent === 'string' && talkContent.startsWith('[SYSTEM ERROR]');
                     if (isSystemError) {
                         if (isSubagent) {
-                            currentPrompt = action.content || '';
+                            currentPrompt = talkContent;
                             continue;
                         } else {
-                            currentPrompt = action.content || '';
+                            currentPrompt = talkContent;
                         }
                     } else {
                         if (isSubagent) {
-                            const summary = `Subagent returned invalid response format or tried to talk with user. Content: ${action.content || ''}`;
+                            const summary = `Subagent returned invalid response format or tried to talk with user. Content: ${talkContent}`;
                             subagentManager.updateSubagentSummary(effectiveTaskId!, summary);
                             subagentManager.terminateSubagent(effectiveTaskId!, false);
                             if (process.env.SHARK_PARENT_ID) {
@@ -679,12 +695,35 @@ Your goal is to address the user's request:
                             }
                             return { success: false, summary };
                         }
-                        const nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
-                        if (nextMsg.type === 'user' && isUserCancellation(nextMsg.content)) {
+
+                        if (talkContent) {
+                            log.info(colors.primary('🤖 Shark Dev:'));
+                            console.log(talkContent);
+                        }
+
+                        if (activeConversationId) {
+                            const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                            void forkReviewAgent.maybeTriggerReview(rawHistory);
+                        }
+
+                        if (!isBatchMode || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
+                            const nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                            userDraftBuffer = (nextMsg as any).draft || '';
+                            if (nextMsg.type === 'user') {
+                                forkReviewAgent.onUserTurn();
+                                if (isUserCancellation(nextMsg.content)) {
+                                    finalSummary = talkContent;
+                                    keepGoing = false;
+                                    break;
+                                }
+                            }
+                            currentPrompt = nextMsg.content;
+                            continue;
+                        } else {
+                            finalSummary = talkContent;
                             keepGoing = false;
                             break;
                         }
-                        currentPrompt = nextMsg.content;
                     }
                     continue;
                 }
@@ -722,6 +761,8 @@ Your goal is to address the user's request:
             log.success('✅ Task Scope Completed');
             return finalResult;
         } finally {
+            cleanupAgentTools();
+            await mcpManager.closeAll();
             process.off('SIGINT', sigIntHandler);
             process.off('SIGTERM', sigTermHandler);
             if (this.currentTurnAbort === abortController) {
@@ -763,7 +804,8 @@ Your goal is to address the user's request:
 
             const result = await this.runInteractive({
                 taskInstruction: message.text,
-                auto: true
+                auto: true,
+                sessionId: effectiveSessionId
             });
 
             if (!result.success && (result.summary.includes('Interrupted') || result.summary.includes('cancelled') || result.summary.includes('user_cancelled'))) {

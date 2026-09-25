@@ -355,8 +355,7 @@ export function prewarmShell() {
     });
 }
 
-// Clean up background shell on Node process exit
-process.on('exit', () => {
+export function cleanupAgentTools() {
     killActiveCommand();
     if (nextShellProcess) {
         try {
@@ -364,13 +363,17 @@ process.on('exit', () => {
         } catch {
             // Ignore errors on shutdown
         }
+        nextShellProcess = null;
     }
+}
+
+// Clean up background shell on Node process exit
+process.on('exit', () => {
+    cleanupAgentTools();
 });
 
 export async function handleRunCommand(command: string): Promise<string> {
     try {
-        tui.log.info(`💻 Executing: ${colors.dim(command)}`);
-
         if (!nextShellProcess) {
             prewarmShell();
         }
