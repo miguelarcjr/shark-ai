@@ -117,7 +117,7 @@ export class TurnLoopRunner {
                     agentType: 'developer_agent',
                     searchQuery: currentPrompt,
                     systemPrompt: context.dynamicSystemPrompt,
-                    hasMcpServers: context.mcpManager.getAvailableTools().length > 0,
+                    hasMcpServers: (context.mcpTools || []).length > 0,
                     signal: abortController.signal,
                     onChunk: () => {}
                 });

@@ -28,9 +28,11 @@ export interface EngineContextOptions {
 }
 
 export interface PreparedEngineContext {
+    readonly basePrompt: string;
     dynamicSystemPrompt: string;
-    basePrompt: string;
+    setTaskInstruction: (instruction: string) => void;
     mcpManager: McpManager;
+    mcpTools: any[];
     bridgeTools: BridgeToolsManager;
     memoryStore: MemoryStore;
     activeProvider: any;
@@ -115,16 +117,17 @@ export class EngineContextBuilder {
         }
 
         // 6. Assemble base execution prompt
-        let basePrompt = '';
-        if (contextContent) {
-            basePrompt += `\n\n--- PROJECT CONTEXT ---\n${contextContent}\n-----------------------\n`;
-        }
-        if (options.history) {
-            basePrompt += `\n\n--- PREVIOUS EXECUTION SUMMARY ---\n${options.history}\n----------------------------------\n`;
-        }
-        basePrompt += `\n\n🟢 EXECUTION MODE\n
+        const buildBasePrompt = (instruction: string) => {
+            let prompt = '';
+            if (contextContent) {
+                prompt += `\n\n--- PROJECT CONTEXT ---\n${contextContent}\n-----------------------\n`;
+            }
+            if (options.history) {
+                prompt += `\n\n--- PREVIOUS EXECUTION SUMMARY ---\n${options.history}\n----------------------------------\n`;
+            }
+            prompt += `\n\n🟢 EXECUTION MODE\n
 You are a highly skilled Developer Agent.
-👉 **CURRENT TASK**: "${options.taskInstruction || ''}"
+👉 **CURRENT TASK**: "${instruction || ''}"
 
 Your goal is to address the user's request:
 - If the request is a question, a request for explanation, or a discussion, answer the user using the 'talk_with_user' action. You can search the codebase or read files first to answer accurately. Once the explanation/discussion is complete, execute the 'complete_task' action with a brief summary in the 'summary' field and the full explanation in the 'content' field.
@@ -138,11 +141,19 @@ Your goal is to address the user's request:
   - Instead, process the subagent's output, update your task progress in the 'summary' field of your next action, and proceed with executing your next planned steps (or use the 'wait' action to continue waiting for other running subagents).
   - Only use 'talk_with_user' if you genuinely require the user's input/decision to proceed, or when the entire task is ready for final discussion.
 `;
+            return prompt;
+        };
+
+        let currentBasePrompt = buildBasePrompt(options.taskInstruction || '');
 
         return {
             dynamicSystemPrompt,
-            basePrompt,
+            get basePrompt() { return currentBasePrompt; },
+            setTaskInstruction: (instruction: string) => {
+                currentBasePrompt = buildBasePrompt(instruction);
+            },
             mcpManager,
+            mcpTools,
             bridgeTools,
             memoryStore,
             activeProvider,
