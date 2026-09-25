@@ -11,6 +11,8 @@ import { conversationManager } from '../workflow/conversation-manager.js';
 import { ForkReviewAgent } from '../workflow/fork-review-agent.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
 import { buildUnifiedSystemPrompt } from '../api/prompts.js';
+import { HistoryManager } from '../workflow/history-manager.js';
+import { subagentManager } from '../workflow/subagent-manager.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
 
@@ -46,6 +48,7 @@ export class EngineContextBuilder {
     static async prepare(options: EngineContextOptions): Promise<PreparedEngineContext> {
         const projectRoot = options.projectRoot || process.cwd();
         const effectiveTaskId = options.taskId;
+        const isSubagent = !!effectiveTaskId && (effectiveTaskId.startsWith('subagent-') || subagentManager.hasSubagent(effectiveTaskId));
         const effectiveSessionId = options.sessionId || 'default';
 
         // 1. MCP Subsystems
@@ -87,6 +90,15 @@ export class EngineContextBuilder {
             ? `dev_agent_${effectiveTaskId}`
             : (effectiveSessionId && effectiveSessionId !== '*' ? `session_${effectiveSessionId}` : `dev_agent_${Date.now()}`);
         const activeConversationId = await conversationManager.getConversationId(conversationKey);
+        let hasExistingHistory = false;
+        if (activeConversationId) {
+            try {
+                const existingHistory = await HistoryManager.getRawHistory(activeConversationId);
+                hasExistingHistory = Array.isArray(existingHistory) && existingHistory.length > 0;
+            } catch {
+                hasExistingHistory = false;
+            }
+        }
         const activeProvider = ProviderResolver.getProvider('developer_agent');
 
         // 4. ForkReviewAgent
@@ -118,6 +130,10 @@ export class EngineContextBuilder {
 
         // 6. Assemble base execution prompt
         const buildBasePrompt = (instruction: string) => {
+            if (hasExistingHistory && !isSubagent) {
+                return instruction || '';
+            }
+
             let prompt = '';
             if (contextContent) {
                 prompt += `\n\n--- PROJECT CONTEXT ---\n${contextContent}\n-----------------------\n`;
