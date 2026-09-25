@@ -124,12 +124,19 @@ export class AgentEngine {
 
                 if (abortController.signal.aborted) return;
 
-                const summary = response?.summary || (response as any)?.user_message || (response as any)?.explanation || fullText || `Processed: ${message.text}`;
+                const talkContent = (response?.action?.type === 'talk_with_user' && response.action.content) ||
+                                    (response as any)?.actions?.find((a: any) => a.type === 'talk_with_user')?.content ||
+                                    (response as any)?.user_message ||
+                                    (response as any)?.explanation ||
+                                    (response?.action?.type === 'complete_task' && (response.action.content || response.summary)) ||
+                                    response?.summary ||
+                                    fullText ||
+                                    `Processed: ${message.text}`;
 
                 this.emitOutbound({
                     type: 'turn_completed',
                     sessionId: effectiveSessionId,
-                    summary
+                    summary: talkContent
                 });
             } catch (err: any) {
                 if (abortController.signal.aborted) return;
