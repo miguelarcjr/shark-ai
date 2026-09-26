@@ -71,4 +71,56 @@ describe('toCanonicalAssistantMessage', () => {
         const plain = 'Simple plain text response from agent';
         expect(toCanonicalAssistantMessage(plain)).toBe(plain);
     });
+
+    it('preserves path in action.args for file tools (read_file, list_files, modify_file)', () => {
+        const input = {
+            thought: 'Reading file',
+            action: {
+                type: 'read_file',
+                args: { path: 'src/routes/index.tsx' }
+            },
+            summary: 'Reading index'
+        };
+
+        const result = toCanonicalAssistantMessage(input);
+        const parsed = JSON.parse(result);
+
+        expect(parsed.action.args).toEqual({ path: 'src/routes/index.tsx' });
+    });
+
+    it('hoists top-level action.path into args.path when args is missing', () => {
+        const input = {
+            thought: 'Listing directory',
+            action: {
+                type: 'list_files',
+                path: 'src/components'
+            },
+            summary: 'Listing components'
+        };
+
+        const result = toCanonicalAssistantMessage(input);
+        const parsed = JSON.parse(result);
+
+        expect(parsed.action.args).toEqual({ path: 'src/components' });
+    });
+
+    it('preserves arbitrary tool arguments for commands, search, and MCP tools', () => {
+        const input = {
+            thought: 'Searching code',
+            action: {
+                type: 'search_code',
+                args: { query: 'export function', path: 'src/**/*', is_regex: false }
+            },
+            summary: 'Searching'
+        };
+
+        const result = toCanonicalAssistantMessage(input);
+        const parsed = JSON.parse(result);
+
+        expect(parsed.action.args).toEqual({
+            query: 'export function',
+            path: 'src/**/*',
+            is_regex: false
+        });
+    });
 });

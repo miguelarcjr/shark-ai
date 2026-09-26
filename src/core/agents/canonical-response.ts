@@ -33,7 +33,16 @@ export function toCanonicalAssistantMessage(rawOrParsed: any): string {
 
     delete (rawArgs as any).type;
     delete (rawArgs as any).isSynthetic;
-    delete (rawArgs as any).path;
+
+    // Hoist top-level path into rawArgs if not already present
+    if (obj.action?.path !== undefined && rawArgs.path === undefined) {
+        rawArgs.path = obj.action.path;
+    }
+
+    // Clean synthetic empty path from talk_with_user
+    if (type === 'talk_with_user' && rawArgs.path === '') {
+        delete (rawArgs as any).path;
+    }
 
     if (obj.action?.content !== undefined && rawArgs.content === undefined) {
         rawArgs.content = obj.action.content;
