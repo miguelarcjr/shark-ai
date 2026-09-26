@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { CliAdapter } from './cli-adapter.js';
 import type { AgentOutboundEvent } from '../../engine/events.js';
+import { tui } from '../../../ui/tui.js';
 
 describe('CliAdapter', () => {
     it('dispatches inbound user message when input is submitted', async () => {
@@ -52,5 +53,25 @@ describe('CliAdapter', () => {
         expect(dispatchedInbound.type).toBe('action_approval_response');
         expect(dispatchedInbound.approvalId).toBe('appr-123');
         expect(dispatchedInbound.decision).toBe('approved');
+    });
+
+    it('renders media_attachment event with formatted info and file URL', () => {
+        const adapter = new CliAdapter();
+        const infoSpy = vi.spyOn(tui.log, 'info').mockReturnValue(undefined as any);
+
+        adapter.emit({
+            type: 'media_attachment',
+            sessionId: 'session-cli',
+            filePath: 'd:/recordings/video.webm',
+            mimeType: 'video/webm',
+            caption: 'Vídeo do teste'
+        });
+
+        expect(infoSpy).toHaveBeenCalled();
+        const lastCallArg = infoSpy.mock.calls[0][0];
+        expect(lastCallArg).toContain('video.webm');
+        expect(lastCallArg).toContain('Vídeo do teste');
+        expect(lastCallArg).toContain('file:');
+        infoSpy.mockRestore();
     });
 });

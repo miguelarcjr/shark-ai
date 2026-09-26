@@ -1,3 +1,5 @@
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { AgentChannelAdapter } from '../adapter.interface.js';
 import type { AgentInboundEvent, AgentOutboundEvent } from '../../engine/events.js';
 import { tui } from '../../../ui/tui.js';
@@ -82,12 +84,28 @@ export class CliAdapter implements AgentChannelAdapter {
             case 'turn_interrupted':
                 tui.log.warn(colors.warning(`🛑 Turno interrompido: ${event.reason}`));
                 break;
+            case 'media_attachment': {
+                const icon = event.mimeType.startsWith('video/')
+                    ? '🎥'
+                    : event.mimeType.startsWith('image/')
+                        ? '🖼️'
+                        : event.mimeType.startsWith('audio/')
+                            ? '🎵'
+                            : '📎';
+                const captionText = event.caption ? ` - ${colors.bold(event.caption)}` : '';
+                const fileUrl = pathToFileURL(path.resolve(event.filePath)).href;
+                tui.log.info(`${icon} ${colors.primary('Mídia Anexada:')}${captionText}\n   Arquivo: ${colors.secondary(event.filePath)}\n   Tipo: ${colors.dim(event.mimeType)}\n   Link: ${colors.dim(fileUrl)}`);
+                break;
+            }
         }
     }
 
     private logToolStarting(toolName: string, details?: string) {
         const raw = details || '';
         switch (toolName) {
+            case 'send_file':
+                tui.log.info(`📤 Sending file: ${colors.bold(raw.replace(/^File:\s*/, ''))}`);
+                break;
             case 'modify_file':
                 tui.log.warning(`📝 Modify (Anchored): ${colors.bold(raw.replace(/^File:\s*/, ''))}`);
                 break;
