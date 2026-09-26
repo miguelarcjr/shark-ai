@@ -115,4 +115,53 @@ describe('ProcessManager', () => {
         const updated = manager.get(proc.id);
         expect(updated?.status).toBe('killed');
     });
+
+    it('should trigger onWatchPatternMatched callback when pattern matches', async () => {
+        let matchedPattern = '';
+        let matchedLine = '';
+
+        const cmd = `node -e "console.log(\\"BOOTING...\\"); setTimeout(() => console.log(\\"PORT 4200 READY\\"), 200);"`;
+        const proc = await manager.spawn(cmd, {
+            sessionId: testSession,
+            watchPatterns: ['PORT (\\d+) READY'],
+            onWatchPatternMatched: (p, l) => {
+                matchedPattern = p;
+                matchedLine = l;
+            }
+        });
+
+        for (let i = 0; i < 20; i++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (matchedPattern) break;
+        }
+
+        expect(matchedPattern).toBe('PORT (\\d+) READY');
+        expect(matchedLine).toContain('PORT 4200 READY');
+    });
+
+    it('should push notification to MessageQueue on process completion', async () => {
+        const fakeQueue = {
+            messages: [] as any[],
+            push(msg: any) {
+                this.messages.push(msg);
+            }
+        };
+        manager.setMessageQueue(fakeQueue);
+
+        const cmd = `node -e "console.log(\\"done\\");"`;
+        await manager.spawn(cmd, {
+            sessionId: testSession,
+            notifyOnComplete: true
+        });
+
+        for (let i = 0; i < 20; i++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            if (fakeQueue.messages.length > 0) break;
+        }
+
+        expect(fakeQueue.messages.length).toBeGreaterThan(0);
+        const notification = fakeQueue.messages[0];
+        expect(notification.type).toBe('process_notification');
+        expect(notification.metadata?.status).toBe('completed');
+    });
 });
