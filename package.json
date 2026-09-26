@@ -15,7 +15,7 @@
         "build": "tsup",
         "test": "vitest run",
         "shark": "node dist/bin/shark.js",
-        "whatsapp": "tsx examples/whatsapp-bot/src/index.ts",
+        "whatsapp": "npm --prefix examples/whatsapp-bot run start",
         "prepublishOnly": "npm run build && npm test",
         "preversion": "npm test",
         "postversion": "git push && git push --tags"
