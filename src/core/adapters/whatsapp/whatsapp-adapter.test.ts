@@ -91,4 +91,54 @@ describe('WhatsAppAdapter', () => {
 
         expect(transport.sendText).toHaveBeenCalledWith('u123', expect.stringContaining('Turno interrompido'));
     });
+
+    it('emits media_attachment via transport.sendMedia when available', async () => {
+        const sendMedia = vi.fn().mockResolvedValue(undefined);
+        const transport: WhatsAppTransport = {
+            sendText: vi.fn().mockResolvedValue(undefined),
+            sendMedia,
+            onRawMessage: vi.fn()
+        };
+        const adapter = new WhatsAppAdapter(transport);
+
+        await adapter.emit({
+            type: 'media_attachment',
+            sessionId: 'whatsapp:dm:u123',
+            filePath: '/path/to/video.webm',
+            mimeType: 'video/webm',
+            caption: 'Video da execucao'
+        });
+
+        expect(sendMedia).toHaveBeenCalledWith('u123', {
+            filePath: '/path/to/video.webm',
+            mimeType: 'video/webm',
+            caption: 'Video da execucao',
+            fileName: 'video.webm'
+        });
+    });
+
+    it('emits media_attachment fallback via sendText when sendMedia is not implemented', async () => {
+        const transport: WhatsAppTransport = {
+            sendText: vi.fn().mockResolvedValue(undefined),
+            onRawMessage: vi.fn()
+        };
+        const adapter = new WhatsAppAdapter(transport);
+
+        await adapter.emit({
+            type: 'media_attachment',
+            sessionId: 'whatsapp:dm:u123',
+            filePath: '/path/to/report.pdf',
+            mimeType: 'application/pdf',
+            caption: 'Relatorio mensal'
+        });
+
+        expect(transport.sendText).toHaveBeenCalledWith(
+            'u123',
+            expect.stringContaining('/path/to/report.pdf')
+        );
+        expect(transport.sendText).toHaveBeenCalledWith(
+            'u123',
+            expect.stringContaining('Relatorio mensal')
+        );
+    });
 });

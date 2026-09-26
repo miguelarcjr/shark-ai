@@ -1,9 +1,18 @@
+import path from 'node:path';
 import type { AgentChannelAdapter } from '../adapter.interface.js';
 import type { AgentInboundEvent, AgentOutboundEvent } from '../../engine/events.js';
 import { splitWhatsAppMessage } from './chunker.js';
 
+export interface WhatsAppMediaPayload {
+    filePath: string;
+    mimeType: string;
+    caption?: string;
+    fileName?: string;
+}
+
 export interface WhatsAppTransport {
     sendText(chatId: string, text: string): Promise<void>;
+    sendMedia?(chatId: string, media: WhatsAppMediaPayload): Promise<void>;
     editMessage?(chatId: string, messageId: string, text: string): Promise<void>;
     onRawMessage(handler: (chatId: string, text: string, senderId: string) => void): void;
 }
@@ -84,6 +93,18 @@ export class WhatsAppAdapter implements AgentChannelAdapter {
         } else if (event.type === 'action_approval_request') {
             const text = `⚠️ *Aprovação Solicitada*\nFerramenta: \`${event.toolName}\`\n\n${event.fallbackText}\n_Responda 1 para Aprovar ou 2 para Rejeitar_`;
             await this.transport.sendText(chatId, text);
+        } else if (event.type === 'media_attachment') {
+            if (this.transport.sendMedia) {
+                await this.transport.sendMedia(chatId, {
+                    filePath: event.filePath,
+                    mimeType: event.mimeType,
+                    caption: event.caption,
+                    fileName: path.basename(event.filePath)
+                });
+            } else {
+                const captionSuffix = event.caption ? `\n${event.caption}` : '';
+                await this.transport.sendText(chatId, `📎 [Arquivo]: ${event.filePath}${captionSuffix}`);
+            }
         }
     }
 }
