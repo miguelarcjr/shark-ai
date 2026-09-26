@@ -70,6 +70,10 @@ export class AgentActionExecutor {
         }
     }
 
+    public resetReadCounts(): void {
+        this.recentReadCounts.clear();
+    }
+
     public async executeAction(action: { type: string; [key: string]: any }): Promise<ActionResult> {
         const toolName = action.type;
         const details = this.getToolDetails(action);
@@ -115,6 +119,7 @@ export class AgentActionExecutor {
                         break;
                     }
 
+                    const resolvedFilePath = path.isAbsolute(filePath) ? filePath : path.resolve(this.projectRoot, filePath);
                     const readCount = (this.recentReadCounts.get(filePath) || 0) + 1;
                     this.recentReadCounts.set(filePath, readCount);
 
@@ -122,7 +127,7 @@ export class AgentActionExecutor {
                         output = `[Action read_file(${filePath}) Blocked]: Leitura redundante bloqueada. O conteúdo já está no seu contexto acima. NÃO chame read_file novamente neste arquivo. Prossiga IMEDIATAMENTE para aplicar alterações com 'create_file' ou 'modify_file', ou verificar com testes via 'run_command'.`;
                     } else {
                         try {
-                            const content = this.anchorManager.getAnchoredContent(filePath);
+                            const content = this.anchorManager.getAnchoredContent(resolvedFilePath);
                             const lines = content.split('\n');
                             const totalLines = Math.max(0, lines.length - 1);
                             output = `[Action read_file(${filePath}) Success - ${totalLines} linhas, Arquivo completo]:\n[START_OF_FILE]\n${content}\n[END_OF_FILE]`;

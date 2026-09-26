@@ -110,6 +110,7 @@ export class TurnLoopRunner {
                 });
                 if (wasCompressed) {
                     await HistoryManager.saveRawHistory(activeConversationId, compressedHistory);
+                    actionExecutor?.resetReadCounts();
                 }
             }
 
@@ -392,6 +393,7 @@ export class TurnLoopRunner {
                             });
                             if (wasCompressed) {
                                 await HistoryManager.saveRawHistory(activeConversationId, compressedHistory);
+                                actionExecutor?.resetReadCounts();
                                 log.success('🧹 Contexto compactado com sucesso para desobstruir o raciocínio do modelo.');
                             }
                         } catch (err: any) {
