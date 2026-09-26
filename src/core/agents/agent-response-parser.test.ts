@@ -57,6 +57,24 @@ describe('AgentResponseParser', () => {
         expect(result.action?.type).toBe('talk_with_user');
     });
 
+    it('should parse send_file action with path and caption', () => {
+        const response = {
+            summary: 'Enviando gravação do teste',
+            action: {
+                type: 'send_file',
+                args: {
+                    path: 'recordings/test.webm',
+                    caption: 'Vídeo da execução do Playwright'
+                }
+            }
+        };
+
+        const result = parseAgentResponse(response);
+        expect(result.action?.type).toBe('send_file');
+        expect(result.action?.path).toBe('recordings/test.webm');
+        expect((result.action as any)?.caption).toBe('Vídeo da execução do Playwright');
+    });
+
     it('should handle legacy actions array and map to single action', () => {
         const response = {
             summary: 'Response with actions array',

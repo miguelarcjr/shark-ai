@@ -40,6 +40,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
 }, z.object({
     type: z.enum([
         'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
+        'send_file',
         'list_structure', 'modify_ast', 'search_ast', 'run_command', 'process',
         'tool_search', 'tool_describe', 'tool_call',
         'talk_with_user',
@@ -64,6 +65,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     names: z.array(z.string()).nullable().optional(),
     queries: z.array(z.string()).nullable().optional(),
     path: z.string().nullable().optional(), // Nullable for strict mode combatibility
+    caption: z.string().nullable().optional(),
     content: z.string().nullable().optional(),
     line_range: z.array(z.number()).nullable().optional(),
     target_content: z.string().nullable().optional(),

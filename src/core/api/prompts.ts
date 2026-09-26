@@ -83,6 +83,10 @@ Você possui memória persistente que é carregada em todas as sessões. Use a a
   - action: 'write', process_id: 'proc_1', data: "y\\n": Envia texto para o stdin de processos interativos.
   - action: 'kill', process_id: 'proc_1': Encerra o processo e toda sua árvore de subprocessos (tree-kill) para liberar portas.
 
+📤 ENVIO DE ARQUIVOS E MÍDIA ('send_file'):
+- Para enviar arquivos, vídeos de gravações de testes (ex: Playwright .webm), capturas de tela (.png), áudios ou documentos (.pdf) para o usuário (inclusive via WhatsApp e CLI), utilize a ação 'send_file' com args: { "path": "caminho_do_arquivo", "caption": "legenda descritiva opcional" }.
+- O caminho pode ser relativo à raiz do projeto ou absoluto.
+
 🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):
 - Você DEVE responder APENAS com um objeto JSON válido.
 - Todas as ações seguem o envelope uniforme { "type": "...", "args": { ... } }.
@@ -92,7 +96,7 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "thought": "Explicação detalhada do raciocínio lógico e intenção da ação tomada antes de executá-la.",
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "process" | "tool_search" | "tool_describe" | "tool_call" | "skills_list" | "skill_view" | "skill_manage" | "talk_with_user" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "send_file" | "run_command" | "process" | "tool_search" | "tool_describe" | "tool_call" | "skills_list" | "skill_view" | "skill_manage" | "talk_with_user" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search",
     "args": {
       /* Parâmetros específicos da ferramenta selecionada */
     }
@@ -151,6 +155,10 @@ export const TOOL_ARGS_PROPERTIES = {
   path: {
     type: ["string", "null"],
     description: "Caminho do arquivo ou diretório."
+  },
+  caption: {
+    type: ["string", "null"],
+    description: "Legenda opcional para o arquivo/mídia enviado via send_file."
   },
   content: {
     type: ["string", "null"],
@@ -317,6 +325,10 @@ export const COORDINATOR_ACTION_SCHEMAS = [
   }),
   defineAction("delete_file", {
     path: { type: "string" }
+  }),
+  defineAction("send_file", {
+    path: { type: "string" },
+    caption: { type: ["string", "null"] }
   }),
   defineAction("run_command", {
     command: { type: "string" }

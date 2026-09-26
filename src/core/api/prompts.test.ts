@@ -68,4 +68,15 @@ describe('prompts', () => {
         expect(allTypes).toContain('skill_view');
         expect(allTypes).toContain('skill_manage');
     });
+
+    it('deve incluir send_file em COORDINATOR_RESPONSE_JSON_SCHEMA e caption em TOOL_ARGS_PROPERTIES', () => {
+        expect(TOOL_ARGS_PROPERTIES).toHaveProperty('caption');
+        const schema = COORDINATOR_RESPONSE_JSON_SCHEMA as any;
+        const allTypes = schema.properties.action.anyOf.map((b: any) => b.properties.type.enum[0]);
+        expect(allTypes).toContain('send_file');
+        const sendFileBranch = schema.properties.action.anyOf.find((b: any) => b.properties.type.enum.includes('send_file'));
+        expect(sendFileBranch).toBeDefined();
+        expect(sendFileBranch.properties.args.properties).toHaveProperty('path');
+        expect(sendFileBranch.properties.args.properties).toHaveProperty('caption');
+    });
 });
