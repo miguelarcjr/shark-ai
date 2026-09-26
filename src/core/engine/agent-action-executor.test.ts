@@ -136,4 +136,55 @@ describe('AgentActionExecutor', () => {
         expect(killRes.success).toBe(true);
         expect(killRes.output).toContain('terminated successfully');
     });
+
+    it('emits media_attachment event when send_file is executed with existing file', async () => {
+        const emittedEvents: AgentOutboundEvent[] = [];
+        const executor = new AgentActionExecutor({
+            projectRoot: testDir,
+            emitOutbound: (ev) => emittedEvents.push(ev),
+            sessionId: 'sess-media-test'
+        });
+
+        const videoFile = path.resolve(testDir, 'recording.webm');
+        fs.writeFileSync(videoFile, 'fake-webm-content');
+
+        const result = await executor.executeAction({
+            type: 'send_file',
+            args: {
+                path: videoFile,
+                caption: 'Gravação da automação'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.output).toContain('video/webm');
+        expect(result.output).toContain('recording.webm');
+
+        const mediaEvent = emittedEvents.find(e => e.type === 'media_attachment') as any;
+        expect(mediaEvent).toBeDefined();
+        expect(mediaEvent.filePath).toBe(videoFile);
+        expect(mediaEvent.mimeType).toBe('video/webm');
+        expect(mediaEvent.caption).toBe('Gravação da automação');
+        expect(mediaEvent.sessionId).toBe('sess-media-test');
+    });
+
+    it('returns failure output when send_file target does not exist', async () => {
+        const emittedEvents: AgentOutboundEvent[] = [];
+        const executor = new AgentActionExecutor({
+            projectRoot: testDir,
+            emitOutbound: (ev) => emittedEvents.push(ev),
+            sessionId: 'sess-media-test'
+        });
+
+        const result = await executor.executeAction({
+            type: 'send_file',
+            args: {
+                path: path.resolve(testDir, 'non-existent.mp4')
+            }
+        });
+
+        expect(result.output).toContain('Arquivo não encontrado');
+        const mediaEvent = emittedEvents.find(e => e.type === 'media_attachment');
+        expect(mediaEvent).toBeUndefined();
+    });
 });

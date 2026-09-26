@@ -13,6 +13,7 @@ import { executeSessionSearchTool, sessionSearchToolSchema } from '../tools/sess
 import type { BridgeToolsManager } from '../tools/bridge/bridge-tools.js';
 import { truncateToolOutput } from '../utils/text-truncator.js';
 import type { MessageQueue } from '../workflow/message-queue.js';
+import { detectMimeType } from '../utils/mime-detector.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
 
@@ -252,6 +253,30 @@ export class AgentActionExecutor {
                     } catch (e: any) {
                         output = `[Action process(${processAction}) Failed]: ${e.message}`;
                     }
+                    break;
+                }
+
+                case 'send_file': {
+                    const rawPath = action.args?.path || action.path || '';
+                    const caption = action.args?.caption || action.caption;
+                    if (!rawPath) {
+                        output = `[Action send_file Failed]: Nenhum caminho de arquivo fornecido.`;
+                        break;
+                    }
+                    const resolvedPath = path.isAbsolute(rawPath) ? rawPath : path.resolve(this.projectRoot, rawPath);
+                    if (!fs.existsSync(resolvedPath)) {
+                        output = `[Action send_file Failed]: Arquivo não encontrado no caminho: ${resolvedPath}`;
+                        break;
+                    }
+                    const mimeType = detectMimeType(resolvedPath);
+                    this.emitOutbound({
+                        type: 'media_attachment',
+                        sessionId: this.sessionId,
+                        filePath: resolvedPath,
+                        mimeType,
+                        caption
+                    });
+                    output = `[Action send_file("${resolvedPath}") Success]: Arquivo (${mimeType}) enviado com sucesso.`;
                     break;
                 }
 
@@ -506,6 +531,7 @@ export class AgentActionExecutor {
             case 'create_file':
             case 'modify_file':
             case 'delete_file':
+            case 'send_file':
                 return `File: ${action.args?.path || action.path || ''}`;
             case 'run_command':
                 return `Cmd: ${action.args?.command || action.command || ''}`;
