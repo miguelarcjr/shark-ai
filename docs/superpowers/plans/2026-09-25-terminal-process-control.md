@@ -60,7 +60,7 @@
   }
   ```
 
-- [ ] **Step 1: Write failing tests for ProcessManager**
+- [x] **Step 1: Write failing tests for ProcessManager**
 Create `src/core/process/process-manager.test.ts` testing:
 - Spawning a short-lived command (e.g. `node -e "console.log('hello'); console.log('world');"`) writes logs to disk and tracks `totalLines: 2`.
 - `list()` returns the process.
@@ -68,22 +68,22 @@ Create `src/core/process/process-manager.test.ts` testing:
 - `getLogs()` supports `offset` and `lines`.
 - `kill()` terminates a running process.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npx vitest run src/core/process/process-manager.test.ts`
 Expected: FAIL (module not found).
 
-- [ ] **Step 3: Implement ProcessManager**
+- [x] **Step 3: Implement ProcessManager**
 Create `src/core/process/process-manager.ts`:
 - Use `node:fs` write streams to write stdout/stderr chunks into `.shark/processes/<sessionId>/<id>.log`.
 - Count lines as chunks arrive, splitting by newline.
 - Implement tree-kill: on Windows, execute `taskkill /pid ${pid} /T /F`; on POSIX, use `tree-kill` or `process.kill(-pid, 'SIGKILL')` fallback to `child.kill('SIGKILL')`.
 - Hook into process exit handlers to clean up child processes.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npx vitest run src/core/process/process-manager.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add src/core/process/process-manager.ts src/core/process/process-manager.test.ts
 git commit -m "feat(process): add ProcessManager with disk streaming and tree-kill"
@@ -103,27 +103,27 @@ git commit -m "feat(process): add ProcessManager with disk streaming and tree-ki
 - Modifies `QueueMessage.type`: support `'process_notification'` alongside `'user' | 'subagent_notification' | 'timeout'`.
 - Produces: `ProcessManager.setMessageQueue(queue: MessageQueue): void`.
 
-- [ ] **Step 1: Write failing tests for watch_patterns and MessageQueue alerts**
+- [x] **Step 1: Write failing tests for watch_patterns and MessageQueue alerts**
 Add tests in `src/core/process/process-manager.test.ts`:
 - Spawning a command that outputs `"SERVER READY on 3000"` with `watchPatterns: ["SERVER READY"]` invokes `onWatchPatternMatched`.
 - Setting a `MessageQueue` causes process exit to push a `'process_notification'` message with process metadata.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npx vitest run src/core/process/process-manager.test.ts`
 Expected: FAIL (unsupported options or missing notifications).
 
-- [ ] **Step 3: Implement pattern watching and queue notifications**
+- [x] **Step 3: Implement pattern watching and queue notifications**
 - Update `src/core/workflow/message-queue.ts`:
   Expand `QueueMessage.type` to `'user' | 'subagent_notification' | 'timeout' | 'process_notification'`.
 - Update `src/core/process/process-manager.ts`:
   - As lines are emitted, test them against `watchPatterns`. If matched, call callback.
   - On process exit, if `notifyOnComplete !== false` and `messageQueue` is present, push notification to queue.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npx vitest run src/core/process/process-manager.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add src/core/workflow/message-queue.ts src/core/process/process-manager.ts src/core/process/process-manager.test.ts
 git commit -m "feat(process): add watch_patterns and MessageQueue notification support"
@@ -154,18 +154,18 @@ git commit -m "feat(process): add watch_patterns and MessageQueue notification s
   ): Promise<string>;
   ```
 
-- [ ] **Step 1: Write failing test for enhanced handleRunCommand**
+- [x] **Step 1: Write failing test for enhanced handleRunCommand**
 Create `src/core/agents/agent-tools-process.test.ts`:
 - Test 1: Síncrono rápido (< 2s) retorna stdout normalmente.
 - Test 2: Com `background: true`, retorna imediatamente `[Process '<id>' started in background (PID: ...)]` e inicializa o processo no `ProcessManager`.
 - Test 3: Com `timeoutSeconds: 2`, um script que dorme 5 segundos é automaticamente promovido para background com mensagem informativa e ID.
 - Test 4: Com `watchPatterns: ["READY"]`, assim que a linha aparece, desatacha imediatamente sem esperar o timeout.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npx vitest run src/core/agents/agent-tools-process.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement enhanced handleRunCommand**
+- [x] **Step 3: Implement enhanced handleRunCommand**
 In `src/core/agents/agent-tools.ts`:
 - If `background === true`:
   - Call `ProcessManager.getInstance().spawn(command, ...)`.
@@ -177,11 +177,11 @@ In `src/core/agents/agent-tools.ts`:
   - If it finishes within timeout, return output as before.
   - If timeout fires or pattern matches, promote to background and return formatted promotion notice.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npx vitest run src/core/agents/agent-tools-process.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add src/core/agents/agent-tools.ts src/core/agents/agent-tools-process.test.ts
 git commit -m "feat(agents): support background execution and auto-promotion in handleRunCommand"
@@ -211,29 +211,29 @@ git commit -m "feat(agents): support background execution and auto-promotion in 
   ```
 - Exposes action `'process'` in `AgentActionExecutor.executeAction()`.
 
-- [ ] **Step 1: Write failing test for process tool in AgentActionExecutor**
+- [x] **Step 1: Write failing test for process tool in AgentActionExecutor**
 In `src/core/engine/agent-action-executor.test.ts` (or dedicated test):
 - Execute action `{ type: 'process', args: { action: 'list' } }` -> returns process table.
 - Execute action `{ type: 'process', args: { action: 'poll', process_id: 'proc_1' } }` -> returns incremental lines.
 - Execute action `{ type: 'process', args: { action: 'log', process_id: 'proc_1', lines: 10 } }` -> returns tail lines with total_lines metadata.
 - Execute action `{ type: 'process', args: { action: 'kill', process_id: 'proc_1' } }` -> kills process and returns success.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npx vitest run src/core/engine/agent-action-executor.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement handleProcessAction and wire into AgentActionExecutor**
+- [x] **Step 3: Implement handleProcessAction and wire into AgentActionExecutor**
 - Implement `handleProcessAction` in `agent-tools.ts` formatting output with header (status, total lines, offsets).
 - In `agent-action-executor.ts`:
   - Add `case 'process':` in `executeAction`.
   - Pass `this.messageQueue` and `this.sessionId` to `ProcessManager`.
   - Add sensitive action check for `'process'` when `action === 'kill'` or `action === 'write'`.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npx vitest run src/core/engine/agent-action-executor.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add src/core/agents/agent-tools.ts src/core/engine/agent-action-executor.ts src/core/engine/agent-action-executor.test.ts
 git commit -m "feat(engine): add process tool and integrate with AgentActionExecutor"
@@ -253,14 +253,14 @@ git commit -m "feat(engine): add process tool and integrate with AgentActionExec
 - Add arguments `background`, `timeout_seconds`, `watch_patterns`, `process_id`, `data`, `lines`, `offset` to `TOOL_ARGS_PROPERTIES`.
 - Document foreground vs background rules, `watch_patterns`, and prohibiting `&` / `nohup`.
 
-- [ ] **Step 1: Write failing test in agent-response-parser.test.ts**
+- [x] **Step 1: Write failing test in agent-response-parser.test.ts**
 Test parsing JSON output with action `type: 'process'` and args `{ action: 'poll', process_id: 'proc_1' }`.
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 Run: `npx vitest run src/core/agents/agent-response-parser.test.ts`
 Expected: FAIL if `'process'` is rejected as unknown action.
 
-- [ ] **Step 3: Update prompts and schemas**
+- [x] **Step 3: Update prompts and schemas**
 In `src/core/api/prompts.ts`:
 - Include `'process'` in action types.
 - Add parameters to `TOOL_ARGS_PROPERTIES`.
@@ -268,11 +268,11 @@ In `src/core/api/prompts.ts`:
 In `src/core/agents/agent-response-parser.ts`:
 - Ensure `'process'` is recognized as a valid action type.
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 Run: `npx vitest run src/core/agents/agent-response-parser.test.ts`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add src/core/api/prompts.ts src/core/agents/agent-response-parser.ts src/core/agents/agent-response-parser.test.ts
 git commit -m "feat(prompts): document process tool and terminal guidelines in system prompt"
@@ -289,22 +289,22 @@ git commit -m "feat(prompts): document process tool and terminal guidelines in s
 **Interfaces:**
 - Ensure `ProcessManager.getInstance().killAll()` is called on CLI shutdown / SIGINT.
 
-- [ ] **Step 1: Write integration test**
+- [x] **Step 1: Write integration test**
 Create `test/integration/terminal-process-control.test.ts`:
 - Test full flow: agent launches a mock server (e.g. `node -e "setInterval(() => console.log('heartbeat'), 500);"`), receives background promo notice, inspects logs via `process(action: 'log')`, writes input if needed, and kills it. Verify no process remains running after `killAll()`.
 
-- [ ] **Step 2: Run integration test**
+- [x] **Step 2: Run integration test**
 Run: `npx vitest run test/integration/terminal-process-control.test.ts`
 Expected: PASS.
 
-- [ ] **Step 3: Wire shutdown hook in CLI**
+- [x] **Step 3: Wire shutdown hook in CLI**
 Register `process.on('SIGINT', async () => { await ProcessManager.getInstance().killAll(); process.exit(0); })` and similar in CLI runner.
 
-- [ ] **Step 4: Run full test suite**
+- [x] **Step 4: Run full test suite**
 Run: `npm test`
 Expected: All tests pass.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 ```bash
 git add src/index.ts src/commands/dev.ts test/integration/terminal-process-control.test.ts
 git commit -m "feat(cli): wire ProcessManager shutdown hooks and add integration tests"
