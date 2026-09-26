@@ -2,7 +2,8 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import type { AgentOutboundEvent } from './events.js';
 import { AnchorStateManager } from '../workflow/anchor-state-manager.js';
-import { handleReadFile, handleRunCommand, handleListFiles, handleSearchCode, handleSearchFile } from '../agents/agent-tools.js';
+import { handleReadFile, handleRunCommand, handleListFiles, handleSearchCode, handleSearchFile, handleProcessAction } from '../agents/agent-tools.js';
+import { ProcessManager } from '../process/process-manager.js';
 import { skillManager } from '../workflow/skill-manager.js';
 import { subagentManager } from '../workflow/subagent-manager.js';
 import { MemoryStore } from '../memory/memory-store.js';
@@ -62,6 +63,10 @@ export class AgentActionExecutor {
         this.currentTaskId = options.currentTaskId;
         this.messageQueue = options.messageQueue;
         this.anchorManager = new AnchorStateManager();
+
+        if (this.messageQueue) {
+            ProcessManager.getInstance().setMessageQueue(this.messageQueue);
+        }
     }
 
     public async executeAction(action: { type: string; [key: string]: any }): Promise<ActionResult> {
@@ -78,7 +83,8 @@ export class AgentActionExecutor {
 
         try {
             // Checagem de aprovação para ações sensíveis
-            const isSensitive = ['create_file', 'modify_file', 'delete_file', 'run_command', 'tool_call'].includes(toolName);
+            const isSensitive = ['create_file', 'modify_file', 'delete_file', 'run_command', 'tool_call'].includes(toolName) ||
+                (toolName === 'process' && ['kill', 'write'].includes(action.args?.action || action.action));
             if (isSensitive && !this.autoApprove && this.requestApproval) {
                 const fallbackText = this.getApprovalPrompt(action);
                 const approved = await this.requestApproval(toolName, action, fallbackText);
@@ -206,12 +212,45 @@ export class AgentActionExecutor {
 
                 case 'run_command': {
                     const command = action.args?.command || action.command || '';
+                    const background = action.args?.background ?? action.background;
+                    const timeoutSeconds = action.args?.timeout_seconds ?? action.timeout_seconds;
+                    const notifyOnComplete = action.args?.notify_on_complete ?? action.notify_on_complete;
+                    const watchPatterns = action.args?.watch_patterns || action.watch_patterns;
                     try {
-                        const rawOutput = await handleRunCommand(command);
+                        const rawOutput = await handleRunCommand(command, {
+                            background,
+                            timeoutSeconds,
+                            notifyOnComplete,
+                            watchPatterns,
+                            sessionId: this.sessionId
+                        });
                         output = `[Action run_command(${command}) Success]:\n${rawOutput}`;
                         output = truncateToolOutput(output, 100000);
                     } catch (e: any) {
                         output = `[Action run_command(${command}) Failed]: ${e.message}`;
+                    }
+                    break;
+                }
+
+                case 'process': {
+                    const processAction = (action.args?.action || action.action || 'list') as any;
+                    const processId = action.args?.process_id || action.process_id;
+                    const data = action.args?.data || action.data;
+                    const lines = action.args?.lines ?? action.lines;
+                    const offset = action.args?.offset ?? action.offset;
+                    try {
+                        const res = await handleProcessAction({
+                            action: processAction,
+                            process_id: processId,
+                            data,
+                            lines,
+                            offset,
+                            sessionId: this.sessionId
+                        });
+                        output = `[Action process(${processAction}) Success]:\n${res}`;
+                        output = truncateToolOutput(output, 100000);
+                    } catch (e: any) {
+                        output = `[Action process(${processAction}) Failed]: ${e.message}`;
                     }
                     break;
                 }
@@ -443,6 +482,11 @@ export class AgentActionExecutor {
                 const cmd = action.args?.command || action.command || '';
                 return `Execute run_command: ${cmd}?`;
             }
+            case 'process': {
+                const act = action.args?.action || action.action || '';
+                const pId = action.args?.process_id || action.process_id || '';
+                return `Approve process action '${act}' on '${pId}'?`;
+            }
             case 'tool_call': {
                 const tName = action.args?.name || action.tool_name || '';
                 const rawArgs = action.args?.arguments ?? action.tool_args;
@@ -465,6 +509,8 @@ export class AgentActionExecutor {
                 return `File: ${action.args?.path || action.path || ''}`;
             case 'run_command':
                 return `Cmd: ${action.args?.command || action.command || ''}`;
+            case 'process':
+                return `Action: ${action.args?.action || action.action} on ${action.args?.process_id || action.process_id || 'all'}`;
             case 'list_files':
                 return `Dir: ${action.args?.path || action.path || '.'}`;
             case 'search_code':

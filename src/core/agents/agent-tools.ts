@@ -477,3 +477,90 @@ ${logSnippet ? `Recent output:\n------------------------------------------------
         return `Error executing command: ${e.message}`;
     }
 }
+
+export interface ProcessActionArgs {
+    action: 'list' | 'poll' | 'log' | 'write' | 'kill';
+    process_id?: string;
+    data?: string;
+    lines?: number;
+    offset?: number;
+    sessionId?: string;
+}
+
+export async function handleProcessAction(args: ProcessActionArgs): Promise<string> {
+    const manager = ProcessManager.getInstance();
+
+    switch (args.action) {
+        case 'list': {
+            const list = manager.list(args.sessionId);
+            if (list.length === 0) {
+                return 'No managed processes found for this session.';
+            }
+            const rows = list.map(p => {
+                const duration = Math.round(((p.endTime || Date.now()) - p.startTime) / 1000);
+                const exitStr = p.exitCode !== undefined ? ` (exit: ${p.exitCode})` : '';
+                return `• [${p.id}] PID: ${p.pid} | Status: ${p.status.toUpperCase()}${exitStr} | Runtime: ${duration}s | Total lines: ${p.totalLines} | Cmd: "${p.command}"`;
+            });
+            return `Managed Processes (${list.length}):\n${rows.join('\n')}`;
+        }
+
+        case 'poll': {
+            if (!args.process_id) {
+                throw new Error("Parameter 'process_id' is required for action 'poll'.");
+            }
+            const res = await manager.poll(args.process_id);
+            const content = res.newLines.join('\n').trim();
+            return `[Process ${res.process.id} ('${res.process.command}') - Status: ${res.process.status.toUpperCase()} | Total lines: ${res.process.totalLines}]
+Unread new lines: ${res.newLines.length}
+${content ? `--------------------------------------------------\n${content}\n--------------------------------------------------` : '(No new lines since last check)'}`;
+        }
+
+        case 'log': {
+            if (!args.process_id) {
+                throw new Error("Parameter 'process_id' is required for action 'log'.");
+            }
+            const res = await manager.getLogs(args.process_id, {
+                lines: args.lines,
+                offset: args.offset
+            });
+            const content = res.lines.join('\n').trim();
+            const endOffset = Math.min(res.offset + res.lines.length, res.totalLines);
+            return `[Process ${res.process.id} ('${res.process.command}') - Status: ${res.process.status.toUpperCase()} | Total: ${res.totalLines} lines]
+Showing lines ${res.offset + 1} to ${endOffset}:
+--------------------------------------------------
+${content || '(Empty log)'}
+--------------------------------------------------
+Hint: To read earlier lines, pass args: { action: "log", process_id: "${res.process.id}", offset: <number>, lines: <number> }`;
+        }
+
+        case 'write': {
+            if (!args.process_id) {
+                throw new Error("Parameter 'process_id' is required for action 'write'.");
+            }
+            if (args.data === undefined || args.data === null) {
+                throw new Error("Parameter 'data' is required for action 'write'.");
+            }
+            await manager.write(args.process_id, args.data);
+            return `Sent ${args.data.length} characters to process '${args.process_id}' stdin.`;
+        }
+
+        case 'kill': {
+            if (!args.process_id) {
+                throw new Error("Parameter 'process_id' is required for action 'kill'.");
+            }
+            const killed = await manager.kill(args.process_id);
+            if (!killed) {
+                const info = manager.get(args.process_id);
+                if (info) {
+                    return `Process '${args.process_id}' is already terminated (status: ${info.status}).`;
+                }
+                throw new Error(`Process with id '${args.process_id}' not found.`);
+            }
+            return `Process '${args.process_id}' has been terminated successfully.`;
+        }
+
+        default:
+            throw new Error(`Unknown process action '${args.action}'. Valid actions are: list, poll, log, write, kill.`);
+    }
+}
+

@@ -88,4 +88,52 @@ describe('AgentActionExecutor', () => {
         expect(result.output).toContain('Aborted');
         expect(fs.existsSync(createdPath)).toBe(false);
     });
+
+    it('executes process tool actions (list, log, kill) through executeAction', async () => {
+        const executor = new AgentActionExecutor({
+            projectRoot: testDir,
+            emitOutbound: () => {},
+            sessionId: 'sess-process-test'
+        });
+
+        // 1. Start a process via run_command with background: true
+        const runRes = await executor.executeAction({
+            type: 'run_command',
+            args: {
+                command: 'node -e "setInterval(() => console.log(\\"alive\\"), 200);"',
+                background: true
+            }
+        });
+        expect(runRes.success).toBe(true);
+        expect(runRes.output).toContain('started in background');
+
+        // Extract proc id
+        const match = runRes.output.match(/proc_\d+/);
+        expect(match).not.toBeNull();
+        const procId = match![0];
+
+        // 2. List processes
+        const listRes = await executor.executeAction({
+            type: 'process',
+            args: { action: 'list' }
+        });
+        expect(listRes.success).toBe(true);
+        expect(listRes.output).toContain(procId);
+
+        // 3. Get logs
+        const logRes = await executor.executeAction({
+            type: 'process',
+            args: { action: 'log', process_id: procId, lines: 5 }
+        });
+        expect(logRes.success).toBe(true);
+        expect(logRes.output).toContain(`Process ${procId}`);
+
+        // 4. Kill process
+        const killRes = await executor.executeAction({
+            type: 'process',
+            args: { action: 'kill', process_id: procId }
+        });
+        expect(killRes.success).toBe(true);
+        expect(killRes.output).toContain('terminated successfully');
+    });
 });
