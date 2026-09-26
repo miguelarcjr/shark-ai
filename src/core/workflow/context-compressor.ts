@@ -162,12 +162,29 @@ export class ContextCompressor {
     return { history: orchestratedHistory, wasCompressed: true };
   }
 
+  static pruneOldToolResults(messages: ChatMessage[]): ChatMessage[] {
+    return messages.map(msg => {
+      const isToolOutput = (msg as any).role === 'tool' || msg.content.startsWith('[Action ');
+      if (isToolOutput && msg.content.length > 200) {
+        const firstLine = msg.content.split('\n')[0];
+        return {
+          ...msg,
+          content: `${firstLine}\n[Old tool output cleared to save context space]`
+        };
+      }
+      return msg;
+    });
+  }
+
   static generateDeterministicFallback(middleMessages: ChatMessage[]): string {
     const modifiedFiles = new Set<string>();
     const actionsTaken: string[] = [];
+    const userGoals: string[] = [];
 
     for (const msg of middleMessages) {
-      if (msg.role === 'assistant') {
+      if (msg.role === 'user' && !msg.content.startsWith('[Action ') && !msg.content.startsWith('[MEMÓRIA')) {
+        userGoals.push(msg.content.trim().slice(0, 200));
+      } else if (msg.role === 'assistant') {
         try {
           const parsed = JSON.parse(msg.content);
           if (parsed.action?.path) {
@@ -184,12 +201,13 @@ export class ContextCompressor {
       }
     }
 
+    const userGoalsStr = userGoals.length > 0 ? userGoals.join('; ') : 'Continuidade da execução da tarefa solicitada pelo usuário';
     const filesStr = modifiedFiles.size > 0 ? Array.from(modifiedFiles).join(', ') : 'Arquivos do workspace';
     const recentActions = actionsTaken.slice(-3).join('; ') || 'Progresso acumulado de execução da tarefa';
 
     return [
       `[Summary of earlier turns]`,
-      `- Objetivo Principal: Continuidade da execução da tarefa solicitada pelo usuário`,
+      `- Objetivo Principal: ${userGoalsStr}`,
       `- Decisões Técnicas: ${recentActions}`,
       `- Arquivos Modificados: ${filesStr}`,
       `- Próximo Passo: Prosseguir com os turnos imediatos da conversa`

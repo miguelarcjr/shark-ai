@@ -91,4 +91,34 @@ describe('ContextCompressor', () => {
       expect(result.find(m => m.content.includes('version 2'))).toBeDefined();
     });
   });
+
+  describe('Hermes Phase 1 & Fallback', () => {
+    it('prunes tool outputs over 200 chars in middle messages', () => {
+      const longOutput = '[Action run_command(npm test) Success]:\n' + 'A'.repeat(500);
+      const shortOutput = '[Action modify_file(src/a.ts) Success]';
+      const userMsg = 'User instruction';
+
+      const pruned = ContextCompressor.pruneOldToolResults([
+        { role: 'user', content: longOutput },
+        { role: 'user', content: shortOutput },
+        { role: 'user', content: userMsg }
+      ]);
+
+      expect(pruned[0].content).toContain('[Old tool output cleared to save context space]');
+      expect(pruned[0].content.length).toBeLessThan(100);
+      expect(pruned[1].content).toBe(shortOutput);
+      expect(pruned[2].content).toBe(userMsg);
+    });
+
+    it('extracts user instructions in deterministic fallback', () => {
+      const fallback = ContextCompressor.generateDeterministicFallback([
+        { role: 'user', content: 'Alterar depoimentos e arrumar links do footer' },
+        { role: 'assistant', content: '{"thought":"modificando","summary":"editado footer","action":{"path":"src/footer.tsx"}}' }
+      ]);
+
+      expect(fallback).toContain('Alterar depoimentos');
+      expect(fallback).toContain('src/footer.tsx');
+    });
+  });
 });
+
