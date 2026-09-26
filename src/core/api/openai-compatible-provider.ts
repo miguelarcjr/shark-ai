@@ -1,4 +1,4 @@
-import { AIProvider, ChatOptions } from './provider.interface.js';
+import { AIProvider, ChatOptions, CompletePromptOptions } from './provider.interface.js';
 import { AgentResponse, parseAgentResponse } from '../agents/agent-response-parser.js';
 import { toCanonicalAssistantMessage } from '../agents/canonical-response.js';
 import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
@@ -387,6 +387,69 @@ export class OpenAICompatibleProvider implements AIProvider {
             }
             if (reader && typeof reader.releaseLock === 'function') {
                 reader.releaseLock();
+            }
+        }
+    }
+
+    async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
+        const timeoutMs = options?.timeoutMs ?? 300000;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        const onSignalAbort = () => controller.abort();
+        if (options?.signal) {
+            if (options.signal.aborted) {
+                controller.abort();
+            } else {
+                options.signal.addEventListener('abort', onSignalAbort);
+            }
+        }
+
+        const messages: ChatMessage[] = [];
+        if (options?.systemPrompt) {
+            messages.push({ role: 'system', content: options.systemPrompt });
+        }
+        messages.push({ role: 'user', content: prompt });
+
+        const requestPayload = {
+            model: this.options.model,
+            messages,
+            stream: false,
+            temperature: options?.temperature ?? 0.2
+        };
+
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json'
+        };
+        if (this.options.apiKey) {
+            headers['Authorization'] = `Bearer ${this.options.apiKey}`;
+        }
+
+        try {
+            const res = await fetch(`${this.options.baseURL}/chat/completions`, {
+                method: 'POST',
+                headers,
+                body: JSON.stringify(requestPayload),
+                signal: controller.signal
+            });
+
+            if (!res.ok) {
+                const errBody = await res.text();
+                throw new Error(`OpenAI completePrompt failed: ${res.status} ${res.statusText} - ${errBody}`);
+            }
+
+            const text = await res.text();
+            const parsed = JSON.parse(text.trim());
+            return parsed.choices?.[0]?.message?.content || '';
+        } catch (error: any) {
+            if (error.name === 'AbortError') {
+                throw new Error(`completePrompt timed out after ${timeoutMs}ms.`);
+            }
+            throw error;
+        } finally {
+            clearTimeout(timeoutId);
+            if (options?.signal) {
+                options.signal.removeEventListener('abort', onSignalAbort);
             }
         }
     }

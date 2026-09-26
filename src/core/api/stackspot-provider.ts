@@ -1,4 +1,4 @@
-import { AIProvider, ChatOptions } from './provider.interface.js';
+import { AIProvider, ChatOptions, CompletePromptOptions } from './provider.interface.js';
 import { AgentResponse, parseAgentResponse } from '../agents/agent-response-parser.js';
 import { toCanonicalAssistantMessage } from '../agents/canonical-response.js';
 import { STACKSPOT_AGENT_API_BASE, ensureValidToken } from './stackspot-client.js';
@@ -238,5 +238,43 @@ export class StackSpotProvider implements AIProvider {
             options.onComplete(parsedResponse);
         }
         return parsedResponse;
+    }
+
+    async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
+        const token = await ensureValidToken();
+        const effectiveAgentId = this.getAgentId();
+        const agentUrl = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${effectiveAgentId}/chat`;
+
+        let fullPrompt = prompt;
+        if (options?.systemPrompt) {
+            fullPrompt = `SYSTEM INSTRUCTIONS:\n${options.systemPrompt}\n\nUSER REQUEST:\n${prompt}`;
+        }
+
+        const requestPayload: any = {
+            user_prompt: fullPrompt,
+            return_ks_in_response: false,
+            deep_search_ks: false,
+            use_conversation: false
+        };
+
+        const headers = {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+        };
+
+        let resultText = '';
+        await sseClient.streamAgentResponse(
+            agentUrl,
+            requestPayload,
+            headers,
+            {
+                onChunk: (chunk) => {
+                    resultText += chunk;
+                }
+            },
+            options?.signal
+        );
+
+        return resultText;
     }
 }

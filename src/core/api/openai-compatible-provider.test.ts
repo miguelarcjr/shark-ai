@@ -546,4 +546,39 @@ describe('OpenAICompatibleProvider', () => {
         expect(sanitizedAssistant.message).toBeUndefined();
         expect(sanitizedAssistant.conversation_id).toBeUndefined();
     });
+
+    it('executes out-of-band completePrompt without mutating history', async () => {
+        const mockFetch = vi.fn().mockResolvedValue({
+            ok: true,
+            text: async () => JSON.stringify({
+                choices: [{ message: { content: 'Summary text from LLM' } }]
+            })
+        });
+        vi.stubGlobal('fetch', mockFetch);
+
+        const provider = new OpenAICompatibleProvider({
+            baseURL: 'https://api.openai.com/v1',
+            apiKey: 'test-key',
+            model: 'gpt-4o',
+            useStructuredOutputs: false
+        });
+
+        const result = await provider.completePrompt('Summarize this conversation', {
+            systemPrompt: 'You are a summarizer',
+            timeoutMs: 5000
+        });
+
+        expect(result).toBe('Summary text from LLM');
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+
+        const reqBody = JSON.parse(mockFetch.mock.calls[0][1].body);
+        expect(reqBody.stream).toBe(false);
+        expect(reqBody.messages).toEqual([
+            { role: 'system', content: 'You are a summarizer' },
+            { role: 'user', content: 'Summarize this conversation' }
+        ]);
+
+        vi.unstubAllGlobals();
+    });
 });
+
