@@ -90,4 +90,20 @@ describe('ActionValidator', () => {
         expect(result.errorMessage).toContain('Execute SQL statement in SQLite');
         expect(result.errorMessage).toContain('"query"');
     });
+
+    it('should reject missing action block and provide full canonical envelope example', () => {
+        const noActionPayload = {
+            thought: 'Exploring repository...',
+            tool: 'read_file',
+            path: 'src/components/site/footer.tsx'
+        };
+        const result = ActionValidator.validate(noActionPayload);
+        expect(result.isValid).toBe(false);
+        expect(result.errorMessage).toContain('[SYSTEM ERROR]');
+        expect(result.errorMessage).toContain('Nenhum bloco \'action\' válido foi fornecido');
+        expect(result.errorMessage).toContain('📋 ENVELOPE OBRIGATÓRIO:');
+        expect(result.errorMessage).toContain('"action": {');
+        expect(result.errorMessage).toContain('"type": "nome_da_ferramenta"');
+        expect(result.errorMessage).toContain('"args": { /* parâmetros */ }');
+    });
 });

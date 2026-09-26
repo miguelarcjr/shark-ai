@@ -10,6 +10,7 @@ export interface CompressOptions {
   summarizer?: (messages: ChatMessage[]) => Promise<string>;
   provider?: AIProvider;
   previousSummary?: string;
+  force?: boolean;
 }
 
 export class ContextCompressor {
@@ -97,6 +98,7 @@ export class ContextCompressor {
     const thresholdRatio = options.thresholdRatio ?? 0.8;
     const tailSize = options.tailSize ?? 15;
     const tokenLimit = options.tokenLimit;
+    const isForced = options.force === true;
 
     // Se o histórico não tem turnos intermediários suficientes para comprimir, retorna
     const minRequired = 2 + tailSize + 1; // Pinned (2) + Tail + Pelo menos 1 para resumir
@@ -107,7 +109,7 @@ export class ContextCompressor {
     const totalTokens = ContextCompressor.calculateHistoryTokens(deduplicatedHistory);
     const triggerThreshold = tokenLimit * thresholdRatio;
 
-    if (totalTokens <= triggerThreshold) {
+    if (!isForced && totalTokens <= triggerThreshold) {
       return { history: deduplicatedHistory, wasCompressed: wasDeduplicated };
     }
 

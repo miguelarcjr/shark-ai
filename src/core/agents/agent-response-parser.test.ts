@@ -162,7 +162,9 @@ describe('AgentResponseParser', () => {
     it('should return system error when model returns thought without action', () => {
         const result = parseAgentResponse({ thought: 'Vou ler o arquivo' });
         expect(result.action?.type).toBe('talk_with_user');
-        expect(result.action?.content).toContain("[SYSTEM ERROR]: Nenhum bloco 'action' foi fornecido");
+        expect(result.action?.content).toContain('[SYSTEM ERROR]');
+        expect(result.action?.content).toContain("Nenhum bloco 'action' válido foi fornecido");
+        expect(result.action?.content).toContain('📋 ENVELOPE OBRIGATÓRIO:');
     });
 
     it('should parse and validate notify_user action', () => {

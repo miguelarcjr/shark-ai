@@ -202,6 +202,30 @@ describe('ContextCompressor', () => {
 
       expect(wasCompressed).toBe(false);
     });
+
+    it('forces compression when force: true even if totalTokens is below threshold', async () => {
+      const history: ChatMessage[] = [
+        { role: 'system', content: 'System' },
+        { role: 'user', content: 'Task' },
+        ...Array.from({ length: 25 }, (_, i) => ({
+          role: 'user' as const,
+          content: `[Action cmd_${i}]: detailed step output ${i}`
+        }))
+      ];
+
+      // High token limit and threshold ratio, so naturally it would NOT trigger
+      const { wasCompressed, history: result } = await ContextCompressor.compress(history, {
+        tokenLimit: 200000,
+        thresholdRatio: 0.9,
+        tailSize: 5,
+        force: true
+      });
+
+      expect(wasCompressed).toBe(true);
+      expect(result.length).toBeLessThan(history.length);
+      const summaryMsg = result.find(m => m.content.startsWith('[CONTEXT COMPACTION'));
+      expect(summaryMsg).toBeDefined();
+    });
   });
 });
 

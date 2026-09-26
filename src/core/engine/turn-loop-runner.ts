@@ -71,6 +71,8 @@ export class TurnLoopRunner {
         let activeConversationId = context.activeConversationId;
         const forkReviewAgent = context.forkReviewAgent;
 
+        let consecutiveValidationErrors = 0;
+
         while (keepGoing) {
             if (abortController.signal.aborted) {
                 keepGoing = false;
@@ -293,6 +295,7 @@ export class TurnLoopRunner {
 
             // complete_task action
             if (action.type === 'complete_task') {
+                consecutiveValidationErrors = 0;
                 const taskSummary = action.args?.summary || action.summary || response.summary || 'Task completed successfully.';
                 const detailedContent = action.args?.content || action.content || '';
 
@@ -373,9 +376,35 @@ export class TurnLoopRunner {
                 const isSystemError = (typeof talkContent === 'string' && talkContent.startsWith('[SYSTEM ERROR]')) ||
                     response?.isError === true;
                 if (isSystemError) {
+                    consecutiveValidationErrors++;
+                    if (consecutiveValidationErrors >= 3 && activeConversationId) {
+                        log.warning('⚠️ 3 falhas consecutivas de validação de ação detectadas. Executando compactação e limpeza de contexto...');
+                        try {
+                            const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
+                            const config = ConfigManager.getInstance().getConfig();
+                            const compactionTokenLimit = config.memory?.compactionTokenLimit ?? 120000;
+                            const { history: compressedHistory, wasCompressed } = await ContextCompressor.compress(rawHistory, {
+                                tokenLimit: compactionTokenLimit,
+                                thresholdRatio: 0.8,
+                                tailSize: 10,
+                                force: true,
+                                provider: context.activeProvider
+                            });
+                            if (wasCompressed) {
+                                await HistoryManager.saveRawHistory(activeConversationId, compressedHistory);
+                                log.success('🧹 Contexto compactado com sucesso para desobstruir o raciocínio do modelo.');
+                            }
+                        } catch (err: any) {
+                            log.warning(`Falha ao tentar compactar contexto após erros consecutivos: ${err?.message || err}`);
+                        }
+                        // Reset counter after trigger attempt
+                        consecutiveValidationErrors = 0;
+                    }
                     currentPrompt = talkContent || response?.errorMessage || '[SYSTEM ERROR]: Invalid action structure.';
                     continue;
                 }
+
+                consecutiveValidationErrors = 0;
 
                 if (isSubagent) {
                     const summary = `Subagent returned invalid response format or tried to talk with user. Content: ${talkContent}`;
@@ -420,6 +449,8 @@ export class TurnLoopRunner {
                     break;
                 }
             }
+
+            consecutiveValidationErrors = 0;
 
             // Executa ferramenta via actionExecutor
             const actionResult = await actionExecutor.executeAction(action);

@@ -161,7 +161,11 @@ export class ActionValidator {
             const content = parsedObj.message || (typeof parsedObj === 'object' ? JSON.stringify(parsedObj) : String(parsedObj));
             return {
                 isValid: false,
-                errorMessage: `[SYSTEM ERROR]: Nenhum bloco 'action' foi fornecido na sua resposta JSON. Você deve obrigatoriamente especificar uma ação com a ferramenta a ser executada (ex: read_file, create_file, modify_file, run_command, search_code, complete_task). Conteúdo recebido: ${content}`
+                errorMessage: ActionValidator.formatEnvelopeError(
+                    `Nenhum bloco 'action' válido foi fornecido na sua resposta JSON. Você deve obrigatoriamente especificar uma ação com a ferramenta a ser executada (ex: read_file, create_file, modify_file, run_command, search_code, complete_task). Conteúdo recebido: ${content}`,
+                    undefined,
+                    bridgeToolsManager
+                )
             };
         }
 
