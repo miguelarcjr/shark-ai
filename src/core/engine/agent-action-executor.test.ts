@@ -187,4 +187,50 @@ describe('AgentActionExecutor', () => {
         const mediaEvent = emittedEvents.find(e => e.type === 'media_attachment');
         expect(mediaEvent).toBeUndefined();
     });
+
+    it('returns failure when read_file has empty path without incrementing recentReadCounts', async () => {
+        const executor = new AgentActionExecutor({
+            projectRoot: testDir,
+            emitOutbound: () => {},
+            sessionId: 'sess-test'
+        });
+
+        const result1 = await executor.executeAction({ type: 'read_file', args: {} });
+        expect(result1.success).toBe(true); // executor wraps tool output
+        expect(result1.output).toContain('[Action read_file Failed]: O parâmetro \'path\' é obrigatório');
+
+        // Calling multiple times should not trigger redundant read block
+        const result2 = await executor.executeAction({ type: 'read_file', args: { path: '   ' } });
+        expect(result2.output).toContain('[Action read_file Failed]: O parâmetro \'path\' é obrigatório');
+        expect(result2.output).not.toContain('Leitura redundante bloqueada');
+    });
+
+    it('returns failure when create_file, modify_file, or delete_file has empty path', async () => {
+        const executor = new AgentActionExecutor({
+            projectRoot: testDir,
+            emitOutbound: () => {},
+            sessionId: 'sess-test'
+        });
+
+        const rCreate = await executor.executeAction({ type: 'create_file', args: { content: 'test' } });
+        expect(rCreate.output).toContain('[Action create_file Failed]: O parâmetro \'path\' é obrigatório');
+
+        const rModify = await executor.executeAction({ type: 'modify_file', args: { content: 'test' } });
+        expect(rModify.output).toContain('[Action modify_file Failed]: O parâmetro \'path\' é obrigatório');
+
+        const rDelete = await executor.executeAction({ type: 'delete_file', args: {} });
+        expect(rDelete.output).toContain('[Action delete_file Failed]: O parâmetro \'path\' é obrigatório');
+    });
+
+    it('defaults list_files to current directory when path is empty or whitespace', async () => {
+        const executor = new AgentActionExecutor({
+            projectRoot: testDir,
+            emitOutbound: () => {},
+            sessionId: 'sess-test'
+        });
+
+        const result = await executor.executeAction({ type: 'list_files', args: { path: '  ' } });
+        expect(result.output).toContain('[Action list_files(.) Success]');
+    });
 });
+

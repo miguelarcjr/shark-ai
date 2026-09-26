@@ -109,7 +109,12 @@ export class AgentActionExecutor {
 
             switch (toolName) {
                 case 'read_file': {
-                    const filePath = action.args?.path || action.path || '';
+                    const filePath = (action.args?.path || action.path || '').trim();
+                    if (!filePath) {
+                        output = `[Action read_file Failed]: O parâmetro 'path' é obrigatório. Informe o caminho do arquivo a ser lido.`;
+                        break;
+                    }
+
                     const readCount = (this.recentReadCounts.get(filePath) || 0) + 1;
                     this.recentReadCounts.set(filePath, readCount);
 
@@ -132,7 +137,11 @@ export class AgentActionExecutor {
                 }
 
                 case 'create_file': {
-                    const filePath = action.args?.path || action.path || '';
+                    const filePath = (action.args?.path || action.path || '').trim();
+                    if (!filePath) {
+                        output = `[Action create_file Failed]: O parâmetro 'path' é obrigatório. Informe o caminho do arquivo a ser criado.`;
+                        break;
+                    }
                     const content = action.args?.content || action.content || '';
                     try {
                         const resolvedPath = path.resolve(this.projectRoot, filePath);
@@ -148,7 +157,11 @@ export class AgentActionExecutor {
                 }
 
                 case 'modify_file': {
-                    const filePath = action.args?.path || action.path || '';
+                    const filePath = (action.args?.path || action.path || '').trim();
+                    if (!filePath) {
+                        output = `[Action modify_file Failed]: O parâmetro 'path' é obrigatório. Informe o caminho do arquivo a ser modificado.`;
+                        break;
+                    }
                     const startAnchor = action.args?.start_anchor || action.start_anchor || '';
                     const endAnchor = action.args?.end_anchor || action.end_anchor || '';
                     const content = action.args?.content || action.content || '';
@@ -163,7 +176,11 @@ export class AgentActionExecutor {
                 }
 
                 case 'delete_file': {
-                    const filePath = action.args?.path || action.path || '';
+                    const filePath = (action.args?.path || action.path || '').trim();
+                    if (!filePath) {
+                        output = `[Action delete_file Failed]: O parâmetro 'path' é obrigatório. Informe o caminho do arquivo a ser excluído.`;
+                        break;
+                    }
                     try {
                         const resolvedPath = path.resolve(this.projectRoot, filePath);
                         if (fs.existsSync(resolvedPath)) {
@@ -177,7 +194,7 @@ export class AgentActionExecutor {
                 }
 
                 case 'list_files': {
-                    const dirPath = action.args?.path || action.path || '.';
+                    const dirPath = (action.args?.path || action.path || '.').trim() || '.';
                     try {
                         const result = handleListFiles(dirPath);
                         output = `[Action list_files(${dirPath}) Success]:\n${result}`;
