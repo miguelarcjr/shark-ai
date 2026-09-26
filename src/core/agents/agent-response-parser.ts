@@ -3,6 +3,7 @@ import { FileLogger } from '../debug/file-logger.js';
 import { jsonrepair } from 'jsonrepair';
 import fs from 'node:fs';
 import path from 'node:path';
+import { ActionValidator } from './action-validator.js';
 
 // Action Schema
 export const AgentActionSchema = z.preprocess((val: any) => {
@@ -166,7 +167,7 @@ export type AgentResponse = z.infer<typeof AgentResponseSchema>;
 /**
  * Parses raw agent response expecting a JSON string that matches our schema.
  */
-export function parseAgentResponse(rawResponse: unknown): AgentResponse {
+export function parseAgentResponse(rawResponse: unknown, bridgeToolsManager?: any): AgentResponse {
     FileLogger.log('PARSER', 'Parsing Agent Response', { rawType: typeof rawResponse });
 
     let parsedObj: any = {};
@@ -313,25 +314,34 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
         }
     }
 
-    // 3. Normalize Actions/Action
+    // 3. Strict Action Validation & Self-Teaching Errors
+    const validationResult = ActionValidator.validate(parsedObj, bridgeToolsManager);
+    if (!validationResult.isValid) {
+        FileLogger.log('PARSER', 'ActionValidator validation failed', { error: validationResult.errorMessage });
+        const errorMsg = validationResult.errorMessage!;
+        return {
+            thought: parsedObj?.thought || '',
+            action: {
+                type: 'talk_with_user',
+                content: errorMsg,
+                path: '',
+                isSynthetic: true
+            },
+            actions: [{
+                type: 'talk_with_user',
+                content: errorMsg,
+                path: '',
+                isSynthetic: true
+            }],
+            summary: typeof parsedObj?.summary === 'string' ? parsedObj.summary : 'Action validation failed (Self-Teaching Error)',
+            isError: true,
+            errorMessage: errorMsg
+        };
+    }
+
+    // Normalize Actions/Action
     let normalizedAction: any = parsedObj.action;
     let normalizedActions: any[] = parsedObj.actions;
-
-    // Handle root-level action objects directly (fallback for less strict models)
-    if (!normalizedAction && (!normalizedActions || normalizedActions.length === 0) && parsedObj && typeof parsedObj === 'object' && typeof parsedObj.type === 'string') {
-        const validTypes = [
-            'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
-            'tool_search', 'tool_describe', 'tool_call',
-            'talk_with_user', 'memory', 'session_search', 'list_structure', 'modify_ast', 'search_ast', 'run_command',
-            'skills_list', 'skill_view', 'skill_manage',
-            'activate_skill', 'define_subagent', 'invoke_subagent', 'send_message', 'manage_subagents',
-            'complete_task', 'wait', 'notify_user'
-        ];
-        if (validTypes.includes(parsedObj.type)) {
-            normalizedAction = parsedObj;
-            normalizedActions = [parsedObj];
-        }
-    }
 
     if (!normalizedAction && normalizedActions && normalizedActions.length > 0) {
         normalizedAction = normalizedActions[0];
@@ -377,23 +387,47 @@ export function parseAgentResponse(rawResponse: unknown): AgentResponse {
     if (!normalizedAction && (!normalizedActions || normalizedActions.length === 0)) {
         FileLogger.log('PARSER', 'No Action/Actions Found - Constructing Default');
         const content = parsedObj.message || (typeof parsedObj === 'object' ? JSON.stringify(parsedObj) : String(parsedObj));
-        normalizedAction = {
-            type: 'talk_with_user',
-            content: `[SYSTEM ERROR]: Nenhum bloco 'action' foi fornecido na sua resposta JSON. Você deve obrigatoriamente especificar uma ação com a ferramenta a ser executada (ex: read_file, create_file, modify_file, run_command, search_code, complete_task). Conteúdo recebido: ${content}`,
-            path: '',
-            isSynthetic: true
+        const systemMsg = `[SYSTEM ERROR]: Nenhum bloco 'action' foi fornecido na sua resposta JSON. Você deve obrigatoriamente especificar uma ação com a ferramenta a ser executada (ex: read_file, create_file, modify_file, run_command, search_code, complete_task). Conteúdo recebido: ${content}`;
+        return {
+            thought: parsedObj?.thought || '',
+            action: {
+                type: 'talk_with_user',
+                content: systemMsg,
+                path: '',
+                isSynthetic: true
+            },
+            actions: [{
+                type: 'talk_with_user',
+                content: systemMsg,
+                path: '',
+                isSynthetic: true
+            }],
+            summary: typeof parsedObj?.summary === 'string' ? parsedObj.summary : 'Action validation failed (Self-Teaching Error)',
+            isError: true,
+            errorMessage: systemMsg
         };
-        normalizedActions = [normalizedAction];
     } else if (!hasValidType(normalizedAction) && (!Array.isArray(normalizedActions) || !normalizedActions.some(hasValidType))) {
         FileLogger.log('PARSER', 'Missing Action Type - Constructing Default');
         const content = normalizedAction?.content || parsedObj.content || parsedObj.message || (typeof parsedObj === 'object' ? JSON.stringify(parsedObj) : String(parsedObj));
-        normalizedAction = {
-            type: 'talk_with_user',
-            content: typeof content === 'string' ? content : JSON.stringify(content),
-            path: '',
-            isSynthetic: true
+        const systemMsg = `[SYSTEM ERROR]: Formato de envelope de ação inválido. Ação especificada não possui um tipo válido. Conteúdo recebido: ${content}`;
+        return {
+            thought: parsedObj?.thought || '',
+            action: {
+                type: 'talk_with_user',
+                content: systemMsg,
+                path: '',
+                isSynthetic: true
+            },
+            actions: [{
+                type: 'talk_with_user',
+                content: systemMsg,
+                path: '',
+                isSynthetic: true
+            }],
+            summary: typeof parsedObj?.summary === 'string' ? parsedObj.summary : 'Action validation failed (Self-Teaching Error)',
+            isError: true,
+            errorMessage: systemMsg
         };
-        normalizedActions = [normalizedAction];
     }
 
     // 4. Validate against Schema

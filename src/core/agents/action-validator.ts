@@ -125,6 +125,9 @@ export class ActionValidator {
             };
         }
 
+        // Support legacy actions array
+        const candidateAction = parsedObj.action || (Array.isArray(parsedObj.actions) && parsedObj.actions.length > 0 ? parsedObj.actions[0] : undefined);
+
         // Detect flat action representation e.g. { "action": "read_file", ... }
         if (typeof parsedObj.action === 'string') {
             const toolName = parsedObj.action.trim();
@@ -140,7 +143,7 @@ export class ActionValidator {
         }
 
         // Detect root-level action e.g. { "type": "read_file", "path": "..." } without action envelope
-        if (!parsedObj.action && typeof parsedObj.type === 'string') {
+        if (!parsedObj.action && (!parsedObj.actions || parsedObj.actions.length === 0) && typeof parsedObj.type === 'string') {
             const toolName = parsedObj.type.trim();
             return {
                 isValid: false,
@@ -153,15 +156,12 @@ export class ActionValidator {
             };
         }
 
-        const action = parsedObj.action;
+        const action = candidateAction;
         if (!action || typeof action !== 'object' || typeof action.type !== 'string' || !action.type.trim()) {
+            const content = parsedObj.message || (typeof parsedObj === 'object' ? JSON.stringify(parsedObj) : String(parsedObj));
             return {
                 isValid: false,
-                errorMessage: ActionValidator.formatEnvelopeError(
-                    `Nenhum bloco 'action' válido fornecido na resposta. Você deve especificar obrigatoriamente { "thought": "...", "action": { "type": "...", "args": { ... } }, "summary": "..." }.`,
-                    undefined,
-                    bridgeToolsManager
-                )
+                errorMessage: `[SYSTEM ERROR]: Nenhum bloco 'action' foi fornecido na sua resposta JSON. Você deve obrigatoriamente especificar uma ação com a ferramenta a ser executada (ex: read_file, create_file, modify_file, run_command, search_code, complete_task). Conteúdo recebido: ${content}`
             };
         }
 
@@ -208,12 +208,8 @@ export class ActionValidator {
             };
         }
 
-        // Tool unknown
-        return {
-            isValid: false,
-            candidateTool: toolName,
-            errorMessage: ActionValidator.formatUnknownToolError(toolName)
-        };
+        // Other action types pass to Zod schema validation
+        return { isValid: true, candidateTool: toolName };
     }
 
     private static getMcpToolDescribe(toolName: string, bridgeToolsManager: any): any {
@@ -262,7 +258,7 @@ export class ActionValidator {
 
     static formatParameterError(toolName: string, reason: string, def: NativeToolDefinition): string {
         const hint = def.recoveryHint ? `\n💡 DICA DE RECUPERAÇÃO:\n${def.recoveryHint}` : '';
-        return `[SYSTEM ERROR]: Parâmetros inválidos para a ferramenta '${toolName}'.\nMotivo: ${reason}\n\nCampos obrigatórios em 'args': ${JSON.stringify(def.required)}\n\n💡 EXEMPLO DE USO CORRETO:\n${JSON.stringify({
+        return `[SYSTEM ERROR]: [Action ${toolName} Failed]: Parâmetros inválidos em 'args'.\nMotivo: ${reason}\n\nCampos obrigatórios em 'args': ${JSON.stringify(def.required)}\n\n💡 EXEMPLO DE USO CORRETO:\n${JSON.stringify({
             thought: `Executando ${toolName}...`,
             action: {
                 type: toolName,
