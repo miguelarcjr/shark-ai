@@ -46,7 +46,7 @@ function isUserCancellation(content: any): boolean {
 export class AgentEngine {
     public readonly sessionId: string;
     public projectRoot: string;
-    private adapter?: AgentChannelAdapter;
+    private adapters: AgentChannelAdapter[] = [];
     private leaseManager: SessionLeaseManager;
     private approvalsManager: PendingApprovalsManager;
     private currentTurnAbort?: AbortController;
@@ -68,8 +68,8 @@ export class AgentEngine {
     }
 
     public attachAdapter(adapter: AgentChannelAdapter) {
-        this.adapter = adapter;
-        this.adapter.onInbound(async (event) => {
+        this.adapters.push(adapter);
+        adapter.onInbound(async (event) => {
             const isTargetSession = !this.sessionId || this.sessionId === '*' || event.sessionId === this.sessionId;
             if (event.type === 'abort_command' && isTargetSession) {
                 this.abortCurrentTurn(event.reason);
@@ -100,7 +100,9 @@ export class AgentEngine {
     }
 
     public emitOutbound(event: AgentOutboundEvent) {
-        this.adapter?.emit(event);
+        for (const adapter of this.adapters) {
+            adapter.emit(event);
+        }
     }
 
     public async runInteractive(options: EngineRunOptions = {}): Promise<DevelopmentResult> {

@@ -76,6 +76,62 @@ async function startWhatsAppBot() {
                 }
             } as any);
         },
+        async sendMedia(chatId, media) {
+            if (!fs.existsSync(media.filePath)) {
+                await sock.sendMessage(chatId, { text: `⚠️ Arquivo não encontrado: ${media.filePath}` });
+                return;
+            }
+
+            const stats = fs.statSync(media.filePath);
+            const fileSizeMB = stats.size / (1024 * 1024);
+
+            if (fileSizeMB > 100) {
+                await sock.sendMessage(chatId, {
+                    text: `⚠️ Arquivo muito grande para envio via WhatsApp (${fileSizeMB.toFixed(1)}MB > limite de 100MB):\n${media.filePath}`
+                });
+                return;
+            }
+
+            const buffer = fs.readFileSync(media.filePath);
+            const fileName = media.fileName || path.basename(media.filePath);
+            const caption = media.caption;
+
+            if (media.mimeType.startsWith('image/')) {
+                await sock.sendMessage(chatId, {
+                    image: buffer,
+                    mimetype: media.mimeType,
+                    caption
+                });
+            } else if (media.mimeType.startsWith('video/')) {
+                if (fileSizeMB <= 16) {
+                    await sock.sendMessage(chatId, {
+                        video: buffer,
+                        mimetype: media.mimeType,
+                        caption
+                    });
+                } else {
+                    // Vídeos entre 16MB e 100MB são enviados como documento preservando o arquivo original
+                    await sock.sendMessage(chatId, {
+                        document: buffer,
+                        mimetype: media.mimeType,
+                        fileName,
+                        caption
+                    });
+                }
+            } else if (media.mimeType.startsWith('audio/')) {
+                await sock.sendMessage(chatId, {
+                    audio: buffer,
+                    mimetype: media.mimeType
+                });
+            } else {
+                await sock.sendMessage(chatId, {
+                    document: buffer,
+                    mimetype: media.mimeType,
+                    fileName,
+                    caption
+                });
+            }
+        },
         onRawMessage(handler) {
             rawMessageHandler = handler;
         }
