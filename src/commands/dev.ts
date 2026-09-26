@@ -5,6 +5,7 @@ import { exec } from 'node:child_process';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { ProcessManager } from '../core/process/process-manager.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -72,6 +73,8 @@ export const devCommand = new Command('dev')
         } catch (error: any) {
             console.error('Error during development agent execution:', error.message);
             process.exit(1);
+        } finally {
+            await ProcessManager.getInstance().killAll().catch(() => {});
         }
     });
 
