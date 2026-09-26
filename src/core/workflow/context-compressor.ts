@@ -1,11 +1,15 @@
 import { encode } from 'gpt-tokenizer';
 import { ChatMessage } from './history-manager.js';
+import { AIProvider } from '../api/provider.interface.js';
+import { HERMES_COMPRESSION_SYSTEM_PROMPT, buildCompressionUserPrompt } from './compression-prompt.js';
 
 export interface CompressOptions {
   tokenLimit: number;
   thresholdRatio?: number; // default: 0.8
   tailSize?: number; // default: 15
   summarizer?: (messages: ChatMessage[]) => Promise<string>;
+  provider?: AIProvider;
+  previousSummary?: string;
 }
 
 export class ContextCompressor {
@@ -107,6 +111,21 @@ export class ContextCompressor {
       return { history: deduplicatedHistory, wasCompressed: wasDeduplicated };
     }
 
+    // Identificar a instrução humana mais recente para Smart Pinning
+    let latestHumanUserMsgIdx = -1;
+    for (let i = deduplicatedHistory.length - 1; i >= 0; i--) {
+      const msg = deduplicatedHistory[i];
+      if (
+        msg.role === 'user' &&
+        !msg.content.startsWith('[Action ') &&
+        !msg.content.startsWith('[System]') &&
+        !msg.content.startsWith('[MEMÓRIA')
+      ) {
+        latestHumanUserMsgIdx = i;
+        break;
+      }
+    }
+
     // Particionamento inteligente com preservação de pares de ferramentas
     let tailStart = deduplicatedHistory.length - tailSize;
 
@@ -122,36 +141,69 @@ export class ContextCompressor {
       tailStart--;
     }
 
-    // 3. Garantir integridade no bloco pinned (Turno 0/1)
-    let pinnedEnd = 2;
-    while (pinnedEnd < tailStart && ((deduplicatedHistory[pinnedEnd] as any)?.role === 'tool' || (deduplicatedHistory[pinnedEnd] as any)?.tool_call_id)) {
-      pinnedEnd++;
+    let pinned: ChatMessage[];
+    let middle: ChatMessage[];
+    const tail = deduplicatedHistory.slice(tailStart);
+
+    // Smart Pinning: Se a última ordem humana estiver antes da cauda, fixá-la junto ao Turn 0
+    if (latestHumanUserMsgIdx > 0 && latestHumanUserMsgIdx < tailStart) {
+      pinned = [deduplicatedHistory[0], deduplicatedHistory[latestHumanUserMsgIdx]];
+      middle = deduplicatedHistory.slice(1, tailStart).filter((_, idx) => (idx + 1) !== latestHumanUserMsgIdx);
+    } else {
+      let pinnedEnd = Math.min(2, tailStart);
+      while (pinnedEnd < tailStart && ((deduplicatedHistory[pinnedEnd] as any)?.role === 'tool' || (deduplicatedHistory[pinnedEnd] as any)?.tool_call_id)) {
+        pinnedEnd++;
+      }
+      if (tailStart <= pinnedEnd) {
+        return { history: deduplicatedHistory, wasCompressed: wasDeduplicated };
+      }
+      pinned = deduplicatedHistory.slice(0, pinnedEnd);
+      middle = deduplicatedHistory.slice(pinnedEnd, tailStart);
     }
 
-    if (tailStart <= pinnedEnd) {
+    if (middle.length === 0) {
       return { history: deduplicatedHistory, wasCompressed: wasDeduplicated };
     }
 
-    const pinned = deduplicatedHistory.slice(0, pinnedEnd);
-    const tail = deduplicatedHistory.slice(tailStart);
-    const middle = deduplicatedHistory.slice(pinnedEnd, tailStart);
+    // Phase 1: Pruning de saídas de ferramentas longas no meio
+    const prunedMiddle = ContextCompressor.pruneOldToolResults(middle);
 
+    // Phase 3: Sumarização Out-of-band (LLM Hermes ou Fallback)
     let summaryBlock = '';
 
     if (options.summarizer) {
       try {
-        summaryBlock = await options.summarizer(middle);
+        summaryBlock = await options.summarizer(prunedMiddle);
       } catch {
-        summaryBlock = ContextCompressor.generateDeterministicFallback(middle);
+        summaryBlock = ContextCompressor.generateDeterministicFallback(prunedMiddle);
+      }
+    } else if (options.provider?.completePrompt) {
+      try {
+        const userPrompt = buildCompressionUserPrompt(prunedMiddle, options.previousSummary);
+        summaryBlock = await options.provider.completePrompt(userPrompt, {
+          systemPrompt: HERMES_COMPRESSION_SYSTEM_PROMPT,
+          timeoutMs: 300000 // 5 minutos de timeout
+        });
+        if (!summaryBlock || summaryBlock.trim().length === 0) {
+          summaryBlock = ContextCompressor.generateDeterministicFallback(prunedMiddle);
+        }
+      } catch {
+        summaryBlock = ContextCompressor.generateDeterministicFallback(prunedMiddle);
       }
     } else {
-      summaryBlock = ContextCompressor.generateDeterministicFallback(middle);
+      summaryBlock = ContextCompressor.generateDeterministicFallback(prunedMiddle);
     }
 
+    // Phase 4: Anti-thrashing e orquestração in-place
+    const middleRawLength = middle.reduce((sum, msg) => sum + (msg.content?.length || 0), 0);
     const summaryMessage: ChatMessage = {
       role: 'system',
-      content: summaryBlock
+      content: `[CONTEXT COMPACTION — REFERENCE ONLY]\n${summaryBlock.trim()}\n\n[END OF COMPACTION]`
     };
+
+    if (summaryMessage.content.length >= middleRawLength) {
+      return { history: deduplicatedHistory, wasCompressed: wasDeduplicated };
+    }
 
     const orchestratedHistory: ChatMessage[] = [
       ...pinned,

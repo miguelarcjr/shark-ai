@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { ContextCompressor } from './context-compressor.js';
 import { ChatMessage } from './history-manager.js';
 
@@ -118,6 +118,89 @@ describe('ContextCompressor', () => {
 
       expect(fallback).toContain('Alterar depoimentos');
       expect(fallback).toContain('src/footer.tsx');
+    });
+
+    it('pins the latest human user message so active tasks are never lost in middle compression', async () => {
+      const history: ChatMessage[] = [
+        { role: 'system', content: 'You are Shark Dev' }, // 0
+        { role: 'user', content: 'boa noite' }, // 1
+        { role: 'assistant', content: '{"thought":"greeting","summary":"hello"}' }, // 2
+        { role: 'user', content: 'voce e legal' }, // 3
+        { role: 'assistant', content: '{"thought":"thanks","summary":"ty"}' }, // 4
+        { role: 'user', content: 'TASK: Implement auth and fix buttons on navbar' }, // 5: Latest active human task!
+        ...Array.from({ length: 25 }, (_, i) => ({
+          role: 'user' as const,
+          content: `[Action run_command(test_${i}) Success]: Output ${i}`
+        }))
+      ];
+
+      const { history: compressed, wasCompressed } = await ContextCompressor.compress(history, {
+        tokenLimit: 500,
+        thresholdRatio: 0.1,
+        tailSize: 10
+      });
+
+      expect(wasCompressed).toBe(true);
+      // The active human task MUST be preserved
+      const hasTask = compressed.some(m => m.role === 'user' && m.content.includes('TASK: Implement auth'));
+      expect(hasTask).toBe(true);
+
+      // Turn 3 ('voce e legal') should have been compacted away
+      const hasCasual = compressed.some(m => m.content === 'voce e legal');
+      expect(hasCasual).toBe(false);
+    });
+
+    it('invokes provider.completePrompt out-of-band with 5-minute timeout', async () => {
+      const mockCompletePrompt = vi.fn().mockResolvedValue('## Goal\nImplement auth\n## Progress\n### Done\nNavbar');
+      const mockProvider = {
+        streamChat: vi.fn(),
+        completePrompt: mockCompletePrompt
+      } as any;
+
+      const history: ChatMessage[] = [
+        { role: 'system', content: 'System' },
+        { role: 'user', content: 'Initial task' },
+        ...Array.from({ length: 30 }, (_, i) => ({
+          role: 'user' as const,
+          content: `[Action read_file(file_${i}.ts) Success]: content ${'A'.repeat(50)}`
+        }))
+      ];
+
+      const { history: compressed } = await ContextCompressor.compress(history, {
+        tokenLimit: 500,
+        thresholdRatio: 0.1,
+        tailSize: 10,
+        provider: mockProvider
+      });
+
+      expect(mockCompletePrompt).toHaveBeenCalledTimes(1);
+      expect(mockCompletePrompt.mock.calls[0][1].timeoutMs).toBe(300000);
+      expect(compressed.some(m => m.content.includes('## Goal\nImplement auth'))).toBe(true);
+    });
+
+    it('aborts compression if summary is larger than middle (anti-thrashing)', async () => {
+      const hugeSummary = 'X'.repeat(50000);
+      const mockProvider = {
+        completePrompt: vi.fn().mockResolvedValue(hugeSummary)
+      } as any;
+
+      const history: ChatMessage[] = [
+        { role: 'system', content: 'System' },
+        { role: 'user', content: 'Task' },
+        ...Array.from({ length: 25 }, (_, i) => ({
+          role: 'user' as const,
+          content: `[Action cmd_${i}]: short`
+        }))
+      ];
+
+      const { wasCompressed } = await ContextCompressor.compress(history, {
+        tokenLimit: 100,
+        thresholdRatio: 0.1,
+        tailSize: 5,
+        provider: mockProvider
+      });
+
+      expect(wasCompressed).toBe(false);
     });
   });
 });
