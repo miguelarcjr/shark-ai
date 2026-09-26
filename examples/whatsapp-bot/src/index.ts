@@ -13,6 +13,7 @@ import * as readline from 'node:readline';
 import {
     AgentEngine,
     WhatsAppAdapter,
+    CliAdapter,
     type WhatsAppTransport
 } from '../../../src/core/index.js';
 
@@ -193,7 +194,9 @@ async function startWhatsAppBot() {
         sessionId: '*',
         projectRoot: currentWorkspace
     });
+    const cliAdapter = new CliAdapter();
     engine.attachAdapter(whatsappAdapter);
+    engine.attachAdapter(cliAdapter);
 
     // 5. Escuta mensagens recebidas do WhatsApp e repassa ao adapter
     sock.ev.on('messages.upsert', async ({ messages, type }) => {

@@ -79,6 +79,9 @@ export class WhatsAppAdapter implements AgentChannelAdapter {
     }
 
     public async emit(event: AgentOutboundEvent): Promise<void> {
+        if (!event.sessionId.startsWith('whatsapp:dm:')) {
+            return;
+        }
         const chatId = event.sessionId.replace(/^whatsapp:dm:/, '');
         if (event.type === 'tool_progress' && event.status === 'starting') {
             const detailText = event.details ? ` (${event.details})` : '';

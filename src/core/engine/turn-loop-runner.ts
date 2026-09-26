@@ -141,7 +141,12 @@ export class TurnLoopRunner {
                 throw e;
             }
 
-            spinner.stop('Response received');
+            const stopMessage = response?.summary || (response?.action ? `Ação: ${response.action.type}` : 'Resposta recebida');
+            spinner.stop(stopMessage);
+
+            if (response?.thought) {
+                log.info(colors.dim(`💭 ${response.thought}`));
+            }
 
             if (abortController.signal.aborted) {
                 keepGoing = false;

@@ -208,7 +208,7 @@ export class AgentEngine {
         // 4. Action Executor
         const actionExecutor = new AgentActionExecutor({
             projectRoot,
-            sessionId: this.sessionId,
+            sessionId: effectiveSessionId,
             autoApprove: autoApproveTools,
             emitOutbound: (ev) => this.emitOutbound(ev),
             requestApproval: async (toolName, toolArgs, fallbackText) => {

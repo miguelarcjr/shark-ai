@@ -545,8 +545,23 @@ export class AgentActionExecutor {
                 return `Action: ${action.args?.action || action.action} on ${action.args?.target || action.target}`;
             case 'invoke_subagent':
                 return `TaskFile: ${action.args?.task_file || action.task_file || ''}`;
-            case 'tool_call':
-                return `MCP Tool: ${action.args?.name || action.tool_name || ''}`;
+            case 'tool_call': {
+                const toolName = action.args?.name || action.tool_name || '';
+                const rawArgs = action.args?.arguments ?? action.tool_args;
+                let briefArgs = '';
+                if (typeof rawArgs === 'string') {
+                    try {
+                        const parsed = JSON.parse(rawArgs);
+                        briefArgs = JSON.stringify(parsed);
+                    } catch {
+                        briefArgs = rawArgs;
+                    }
+                } else if (typeof rawArgs === 'object' && rawArgs !== null) {
+                    briefArgs = JSON.stringify(rawArgs);
+                }
+                const truncated = briefArgs && briefArgs !== '{}' ? ` (${briefArgs.length > 70 ? briefArgs.slice(0, 67) + '...' : briefArgs})` : '';
+                return `MCP Tool: ${toolName}${truncated}`;
+            }
             default:
                 return action.type;
         }
