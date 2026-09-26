@@ -103,7 +103,8 @@ export class TurnLoopRunner {
                 const { history: compressedHistory, wasCompressed } = await ContextCompressor.compress(rawHistory, {
                     tokenLimit: compactionTokenLimit,
                     thresholdRatio: 0.8,
-                    tailSize: 15
+                    tailSize: 15,
+                    provider: context.activeProvider
                 });
                 if (wasCompressed) {
                     await HistoryManager.saveRawHistory(activeConversationId, compressedHistory);

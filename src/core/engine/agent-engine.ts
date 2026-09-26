@@ -37,6 +37,7 @@ export interface EngineRunOptions {
     auto?: boolean;
     messageQueue?: MessageQueue;
     sessionId?: string;
+    projectRoot?: string;
 }
 
 function isUserCancellation(content: any): boolean {
@@ -56,6 +57,7 @@ export class AgentEngine {
     private taskId?: string;
     private contextPath?: string;
     private forkReviewAgents = new Map<string, ForkReviewAgent>();
+    private sessionWorkspaces = new Map<string, string>();
 
     constructor(options: AgentEngineOptions = {}) {
         this.sessionId = options.sessionId || `session_${Date.now()}`;
@@ -99,9 +101,13 @@ export class AgentEngine {
         });
     }
 
-    public emitOutbound(event: AgentOutboundEvent) {
+    public async emitOutbound(event: AgentOutboundEvent) {
         for (const adapter of this.adapters) {
-            adapter.emit(event);
+            try {
+                await Promise.resolve(adapter.emit(event));
+            } catch (err) {
+                console.error(`Error emitting event to adapter:`, err);
+            }
         }
     }
 
@@ -118,7 +124,7 @@ export class AgentEngine {
         const effectiveTaskId = options.taskId || this.taskId;
         const isSubagent = !!effectiveTaskId && (effectiveTaskId.startsWith('subagent-') || subagentManager.hasSubagent(effectiveTaskId));
         const effectiveSessionId = options.sessionId || this.sessionId || 'default';
-        const projectRoot = this.projectRoot || process.cwd();
+        const projectRoot = options.projectRoot || this.getSessionWorkspace(effectiveSessionId);
         const messageQueue = options.messageQueue || new MessageQueue();
         const myId = effectiveTaskId || 'parent';
 
@@ -145,6 +151,7 @@ export class AgentEngine {
 
         // 2. Slash command handler
         let activeConversationId = context.activeConversationId;
+        let lastSlashResult: any = null;
         const onSlashCommand = async (cmd: string): Promise<boolean> => {
             const res = await handleSlashCommand(cmd, {
                 projectRoot,
@@ -153,6 +160,7 @@ export class AgentEngine {
                 forkReviewAgent,
                 skillManager: (context.forkReviewAgent as any).skillManager,
                 autoApproveTools,
+                activeProvider: context.activeProvider,
                 onLog: (type, msg) => {
                     if (type === 'warning') tui.log.warning(msg);
                     else if (type === 'error') tui.log.error(msg);
@@ -166,6 +174,7 @@ export class AgentEngine {
             });
             if (res.autoApproveTools !== undefined) autoApproveTools = res.autoApproveTools;
             if (res.activeConversationId) activeConversationId = res.activeConversationId;
+            lastSlashResult = res;
             return res.handled;
         };
 
@@ -197,7 +206,8 @@ export class AgentEngine {
                     if (forkReviewAgent.currentReviewPromise) {
                         await forkReviewAgent.currentReviewPromise.catch(() => {});
                     }
-                    return { success: true, summary: `Command ${initialInstruction} executed.` };
+                    const summary = lastSlashResult?.summary || `Command ${initialInstruction} executed.`;
+                    return { success: true, summary };
                 }
             }
             if (!isSubagent) {
@@ -297,10 +307,11 @@ export class AgentEngine {
         this.abortReason = undefined;
 
         const originalCwd = process.cwd();
+        const activeProjectRoot = this.getSessionWorkspace(effectiveSessionId);
         try {
-            if (this.projectRoot && this.projectRoot !== originalCwd) {
+            if (activeProjectRoot && activeProjectRoot !== originalCwd) {
                 try {
-                    process.chdir(this.projectRoot);
+                    process.chdir(activeProjectRoot);
                 } catch {}
             }
 
@@ -314,7 +325,8 @@ export class AgentEngine {
             const result = await this.runInteractive({
                 taskInstruction: message.text,
                 auto: true,
-                sessionId: effectiveSessionId
+                sessionId: effectiveSessionId,
+                projectRoot: activeProjectRoot
             });
 
             if (!result.success && (result.summary.includes('Interrupted') || result.summary.includes('cancelled') || result.summary.includes('user_cancelled'))) {
@@ -342,6 +354,17 @@ export class AgentEngine {
             }
             this.leaseManager.releaseLease(effectiveSessionId, holderId);
         }
+    }
+
+    public setSessionWorkspace(sessionId: string, workspacePath: string): void {
+        this.sessionWorkspaces.set(sessionId, workspacePath);
+    }
+
+    public getSessionWorkspace(sessionId?: string): string {
+        if (sessionId && this.sessionWorkspaces.has(sessionId)) {
+            return this.sessionWorkspaces.get(sessionId)!;
+        }
+        return this.projectRoot || process.cwd();
     }
 
     private handleApprovalResponse(event: any) {

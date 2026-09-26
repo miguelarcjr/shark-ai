@@ -111,7 +111,8 @@ export class StackSpotProvider implements AIProvider {
 
             const compactionTokenLimit = ConfigManager.getInstance().getConfig().memory?.compactionTokenLimit ?? 120000;
             const { history: orchestratedHistory } = await ContextCompressor.compress(rawHistory, {
-                tokenLimit: compactionTokenLimit
+                tokenLimit: compactionTokenLimit,
+                provider: this
             });
 
             history = orchestratedHistory;

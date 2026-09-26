@@ -7,6 +7,7 @@ import type { ForkReviewAgent } from '../workflow/fork-review-agent.js';
 import type { SkillManager } from '../workflow/skill-manager.js';
 import { workflowManager } from '../workflow/workflow-manager.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
+import type { AIProvider } from '../api/provider.interface.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
 
@@ -17,6 +18,7 @@ export interface SlashCommandHandlerContext {
     forkReviewAgent: ForkReviewAgent;
     skillManager: SkillManager;
     autoApproveTools: boolean;
+    activeProvider?: AIProvider;
     onLog: (type: 'info' | 'warning' | 'error' | 'success', message: string) => void;
     onPromptSelect?: (options: { message: string; options: Array<{ label: string; value: string }> }) => Promise<string | null>;
 }
@@ -25,6 +27,7 @@ export interface SlashCommandResult {
     handled: boolean;
     autoApproveTools?: boolean;
     activeConversationId?: string;
+    summary?: string;
 }
 
 export async function handleSlashCommand(
@@ -58,65 +61,73 @@ export async function handleSlashCommand(
         }
 
         const triggered = await ctx.forkReviewAgent.triggerManualReview(historyToReview, focus);
+        const msg = triggered
+            ? '🧠 Revisão do Learning Loop iniciada com sucesso em segundo plano.'
+            : '⚠️ [Revisão já está em andamento, aguarde a conclusão...]';
         if (!triggered) {
-            ctx.onLog('warning', '⚠️ [Review em andamento, aguarde a conclusão...]');
+            ctx.onLog('warning', msg);
         } else {
-            ctx.onLog('success', 'Revisão iniciada com sucesso.');
+            ctx.onLog('success', msg);
         }
-        return { handled: true };
+        return { handled: true, summary: msg };
     }
 
     if (trimmed === '/auto') {
         const nextState = !ctx.autoApproveTools;
-        if (nextState) {
-            ctx.onLog('info', '⚡ Auto-aprovação de ferramentas ATIVADA.');
-        } else {
-            ctx.onLog('info', '🔒 Auto-aprovação de ferramentas DESATIVADA (solicitando confirmações manuais).');
-        }
-        return { handled: true, autoApproveTools: nextState };
+        const msg = nextState
+            ? '⚡ Auto-aprovação de ferramentas ATIVADA.'
+            : '🔒 Auto-aprovação de ferramentas DESATIVADA (solicitando confirmações manuais).';
+        ctx.onLog('info', msg);
+        return { handled: true, autoApproveTools: nextState, summary: msg };
     }
 
     if (trimmed === '/compact') {
-        const config = ConfigManager.getInstance().getConfig();
-        const enabled = config.memory?.enabled === true || !!process.env.VITEST;
-        if (!enabled) {
-            ctx.onLog('warning', '🦈 A compactação de memória está desabilitada nas configurações.');
-            return { handled: true };
+        if (!ctx.activeConversationId) {
+            const msg = '⚠️ Nenhuma conversação ativa para compactar.';
+            ctx.onLog('warning', msg);
+            return { handled: true, summary: msg };
         }
         ctx.onLog('info', '🦈 Compactando memória de forma manual com Tail Protection...');
-        if (ctx.activeConversationId) {
-            try {
-                const rawHistory = await HistoryManager.getRawHistory(ctx.activeConversationId);
-                const { history: compressedHistory, wasCompressed } = await ContextCompressor.compress(rawHistory, {
-                    tokenLimit: 1000,
-                    thresholdRatio: 0.0,
-                    tailSize: 15
-                });
-                if (wasCompressed) {
-                    await HistoryManager.saveRawHistory(ctx.activeConversationId, compressedHistory);
-                    ctx.onLog('success', '✔ Memória compactada com sucesso (Tail Protection)!');
-                } else {
-                    ctx.onLog('info', 'ℹ Histórico muito curto para compactação.');
-                }
-            } catch (error: any) {
-                ctx.onLog('error', `Erro durante a compactação: ${error.message}`);
+        try {
+            const rawHistory = await HistoryManager.getRawHistory(ctx.activeConversationId);
+            const { history: compressedHistory, wasCompressed } = await ContextCompressor.compress(rawHistory, {
+                tokenLimit: 1000,
+                thresholdRatio: 0.0,
+                tailSize: 15,
+                provider: ctx.activeProvider
+            });
+            if (wasCompressed) {
+                await HistoryManager.saveRawHistory(ctx.activeConversationId, compressedHistory);
+                const msg = `✔ Memória compactada com sucesso (Tail Protection)!\nDe ${rawHistory.length} para ${compressedHistory.length} mensagens no histórico.`;
+                ctx.onLog('success', msg);
+                return { handled: true, summary: msg };
+            } else {
+                const msg = `ℹ Histórico com apenas ${rawHistory.length} mensagens — muito curto para compactação (Tail Protection preserva as 15 mensagens mais recentes).`;
+                ctx.onLog('info', msg);
+                return { handled: true, summary: msg };
             }
-        } else {
-            ctx.onLog('warning', 'Nenhuma conversação ativa para compactar.');
+        } catch (error: any) {
+            const msg = `❌ Erro durante a compactação: ${error.message}`;
+            ctx.onLog('error', msg);
+            return { handled: true, summary: msg };
         }
-        return { handled: true };
     }
 
     if (trimmed === '/context') {
         if (ctx.activeConversationId) {
             const rawHistory = await HistoryManager.getRawHistory(ctx.activeConversationId);
             const totalTokensEst = Math.ceil(JSON.stringify(rawHistory).length / 4);
-            ctx.onLog('info', `📊 Histórico ativo: ${rawHistory.length} mensagens`);
-            ctx.onLog('info', `📊 Tamanho estimado: ${totalTokensEst} / 8000 tokens (${Math.round((totalTokensEst / 8000) * 100)}% do limite)`);
+            const config = ConfigManager.getInstance().getConfig();
+            const limit = config.memory?.compactionTokenLimit ?? 100000;
+            const pct = Math.round((totalTokensEst / limit) * 100);
+            const msg = `📊 *Status de Contexto*\n• Histórico ativo: ${rawHistory.length} mensagens\n• Tokens estimados: ~${totalTokensEst.toLocaleString()} / ${limit.toLocaleString()} (${pct}% do limite de compactação automática)`;
+            ctx.onLog('info', msg);
+            return { handled: true, summary: msg };
         } else {
-            ctx.onLog('warning', 'Nenhuma conversação ativa para analisar.');
+            const msg = '⚠️ Nenhuma conversação ativa para analisar.';
+            ctx.onLog('warning', msg);
+            return { handled: true, summary: msg };
         }
-        return { handled: true };
     }
 
     if (trimmed === '/skills') {
