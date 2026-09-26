@@ -72,6 +72,17 @@ Você possui memória persistente que é carregada em todas as sessões. Use a a
 🔍 BUSCA EM CONVERSAS PASSADAS ('session_search'):
 - Se o usuário fizer referência a algo discutido em sessões passadas (ex: "como fizemos naquele bug anterior?", "lembra daquela configuração?"), USE 'session_search' com args: { "query": "termo de busca", "limit": 5 } antes de pedir para o usuário se repetir.
 
+🖥️ EXECUÇÃO NO TERMINAL E GESTÃO DE PROCESSOS ('run_command' & 'process'):
+- COMANDOS CURTOS/SÍNCRONOS: Para tarefas pontuais (ex: 'npm test', 'git status', 'tsc'), use 'run_command' com args: { "command": "..." }.
+- SERVIDORES E PROCESSOS CONTÍNUOS: Para comandos que rodam continuamente (ex: 'ng serve', 'npm run dev', 'docker compose', watchers), SEMPRE execute 'run_command' com args: { "command": "...", "background": true, "watch_patterns": ["padrão_de_sucesso"] }.
+- ⚠️ PROIBIÇÃO CRÍTICA DO SHELL: NUNCA tente colocar processos em segundo plano usando '&' ou 'nohup' no comando. Use 'background: true'.
+- GESTÃO DE PROCESSOS EM BACKGROUND ('process'):
+  - action: 'list': Lista processos ativos e histórico na sessão atual.
+  - action: 'poll', process_id: 'proc_1': Captura apenas as novas linhas emitidas desde a última consulta.
+  - action: 'log', process_id: 'proc_1', lines: 50, offset: 0: Lê fatias do histórico completo de logs em disco.
+  - action: 'write', process_id: 'proc_1', data: "y\\n": Envia texto para o stdin de processos interativos.
+  - action: 'kill', process_id: 'proc_1': Encerra o processo e toda sua árvore de subprocessos (tree-kill) para liberar portas.
+
 🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):
 - Você DEVE responder APENAS com um objeto JSON válido.
 - Todas as ações seguem o envelope uniforme { "type": "...", "args": { ... } }.
@@ -81,7 +92,7 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "thought": "Explicação detalhada do raciocínio lógico e intenção da ação tomada antes de executá-la.",
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "tool_search" | "tool_describe" | "tool_call" | "skills_list" | "skill_view" | "skill_manage" | "talk_with_user" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "process" | "tool_search" | "tool_describe" | "tool_call" | "skills_list" | "skill_view" | "skill_manage" | "talk_with_user" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search",
     "args": {
       /* Parâmetros específicos da ferramenta selecionada */
     }
@@ -128,7 +139,7 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "thought": "Raciocínio lógico e intenção da ação tomada.",
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "complete_task",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "process" | "complete_task",
     "args": {
       /* Parâmetros específicos da ação */
     }
@@ -156,6 +167,39 @@ export const TOOL_ARGS_PROPERTIES = {
   command: {
     type: ["string", "null"],
     description: "Comando de terminal a ser executado via run_command."
+  },
+  background: {
+    type: ["boolean", "null"],
+    description: "Executa o comando em background sem bloquear o agente (padrão: false)."
+  },
+  timeout_seconds: {
+    type: ["number", "null"],
+    description: "Tempo limite em segundos no foreground antes de auto-promover para background (padrão: 30)."
+  },
+  notify_on_complete: {
+    type: ["boolean", "null"],
+    description: "Envia notificação reativa no chat quando o processo em background encerrar."
+  },
+  watch_patterns: {
+    type: ["array", "null"],
+    items: { type: "string" },
+    description: "Padrões regex ou texto para monitorar nos logs do processo."
+  },
+  process_id: {
+    type: ["string", "null"],
+    description: "Identificador do processo para a ferramenta process (ex: 'proc_1')."
+  },
+  data: {
+    type: ["string", "null"],
+    description: "Dados de texto a serem enviados no stdin do processo (ação: 'write')."
+  },
+  lines: {
+    type: ["number", "null"],
+    description: "Quantidade de linhas de log a retornar na ação 'log' (padrão: 50)."
+  },
+  offset: {
+    type: ["number", "null"],
+    description: "Linha inicial para leitura histórica no log (padrão: final do arquivo)."
   },
   query: {
     type: ["string", "null"],

@@ -40,7 +40,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
 }, z.object({
     type: z.enum([
         'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
-        'list_structure', 'modify_ast', 'search_ast', 'run_command',
+        'list_structure', 'modify_ast', 'search_ast', 'run_command', 'process',
         'tool_search', 'tool_describe', 'tool_call',
         'talk_with_user',
         'memory', 'session_search',
@@ -68,6 +68,14 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     line_range: z.array(z.number()).nullable().optional(),
     target_content: z.string().nullable().optional(),
     command: z.string().nullable().optional(),
+    background: z.boolean().nullable().optional(),
+    timeout_seconds: z.number().nullable().optional(),
+    notify_on_complete: z.boolean().nullable().optional(),
+    watch_patterns: z.array(z.string()).nullable().optional(),
+    process_id: z.string().nullable().optional(),
+    data: z.string().nullable().optional(),
+    lines: z.number().nullable().optional(),
+    offset: z.number().nullable().optional(),
     tool_name: z.string().nullable().optional(),
     tool_args: z.string().nullable().optional(), // JSON string argument
     target: z.string().nullable().optional(),

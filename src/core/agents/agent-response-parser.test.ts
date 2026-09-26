@@ -311,5 +311,51 @@ describe('AgentResponseParser', () => {
         expect(parsed.action?.end_anchor).toBe("river");
         expect(parsed.action?.path).toBe("src/calculator.ts");
     });
+
+    it('should parse process action and hoist process arguments successfully', () => {
+        const raw = JSON.stringify({
+            thought: "Checking background server logs",
+            action: {
+                type: "process",
+                args: {
+                    action: "log",
+                    process_id: "proc_1",
+                    lines: 25,
+                    offset: 10
+                }
+            },
+            summary: "Checking logs"
+        });
+        const parsed = parseAgentResponse(raw);
+        expect(parsed.isError).toBe(false);
+        expect(parsed.action?.type).toBe("process");
+        expect((parsed.action as any)?.action).toBe("log");
+        expect((parsed.action as any)?.process_id).toBe("proc_1");
+        expect((parsed.action as any)?.lines).toBe(25);
+        expect((parsed.action as any)?.offset).toBe(10);
+    });
+
+    it('should parse run_command with background, timeout_seconds, and watch_patterns', () => {
+        const raw = JSON.stringify({
+            thought: "Starting Angular server in background",
+            action: {
+                type: "run_command",
+                args: {
+                    command: "ng serve",
+                    background: true,
+                    timeout_seconds: 60,
+                    watch_patterns: ["Local: http://localhost:4200"]
+                }
+            },
+            summary: "Starting dev server"
+        });
+        const parsed = parseAgentResponse(raw);
+        expect(parsed.isError).toBe(false);
+        expect(parsed.action?.type).toBe("run_command");
+        expect((parsed.action as any)?.command).toBe("ng serve");
+        expect((parsed.action as any)?.background).toBe(true);
+        expect((parsed.action as any)?.timeout_seconds).toBe(60);
+        expect((parsed.action as any)?.watch_patterns).toEqual(["Local: http://localhost:4200"]);
+    });
 });
 
