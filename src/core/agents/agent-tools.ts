@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { execa, type ExecaChildProcess } from 'execa';
 import { IgnoreFilterManager } from '../utils/ignore-filter.js';
+import { ProcessManager } from '../process/process-manager.js';
 
 const execAsync = promisify(exec);
 
@@ -372,28 +373,107 @@ process.on('exit', () => {
     cleanupAgentTools();
 });
 
-export async function handleRunCommand(command: string): Promise<string> {
+export interface RunCommandOptions {
+    background?: boolean;
+    timeoutSeconds?: number;
+    notifyOnComplete?: boolean;
+    watchPatterns?: string[];
+    sessionId?: string;
+}
+
+export async function handleRunCommand(
+    command: string,
+    options?: RunCommandOptions
+): Promise<string> {
+    const manager = ProcessManager.getInstance();
+    const sessionId = options?.sessionId || 'default';
+
+    // 1. Explicit Background Execution
+    if (options?.background === true) {
+        try {
+            let watchTriggered = false;
+            let matchedPattern = '';
+            let matchedLine = '';
+
+            const proc = await manager.spawn(command, {
+                sessionId,
+                watchPatterns: options.watchPatterns,
+                notifyOnComplete: options.notifyOnComplete !== false,
+                onWatchPatternMatched: (p, l) => {
+                    watchTriggered = true;
+                    matchedPattern = p;
+                    matchedLine = l;
+                }
+            });
+
+            // Brief initial startup delay or until watch pattern triggers or process terminates
+            const start = Date.now();
+            while (Date.now() - start < 800) {
+                if (watchTriggered || proc.status !== 'running') break;
+                await new Promise(r => setTimeout(r, 100));
+            }
+
+            const logs = await manager.getLogs(proc.id, { lines: 20 });
+            const logSnippet = logs.lines.join('\n').trim();
+
+            if (proc.status === 'failed') {
+                return `[Process '${proc.id}' (PID: ${proc.pid}) failed with exit code ${proc.exitCode}]:\n${logSnippet || 'No output.'}`;
+            }
+
+            return `[Process '${proc.id}' started in background (PID: ${proc.pid})]
+Status: ${proc.status.toUpperCase()} | Total lines logged: ${proc.totalLines}
+Log file: ${proc.logPath}
+${logSnippet ? `Initial output:\n--------------------------------------------------\n${logSnippet}\n--------------------------------------------------\n` : ''}Use the 'process' tool to monitor logs, send input, or terminate this process.`;
+        } catch (e: any) {
+            return `Error starting background process: ${e.message}`;
+        }
+    }
+
+    // 2. Foreground Execution with Timeout and Auto-Promotion
+    const timeoutMs = (options?.timeoutSeconds || 30) * 1000;
+    let watchTriggered = false;
+    let matchedPattern = '';
+    let matchedLine = '';
+
     try {
-        if (!nextShellProcess) {
-            prewarmShell();
+        const proc = await manager.spawn(command, {
+            sessionId,
+            watchPatterns: options?.watchPatterns,
+            notifyOnComplete: options?.notifyOnComplete !== false,
+            onWatchPatternMatched: (p, l) => {
+                watchTriggered = true;
+                matchedPattern = p;
+                matchedLine = l;
+            }
+        });
+
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            if (proc.status !== 'running') {
+                const logs = await manager.getLogs(proc.id);
+                const output = logs.lines.join('\n').trim();
+                return output || 'Command executed successfully (no output).';
+            }
+
+            if (watchTriggered) {
+                break;
+            }
+
+            await new Promise(r => setTimeout(r, 100));
         }
-        const currentShell = nextShellProcess!;
-        currentRunningShell = currentShell;
 
-        // Pre-warm the next process immediately in background
-        prewarmShell();
+        // Process is still running -> auto-promote to background!
+        const logs = await manager.getLogs(proc.id, { lines: 20 });
+        const logSnippet = logs.lines.join('\n').trim();
+        const reason = watchTriggered
+            ? `watch pattern '${matchedPattern}' matched`
+            : `timeout of ${options?.timeoutSeconds || 30}s exceeded`;
 
-        currentShell.stdin?.write(`${command}\nexit\n`);
-
-        const { stdout, stderr } = await currentShell;
-        currentRunningShell = null;
-        const output = stdout.trim() || stderr.trim();
-        return output || 'Command executed successfully (no output).';
+        return `[Command promoted to background as '${proc.id}' (PID: ${proc.pid}) after ${reason}]
+Status: ${proc.status.toUpperCase()} | Total lines logged: ${proc.totalLines}
+Log file: ${proc.logPath}
+${logSnippet ? `Recent output:\n--------------------------------------------------\n${logSnippet}\n--------------------------------------------------\n` : ''}The command continues running in the background. Use the 'process' tool to inspect logs or terminate.`;
     } catch (e: any) {
-        currentRunningShell = null;
-        if (e.isCanceled || e.killed) {
-            return `Command aborted by user.`;
-        }
         return `Error executing command: ${e.message}`;
     }
 }
