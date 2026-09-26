@@ -30,6 +30,22 @@ export class BridgeToolsManager {
     }
   }
 
+  public isBridgeTool(name: string): boolean {
+    return this.knownToolsMap.has(name) || this.catalog.search([name], 1).results.some(r => r.name === name);
+  }
+
+  public async executeTool(name: string, args: any): Promise<string> {
+    const toolArgs = typeof args === 'object' && args !== null ? args : {};
+    const res = await this.executeToolCall({
+      name,
+      arguments: toolArgs
+    });
+    if (!res.success) {
+      throw new Error(res.error || `Failed to execute tool '${name}'`);
+    }
+    return typeof res.output === 'string' ? res.output : JSON.stringify(res.output, null, 2);
+  }
+
   public async executeToolSearch(args: { queries: string[]; limit?: number }): Promise<BridgeExecutionResult> {
     const queries = Array.isArray(args.queries) ? args.queries : [String(args.queries || '')];
     const limit = args.limit || 5;
