@@ -370,9 +370,10 @@ export class TurnLoopRunner {
             // talk_with_user action
             if (action.type === 'talk_with_user') {
                 const talkContent = action.content || action.args?.content || action.message || action.args?.message || '';
-                const isSystemError = typeof talkContent === 'string' && talkContent.startsWith('[SYSTEM ERROR]');
+                const isSystemError = (typeof talkContent === 'string' && talkContent.startsWith('[SYSTEM ERROR]')) ||
+                    response?.isError === true;
                 if (isSystemError) {
-                    currentPrompt = talkContent;
+                    currentPrompt = talkContent || response?.errorMessage || '[SYSTEM ERROR]: Invalid action structure.';
                     continue;
                 }
 
