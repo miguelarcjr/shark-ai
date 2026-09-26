@@ -7,6 +7,7 @@ import qrcode from 'qrcode-terminal';
 import pino from 'pino';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
+import * as readline from 'node:readline';
 
 // Importa os módulos desacoplados do Shark AI (Core + WhatsApp Adapter)
 import {
@@ -22,6 +23,46 @@ process.on('unhandledRejection', (err: any) => {
     }
 });
 
+let isShuttingDown = false;
+let currentSocket: any = null;
+
+function handleGracefulShutdown(signal: string) {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    console.log(`\n🛑 [${signal}] Encerrando o bot do WhatsApp com segurança...`);
+    try {
+        if (currentSocket) {
+            currentSocket.ev.removeAllListeners('connection.update');
+            currentSocket.ev.removeAllListeners('messages.upsert');
+            currentSocket.ev.removeAllListeners('creds.update');
+            currentSocket.end(undefined);
+        }
+    } catch {}
+    process.exit(0);
+}
+
+process.on('SIGINT', () => handleGracefulShutdown('SIGINT'));
+process.on('SIGTERM', () => handleGracefulShutdown('SIGTERM'));
+
+// No Windows, garante captura confiável de Ctrl+C via readline e dados brutos do stdin
+if (process.platform === 'win32') {
+    const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+    });
+    rl.on('SIGINT', () => {
+        handleGracefulShutdown('SIGINT');
+    });
+}
+
+if (process.stdin.isTTY && typeof process.stdin.on === 'function') {
+    process.stdin.on('data', (data) => {
+        if (data.length === 1 && data[0] === 3) {
+            handleGracefulShutdown('SIGINT');
+        }
+    });
+}
+
 async function startWhatsAppBot() {
     const logger = pino({ level: 'warn' });
     const authDir = path.resolve(process.cwd(), '.baileys_auth');
@@ -36,6 +77,7 @@ async function startWhatsAppBot() {
         auth: state,
         printQRInTerminal: false
     });
+    currentSocket = sock;
 
     // 1. Tratamento de conexão e renderização do QR Code no terminal
     sock.ev.on('connection.update', (update) => {
@@ -47,6 +89,7 @@ async function startWhatsAppBot() {
         }
 
         if (connection === 'close') {
+            if (isShuttingDown) return;
             const shouldReconnect = (lastDisconnect?.error as any)?.output?.statusCode !== DisconnectReason.loggedOut;
             console.log('⚠️ Conexão fechada. Reconectando?', shouldReconnect);
             if (shouldReconnect) {
