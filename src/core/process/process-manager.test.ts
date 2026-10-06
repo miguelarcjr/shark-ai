@@ -164,4 +164,24 @@ describe('ProcessManager', () => {
         expect(notification.type).toBe('process_notification');
         expect(notification.metadata?.status).toBe('completed');
     });
+
+    it('should safely spawn processes when sessionId contains colons or special chars (Windows path safe)', async () => {
+        const specialSession = 'whatsapp:dm:120363431367146933@g.us';
+        const proc = await manager.spawn('node -e "console.log(\\"special\\");"', { sessionId: specialSession });
+
+        expect(proc.id).toBeDefined();
+        expect(fs.existsSync(proc.logPath)).toBe(true);
+        expect(proc.logPath).not.toContain(':dm:');
+
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const updated = manager.get(proc.id);
+        expect(updated?.status).toBe('completed');
+
+        // Cleanup
+        const safeSession = specialSession.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const logDir = path.resolve(process.cwd(), '.shark', 'processes', safeSession);
+        if (fs.existsSync(logDir)) {
+            fs.rmSync(logDir, { recursive: true, force: true });
+        }
+    });
 });

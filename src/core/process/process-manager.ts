@@ -64,10 +64,11 @@ export class ProcessManager {
 
     public async spawn(command: string, options?: SpawnProcessOptions): Promise<ManagedProcessInfo> {
         const sessionId = options?.sessionId || 'default';
+        const safeSessionId = sessionId.replace(/[^a-zA-Z0-9_-]/g, '_');
         const procId = `proc_${this.nextId++}`;
         const cwd = options?.cwd || process.cwd();
 
-        const logDir = path.resolve(cwd, '.shark', 'processes', sessionId);
+        const logDir = path.resolve(cwd, '.shark', 'processes', safeSessionId);
         if (!fs.existsSync(logDir)) {
             fs.mkdirSync(logDir, { recursive: true });
         }
