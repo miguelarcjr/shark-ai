@@ -14,9 +14,9 @@ As an AI pair-programmer, you do NOT own the repository's git history. You MUST 
    - Report summary of completed tasks, commits, and test results.
    - Present the 3 integration options:
      - **Option 1 (Direct Merge):** Merge `feat/<spec-id>` into base branch (`main`) and delete the worktree cleanly:
-       `node skills/graph-driven-execution/scripts/exec-ctl.mjs finish --merge`
+       `node "${SHARK_SKILL_DIR}/scripts/exec-ctl.mjs" finish --merge`
      - **Option 2 (PR / Keep Branch):** Keep branch `feat/<spec-id>` intact for manual review or opening a PR:
-       `node skills/graph-driven-execution/scripts/exec-ctl.mjs finish`
+       `node "${SHARK_SKILL_DIR}/scripts/exec-ctl.mjs" finish`
      - **Option 3 (Discard):** Discard worktree and changes if not accepted.
 3. **Execute Chosen Action:**
    - Only execute the merge or finalize after receiving the user's explicit instructions.

@@ -82,6 +82,17 @@ export class SessionWorkspaceManager {
                     }
                 } catch {}
             }
+
+            // Garante auto-cura de link skills -> .agents/skills em pastas já criadas
+            const skillsAlias = path.join(res.fullPath, 'skills');
+            const targetSkills = path.join(res.fullPath, '.agents', 'skills');
+            if (existsSync(targetSkills) && !existsSync(skillsAlias)) {
+                try {
+                    const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+                    await fs.symlink(targetSkills, skillsAlias, linkType);
+                } catch {}
+            }
+
             return res.fullPath;
         }
 
@@ -106,6 +117,15 @@ export class SessionWorkspaceManager {
 
                 if (existsSync(this.skillsSourceDir)) {
                     await fs.cp(this.skillsSourceDir, targetSkills, { recursive: true, force: true });
+                }
+
+                // Cria alias skills -> .agents/skills para compatibilidade máxima com comandos node skills/...
+                const skillsAlias = path.join(targetDir, 'skills');
+                if (!existsSync(skillsAlias)) {
+                    try {
+                        const linkType = process.platform === 'win32' ? 'junction' : 'dir';
+                        await fs.symlink(targetSkills, skillsAlias, linkType);
+                    } catch {}
                 }
 
                 // 2. Inicializar shark-workflow.json na raiz e .shark/workflow.json

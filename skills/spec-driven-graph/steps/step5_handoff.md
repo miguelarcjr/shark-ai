@@ -5,7 +5,7 @@ Export the validated plan and seamlessly transition to execution.
 
 ## Actions for the Coordinator
 1. **Export the Plan:**
-   - Run: `node skills/spec-driven-graph/scripts/spec-ctl.mjs export`
+   - Run: `node "${SHARK_SKILL_DIR}/scripts/spec-ctl.mjs" export`
    - The CLI will copy the final plan to `docs/superpowers/plans/YYYY-MM-DD-<spec-id>.md`.
 2. **Present Summary to User:**
    - Inform the user that the entire specification and planning pipeline has completed with all gates passed (Elicitation ➔ Architecture ➔ Adversarial ➔ TDD Plan).

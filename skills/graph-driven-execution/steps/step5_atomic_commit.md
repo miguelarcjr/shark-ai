@@ -5,7 +5,7 @@ Record a clean, conventional commit in the worktree branch and verify that zero 
 
 ## Actions for the Coordinator
 1. **Execute Commit Gate:**
-   - Run: `node skills/graph-driven-execution/scripts/exec-ctl.mjs transition --next`
+   - Run: `node "${SHARK_SKILL_DIR}/scripts/exec-ctl.mjs" transition --next`
    - The CLI stages changed files, creates a conventional commit with the task title, captures the commit hash in `execution.json`, and verifies `git status` cleanliness.
 2. **Next Action:**
    - **If more tasks remain:** The CLI automatically advances to the next task at `RED_TEST`. Follow `step1_red_test.md`.

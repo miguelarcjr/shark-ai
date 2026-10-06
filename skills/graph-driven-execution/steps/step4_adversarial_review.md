@@ -23,7 +23,7 @@ Scrutinize the real git diff produced in the worktree against design specificati
 
 ## Actions for the Coordinator
 1. **Generate Brief:**
-   - Run: `node skills/graph-driven-execution/scripts/exec-ctl.mjs brief code-reviewer`
+   - Run: `node "${SHARK_SKILL_DIR}/scripts/exec-ctl.mjs" brief code-reviewer`
    - The brief automatically embeds the live `git diff` from the worktree, the task plan, and the scoring rubric.
 2. **Dispatch Code Reviewer:**
    - Use `invoke_subagent` with:
@@ -32,9 +32,9 @@ Scrutinize the real git diff produced in the worktree against design specificati
 3. **Handle Verdict:**
    - **If VERDICT: BLOCKER:**
      - Execute rollback:
-       `node skills/graph-driven-execution/scripts/exec-ctl.mjs rollback --to GREEN_CODE --reason "<review feedback>"`
+       `node "${SHARK_SKILL_DIR}/scripts/exec-ctl.mjs" rollback --to GREEN_CODE --reason "<review feedback>"`
      - Re-dispatch `tdd-dev` to fix the implementation.
    - **If VERDICT: PASS or PASS WITH WARNINGS:**
-     - Run: `node skills/graph-driven-execution/scripts/exec-ctl.mjs transition --next`
+     - Run: `node "${SHARK_SKILL_DIR}/scripts/exec-ctl.mjs" transition --next`
      - Proceed to `step5_atomic_commit.md`.
 

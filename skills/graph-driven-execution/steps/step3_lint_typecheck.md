@@ -5,10 +5,10 @@ Verify static typing, strict compilation, and code hygiene before exposing the d
 
 ## Actions for the Coordinator
 1. **Run Deterministic Gate:**
-   - Execute: `node skills/graph-driven-execution/scripts/exec-ctl.mjs verify lint`
+   - Execute: `node "${SHARK_SKILL_DIR}/scripts/exec-ctl.mjs" verify lint`
    - *Requirement:* `tsc --noEmit` and linter checks must pass with zero errors.
 2. **If Errors Occur:**
    - Re-dispatch `tdd-dev` to fix type discrepancies or unused imports.
 3. **Transition to Code Review:**
-   - Execute: `node skills/graph-driven-execution/scripts/exec-ctl.mjs transition --next`
+   - Execute: `node "${SHARK_SKILL_DIR}/scripts/exec-ctl.mjs" transition --next`
    - Proceed to `step4_adversarial_review.md`.
