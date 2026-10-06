@@ -14,6 +14,7 @@ import {
     AgentEngine,
     WhatsAppAdapter,
     CliAdapter,
+    SessionWorkspaceManager,
     type WhatsAppTransport
 } from '../../../src/core/index.js';
 
@@ -186,13 +187,13 @@ async function startWhatsAppBot() {
         debounceMs: 800
     });
 
-    // 4. Instancia o motor agnóstico do Shark AI apontando para o workspace inicial
-    // Pode ser configurado via variável de ambiente SHARK_PROJECT_ROOT ou usar o diretório pai
-    let currentWorkspace = process.env.SHARK_PROJECT_ROOT || process.cwd();
+    // 4. Instancia o motor agnóstico do Shark AI e o gerenciador de workspaces isolados
+    const defaultWorkspace = process.env.SHARK_PROJECT_ROOT || process.cwd();
+    const workspaceManager = new SessionWorkspaceManager();
 
     const engine = new AgentEngine({
         sessionId: '*',
-        projectRoot: currentWorkspace
+        projectRoot: defaultWorkspace
     });
     const cliAdapter = new CliAdapter();
     engine.attachAdapter(whatsappAdapter);
@@ -231,9 +232,24 @@ async function startWhatsAppBot() {
 
             console.log(`📩 Mensagem recebida [${chatId}]: "${text}"`);
 
+            const sessionId = `whatsapp:dm:${chatId}`;
+
+            // Garante provisionamento e isolamento do workspace deste chat
+            try {
+                const sessionWorkspacePath = await workspaceManager.ensureWorkspace(chatId, async (statusMsg) => {
+                    await transport.sendText(chatId, statusMsg);
+                });
+                engine.setSessionWorkspace(sessionId, sessionWorkspacePath);
+            } catch (err: any) {
+                console.error(`Erro ao preparar workspace para ${chatId}:`, err);
+                await transport.sendText(chatId, `⚠️ *Erro ao preparar workspace:* ${err.message}`);
+                continue;
+            }
+
             // --- Comandos de Controle Rápido via WhatsApp ---
             if (text === '/pwd' || text === '/workspace') {
-                await transport.sendText(chatId, `📁 *Workspace ativo:*\n\`${engine.projectRoot}\``);
+                const activeWs = engine.getSessionWorkspace(sessionId);
+                await transport.sendText(chatId, `📁 *Workspace ativo:*\n\`${activeWs}\``);
                 continue;
             }
 
@@ -241,7 +257,7 @@ async function startWhatsAppBot() {
                 const targetDir = text.replace(/^(\/use|\/workspace)\s+/, '').trim();
                 const resolved = path.resolve(targetDir);
                 if (fs.existsSync(resolved)) {
-                    engine.projectRoot = resolved;
+                    engine.setSessionWorkspace(sessionId, resolved);
                     await transport.sendText(chatId, `✅ *Workspace alterado para:*\n\`${resolved}\``);
                 } else {
                     await transport.sendText(chatId, `❌ *Diretório não encontrado:*\n\`${resolved}\``);

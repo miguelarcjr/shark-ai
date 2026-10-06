@@ -42,16 +42,22 @@ cd examples/whatsapp-bot
 npm install
 ```
 
-### 3. (Opcional) Definir o projeto padrão
-Você pode definir em qual projeto o bot começará trabalhando através da variável `SHARK_PROJECT_ROOT`:
+### 3. (Opcional) Configurar Diretório Base dos Workspaces
+Por padrão, cada usuário (DM) ou grupo recebe automaticamente seu próprio workspace isolado sob a pasta `./workspaces`:
+- DMs: `workspaces/user_<telefone>`
+- Grupos: `workspaces/group_<id>`
+
+Na primeira mensagem de cada conversa, o bot provisiona automaticamente o workspace com as skills (`.agents/skills`), o workflow (`.shark/workflow.json`) e o contexto inicial (`_sharkrc/project-context.md`).
+
+Você pode customizar o diretório base definindo a variável `SHARK_WORKSPACES_ROOT`:
 ```bash
 # Windows PowerShell
-$env:SHARK_PROJECT_ROOT = "D:\projetos\meu-sistema"
+$env:SHARK_WORKSPACES_ROOT = "D:\meus-workspaces"
 
 # Linux / Mac
-export SHARK_PROJECT_ROOT="/home/user/projetos/meu-sistema"
+export SHARK_WORKSPACES_ROOT="/home/user/meus-workspaces"
 ```
-Se não for definida, ele começará na pasta atual.
+Se preferir definir um projeto padrão global fixo como fallback, utilize `SHARK_PROJECT_ROOT`.
 
 ### 4. Iniciar o bot
 ```bash
