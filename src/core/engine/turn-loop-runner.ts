@@ -73,7 +73,18 @@ export class TurnLoopRunner {
 
         let consecutiveValidationErrors = 0;
 
-        while (keepGoing) {
+        let heartbeatTimer: NodeJS.Timeout | null = null;
+        if (effectiveTaskId) {
+            heartbeatTimer = setInterval(() => {
+                subagentManager.recordHeartbeat(effectiveTaskId);
+            }, 15000);
+            if (typeof (heartbeatTimer as any).unref === 'function') {
+                (heartbeatTimer as any).unref();
+            }
+        }
+
+        try {
+            while (keepGoing) {
             if (abortController.signal.aborted) {
                 keepGoing = false;
                 return { success: false, summary: (abortController.signal as any).reason || 'Interrupted by user' };
@@ -110,39 +121,70 @@ export class TurnLoopRunner {
                 });
                 if (wasCompressed) {
                     await HistoryManager.saveRawHistory(activeConversationId, compressedHistory);
-                    actionExecutor?.resetReadCounts();
                 }
             }
 
             let response: any;
-            try {
-                response = await context.activeProvider.streamChat(currentTurnPrompt, {
-                    conversationId: activeConversationId,
-                    agentType: 'developer_agent',
-                    searchQuery: currentPrompt,
-                    systemPrompt: context.dynamicSystemPrompt,
-                    hasMcpServers: (context.mcpTools || []).length > 0,
-                    signal: abortController.signal,
-                    onChunk: () => {}
-                });
-            } catch (e: any) {
-                spinner.stop('Interrupted');
-                if (e.name === 'AbortError' || abortController.signal.aborted) {
-                    log.warning('Interrupção solicitada via Esc. Retornando ao prompt...');
-                    if (activeConversationId) {
-                        await HistoryManager.saveRawHistory(activeConversationId, [
-                            ...(await HistoryManager.getRawHistory(activeConversationId)),
-                            { role: 'user', content: '[Execução interrompida pelo usuário via Esc. A ação anterior foi cancelada antes de sua conclusão.]' }
-                        ]);
+            const maxRetries = 3;
+            let retryAttempt = 0;
+
+            while (true) {
+                try {
+                    response = await context.activeProvider.streamChat(currentTurnPrompt, {
+                        conversationId: activeConversationId,
+                        agentType: 'developer_agent',
+                        searchQuery: currentPrompt,
+                        systemPrompt: context.dynamicSystemPrompt,
+                        hasMcpServers: (context.mcpTools || []).length > 0,
+                        signal: abortController.signal,
+                        onChunk: () => {
+                            if (effectiveTaskId) {
+                                subagentManager.recordHeartbeat(effectiveTaskId);
+                            }
+                        }
+                    });
+                    break;
+                } catch (e: any) {
+                    if ((e.name === 'AbortError' || abortController.signal.aborted) && !/timed out|timeout/i.test(e.message || '')) {
+                        spinner.stop('Interrupted');
+                        log.warning('Interrupção solicitada via Esc. Retornando ao prompt...');
+                        if (activeConversationId) {
+                            await HistoryManager.saveRawHistory(activeConversationId, [
+                                ...(await HistoryManager.getRawHistory(activeConversationId)),
+                                { role: 'user', content: '[Execução interrompida pelo usuário via Esc. A ação anterior foi cancelada antes de sua conclusão.]' }
+                            ]);
+                        }
+                        if (isBatchMode) {
+                            return { success: false, summary: 'Interrupted by user' };
+                        }
+                        const nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                        currentPrompt = nextMsg.content;
+                        break;
                     }
-                    if (isBatchMode) {
-                        return { success: false, summary: 'Interrupted by user' };
+
+                    const errText = `${e.message || ''} ${e.cause?.message || ''} ${e.cause?.code || ''} ${e.code || ''}`;
+                    const isTransient = /timed out|timeout|ETIMEDOUT|ECONNRESET|socket hang up|fetch failed|network|und_err|500|502|503|504|429/i.test(errText);
+                    if (retryAttempt < maxRetries && isTransient && !abortController.signal.aborted) {
+                        retryAttempt++;
+                        const delaySec = retryAttempt * 5;
+                        spinner.stop('Retry');
+                        log.warning(`⚠️ Falha transitória de comunicação com a LLM: ${e.message}`);
+                        log.warning(`🔄 Auto-recuperação: tentando novamente em ${delaySec}s (tentativa ${retryAttempt}/${maxRetries})...`);
+                        await new Promise(r => setTimeout(r, delaySec * 1000));
+                        spinner.start(spinnerText);
+                        continue;
                     }
-                    const nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
-                    currentPrompt = nextMsg.content;
-                    continue;
+
+                    spinner.stop('Interrupted');
+                    throw e;
                 }
-                throw e;
+            }
+
+            if (!response && isBatchMode && abortController.signal.aborted) {
+                return { success: false, summary: 'Interrupted by user' };
+            }
+            if (!response) {
+                continue;
             }
 
             const stopMessage = response?.summary || (response?.action ? `Ação: ${response.action.type}` : 'Resposta recebida');
@@ -457,11 +499,17 @@ export class TurnLoopRunner {
             // Executa ferramenta via actionExecutor
             const actionResult = await actionExecutor.executeAction(action);
             currentPrompt = actionResult.output;
-        }
+            }
 
-        return {
-            success: true,
-            summary: finalSummary || 'Task completed without summary.'
-        };
+            return {
+                success: true,
+                summary: finalSummary || 'Task completed without summary.'
+            };
+        } finally {
+            if (heartbeatTimer) {
+                clearInterval(heartbeatTimer);
+                heartbeatTimer = null;
+            }
+        }
     }
 }

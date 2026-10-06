@@ -114,10 +114,25 @@ interface OpenAIConfig {
     model: string;
     useStructuredOutputs: boolean;
     stream?: boolean;
+    timeoutMinutes?: number;
+    timeoutMs?: number;
+    idleTimeoutMs?: number;
+    extraBody?: Record<string, any>;
 }
 
 export class OpenAICompatibleProvider implements AIProvider {
     constructor(private options: OpenAIConfig) {}
+
+    private getTimeoutMs(): number {
+        if (this.options.timeoutMs) return this.options.timeoutMs;
+        if (this.options.timeoutMinutes) return this.options.timeoutMinutes * 60 * 1000;
+        return 600000; // 10 minutes default
+    }
+
+    private getIdleTimeoutMs(): number {
+        if (this.options.idleTimeoutMs) return this.options.idleTimeoutMs;
+        return 60000; // 60s idle chunk timeout default
+    }
 
     private getAgentSystemPrompt(agentType: string): string {
         const isSubagent = !!process.env.SHARK_SUBAGENT_ROLE;
@@ -197,7 +212,8 @@ export class OpenAICompatibleProvider implements AIProvider {
             model: this.options.model,
             messages: requestMessages,
             stream: useStream,
-            temperature: 0.2
+            temperature: 0.2,
+            ...(this.options.extraBody || {})
         };
 
         if (this.options.useStructuredOutputs) {
@@ -235,8 +251,10 @@ export class OpenAICompatibleProvider implements AIProvider {
             payload: requestPayload
         });
 
+        const timeoutMs = this.getTimeoutMs();
+        const timeoutMinutes = Math.round(timeoutMs / 60000);
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 300000); // 5 minutes timeout
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
         const onSignalAbort = () => controller.abort();
         if (options.signal) {
             if (options.signal.aborted) {
@@ -269,65 +287,82 @@ export class OpenAICompatibleProvider implements AIProvider {
                     throw new Error('Response body reader is undefined');
                 }
 
+                const idleTimeoutMs = this.getIdleTimeoutMs();
+                let chunkTimer: NodeJS.Timeout | null = null;
+                const resetChunkTimer = () => {
+                    if (chunkTimer) clearTimeout(chunkTimer);
+                    chunkTimer = setTimeout(() => {
+                        controller.abort(new Error(`Stream stalled: no chunks received for ${Math.round(idleTimeoutMs / 1000)} seconds`));
+                    }, idleTimeoutMs);
+                };
+
                 const decoder = new TextDecoder();
                 let done = false;
                 let buffer = '';
 
-                while (!done) {
-                    const { value, done: doneReading } = await reader.read();
-                    done = doneReading;
-                    if (value) {
-                        buffer += decoder.decode(value, { stream: !done });
-                        const lines = buffer.split('\n');
-                        buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
+                try {
+                    resetChunkTimer();
+                    while (!done) {
+                        const { value, done: doneReading } = await reader.read();
+                        done = doneReading;
+                        resetChunkTimer();
+                        if (value) {
+                            buffer += decoder.decode(value, { stream: !done });
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop() || ''; // Keep the last incomplete line in the buffer
 
-                        for (const line of lines) {
-                            const clean = line.trim();
-                            if (!clean || clean === 'data: [DONE]') continue;
-                            if (clean.startsWith('data: ')) {
-                                let parsed: any;
-                                try {
-                                    parsed = JSON.parse(clean.substring(6));
-                                } catch {
-                                    // ignore JSON parse error
-                                    continue;
-                                }
-                                if (parsed && parsed.error) {
-                                    throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
-                                }
-                                const delta = parsed?.choices?.[0]?.delta?.content || '';
-                                if (delta) {
-                                    fullContent += delta;
-                                    if (options.onChunk) {
-                                        options.onChunk(delta);
+                            for (const line of lines) {
+                                const clean = line.trim();
+                                if (!clean || clean === 'data: [DONE]') continue;
+                                if (clean.startsWith('data: ')) {
+                                    let parsed: any;
+                                    try {
+                                        parsed = JSON.parse(clean.substring(6));
+                                    } catch {
+                                        // ignore JSON parse error
+                                        continue;
+                                    }
+                                    if (parsed && parsed.error) {
+                                        throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
+                                    }
+                                    const delta = parsed?.choices?.[0]?.delta?.content || '';
+                                    const reasoningDelta = parsed?.choices?.[0]?.delta?.reasoning || parsed?.choices?.[0]?.delta?.reasoning_content || '';
+                                    if (delta) {
+                                        fullContent += delta;
+                                    }
+                                    if ((delta || reasoningDelta) && options.onChunk) {
+                                        options.onChunk(delta || reasoningDelta);
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // Process any remaining data in buffer
-                if (buffer) {
-                    const clean = buffer.trim();
-                    if (clean && clean !== 'data: [DONE]' && clean.startsWith('data: ')) {
-                        let parsed: any;
-                        try {
-                            parsed = JSON.parse(clean.substring(6));
-                        } catch {
-                            // ignore JSON parse error
-                        }
-                        if (parsed && parsed.error) {
-                            throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
-                        }
-                        const delta = parsed?.choices?.[0]?.delta?.content || '';
-                        if (delta) {
-                            fullContent += delta;
-                            if (options.onChunk) {
-                                options.onChunk(delta);
+                    // Process any remaining data in buffer
+                    if (buffer) {
+                        const clean = buffer.trim();
+                        if (clean && clean !== 'data: [DONE]' && clean.startsWith('data: ')) {
+                            let parsed: any;
+                            try {
+                                parsed = JSON.parse(clean.substring(6));
+                            } catch {
+                                // ignore JSON parse error
+                            }
+                            if (parsed && parsed.error) {
+                                throw new Error(`OpenAI Stream Error: ${JSON.stringify(parsed.error)}`);
+                            }
+                            const delta = parsed?.choices?.[0]?.delta?.content || '';
+                            const reasoningDelta = parsed?.choices?.[0]?.delta?.reasoning || parsed?.choices?.[0]?.delta?.reasoning_content || '';
+                            if (delta) {
+                                fullContent += delta;
+                            }
+                            if ((delta || reasoningDelta) && options.onChunk) {
+                                options.onChunk(delta || reasoningDelta);
                             }
                         }
                     }
+                } finally {
+                    if (chunkTimer) clearTimeout(chunkTimer);
                 }
             } else {
                 const text = await res.text();
@@ -374,11 +409,18 @@ export class OpenAICompatibleProvider implements AIProvider {
             return parsedResponse;
         } catch (error: any) {
             clearTimeout(timeoutId);
-            if (error.name === 'AbortError') {
+            if (error.name === 'AbortError' || controller.signal.aborted) {
                 if (options.signal?.aborted) {
                     throw error;
                 }
-                throw new Error(`OpenAI API request timed out after 5 minutes.`);
+                const abortReason = (controller.signal as any)?.reason;
+                if (abortReason && typeof abortReason === 'object' && abortReason.message) {
+                    throw new Error(`OpenAI API request failed: ${abortReason.message}`);
+                }
+                if (typeof abortReason === 'string') {
+                    throw new Error(`OpenAI API request failed: ${abortReason}`);
+                }
+                throw new Error(`OpenAI API request timed out after ${timeoutMinutes} minutes.`);
             }
             throw error;
         } finally {
@@ -393,7 +435,7 @@ export class OpenAICompatibleProvider implements AIProvider {
     }
 
     async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
-        const timeoutMs = options?.timeoutMs ?? 300000;
+        const timeoutMs = options?.timeoutMs ?? this.getTimeoutMs();
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -416,7 +458,8 @@ export class OpenAICompatibleProvider implements AIProvider {
             model: this.options.model,
             messages,
             stream: false,
-            temperature: options?.temperature ?? 0.2
+            temperature: options?.temperature ?? 0.2,
+            ...(this.options.extraBody || {})
         };
 
         const headers: Record<string, string> = {

@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import path from 'node:path';
 import { interactiveDeveloperAgent, waitForInputOrNotification } from './developer-agent.js';
 import { MessageQueue } from '../workflow/message-queue.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
@@ -233,7 +234,7 @@ describe('DeveloperAgent', () => {
             auto: true,
         });
 
-        expect(mockGetAnchoredContent).toHaveBeenCalledWith('test.ts');
+        expect(mockGetAnchoredContent).toHaveBeenCalledWith(path.resolve('test.ts'));
         expect(mockProvider.streamChat).toHaveBeenNthCalledWith(2, expect.stringContaining('anchor1§const x = 1;'), expect.any(Object));
         expect(result).toEqual({ success: true, summary: 'Read completed successfully' });
     });

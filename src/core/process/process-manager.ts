@@ -267,6 +267,13 @@ export class ProcessManager {
         };
     }
 
+    public setNotifyOnComplete(id: string, notify: boolean): void {
+        const record = this.processes.get(id);
+        if (record) {
+            record.notifyOnComplete = notify;
+        }
+    }
+
     public async write(id: string, data: string): Promise<void> {
         const record = this.processes.get(id);
         if (!record) {

@@ -14,7 +14,11 @@ export class ProviderResolver {
                 apiKey: opt.apiKey || 'ollama',
                 model: opt.model || 'llama3',
                 useStructuredOutputs: opt.useStructuredOutputs ?? true,
-                stream: opt.stream ?? true
+                stream: opt.stream ?? true,
+                timeoutMinutes: opt.timeoutMinutes,
+                timeoutMs: opt.timeoutMs,
+                idleTimeoutMs: opt.idleTimeoutMs,
+                extraBody: opt.extraBody
             });
         }
         

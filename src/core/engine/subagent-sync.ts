@@ -16,12 +16,17 @@ export async function drainIncomingNotifications(recipientId: string, messageQue
     while (!messageQueue.isEmpty()) {
         const qMsg = await messageQueue.next();
         if (qMsg && qMsg.content) {
-            queuedMessages.push(qMsg.content);
+            if (qMsg.type === 'process_notification') {
+                const status = qMsg.metadata?.status || (qMsg.metadata?.exitCode === 0 ? 'completed' : 'failed');
+                queuedMessages.push(`<process_notification status="${status}">\n${qMsg.content}\n</process_notification>`);
+            } else {
+                queuedMessages.push(formatNotification(qMsg.content));
+            }
         }
     }
     return [
         ...diskMessages.map(formatNotification),
-        ...queuedMessages.map(formatNotification)
+        ...queuedMessages
     ];
 }
 

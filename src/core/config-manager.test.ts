@@ -82,7 +82,8 @@ describe('ConfigManager', () => {
                 apiKey: 'custom-key',
                 model: 'custom-model',
                 useStructuredOutputs: false,
-                stream: true
+                stream: true,
+                timeoutMinutes: 10
             });
         });
 
@@ -111,7 +112,8 @@ describe('ConfigManager', () => {
                 apiKey: 'ollama',
                 model: 'custom-model',
                 useStructuredOutputs: true,
-                stream: true
+                stream: true,
+                timeoutMinutes: 10
             });
         });
     });

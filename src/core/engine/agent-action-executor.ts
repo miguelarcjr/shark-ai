@@ -124,7 +124,7 @@ export class AgentActionExecutor {
                     this.recentReadCounts.set(filePath, readCount);
 
                     if (readCount >= 3) {
-                        output = `[Action read_file(${filePath}) Blocked]: Leitura redundante bloqueada. O conteúdo já está no seu contexto acima. NÃO chame read_file novamente neste arquivo. Prossiga IMEDIATAMENTE para aplicar alterações com 'create_file' ou 'modify_file', ou verificar com testes via 'run_command'.`;
+                        output = `[Action read_file(${filePath}) Blocked]: Leitura redundante bloqueada. O conteúdo completo deste arquivo já está no seu contexto acima. NÃO chame read_file novamente neste arquivo. Prossiga com a próxima ação necessária para sua tarefa.`;
                     } else {
                         try {
                             const content = this.anchorManager.getAnchoredContent(resolvedFilePath);
@@ -132,7 +132,7 @@ export class AgentActionExecutor {
                             const totalLines = Math.max(0, lines.length - 1);
                             output = `[Action read_file(${filePath}) Success - ${totalLines} linhas, Arquivo completo]:\n[START_OF_FILE]\n${content}\n[END_OF_FILE]`;
                             if (readCount === 2) {
-                                output += `\n\n⚠️ [LOOP NOTICE]: Você já leu '${filePath}' anteriormente. O arquivo completo já está disponível. Prossiga com a implementação ('create_file' / 'modify_file') ou testes ('run_command').`;
+                                output += `\n\n⚠️ [LOOP NOTICE]: Você já leu '${filePath}' anteriormente. O arquivo completo já está disponível no seu contexto. Evite chamadas repetidas a 'read_file' e prossiga com a próxima ação necessária para sua tarefa.`;
                             }
                         } catch (e: any) {
                             output = `[Action read_file(${filePath}) Failed]: ${e.message}`;

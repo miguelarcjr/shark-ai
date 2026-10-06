@@ -17,8 +17,11 @@ export const ConfigSchema = z.object({
         apiKey: z.string().default('ollama'),
         model: z.string().default('llama3'),
         useStructuredOutputs: z.boolean().default(true),
-        stream: z.boolean().default(true)
-    }).optional(),
+        stream: z.boolean().default(true),
+        timeoutMinutes: z.number().default(10),
+        timeoutMs: z.number().optional(),
+        extraBody: z.record(z.any()).optional()
+    }).passthrough().optional(),
     preferredStack: z.array(z.string()).default([]),
     memory: z.object({
         compactionTokenLimit: z.number().default(120000),

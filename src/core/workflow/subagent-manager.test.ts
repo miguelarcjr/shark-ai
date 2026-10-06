@@ -398,8 +398,9 @@ describe('SubagentManager', () => {
         const state = subagentManager.getSubagentState(id);
         if (state) {
             state.childProcess = mockChild;
-            // Fake lastActiveAt to be 6 minutes ago
-            (state as any).lastActiveAt = Date.now() - 6 * 60 * 1000;
+            const expiredTime = Date.now() - 11 * 60 * 1000;
+            (state as any).lastActiveAt = expiredTime;
+            (subagentManager as any).writeLedger(id, { lastActiveAt: expiredTime });
         }
 
         // Trigger manual watchdog check
@@ -410,6 +411,31 @@ describe('SubagentManager', () => {
 
         const msgs = subagentManager.retrieveMessages(parentId);
         expect(msgs[0]).toContain('terminated by the Watchdog');
+    });
+
+    it('recordHeartbeat updates lastActiveAt and prevents watchdog termination', async () => {
+        const id = 'heartbeat-id';
+        const parentId = 'parent-watchdog-hb';
+        subagentManager.registerSubagent(id, 'self', 'Tester', parentId);
+
+        const mockChild = { kill: vi.fn() };
+        const state = subagentManager.getSubagentState(id);
+        if (state) {
+            state.childProcess = mockChild;
+            const expiredTime = Date.now() - 11 * 60 * 1000;
+            (state as any).lastActiveAt = expiredTime;
+            (subagentManager as any).writeLedger(id, { lastActiveAt: expiredTime });
+        }
+
+        // Subagent sends a heartbeat
+        subagentManager.recordHeartbeat(id);
+
+        // Watchdog runs
+        (subagentManager as any).checkWatchdog();
+
+        // Must NOT be killed because heartbeat refreshed lastActiveAt
+        expect(mockChild.kill).not.toHaveBeenCalled();
+        expect(subagentManager.getSubagentState(id)?.status).toBe('running');
     });
 
     describe('parseTaskBrief', () => {

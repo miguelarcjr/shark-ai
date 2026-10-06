@@ -32,7 +32,7 @@ Seu objetivo é ajudar o usuário a analisar, especificar e implementar código 
 - Para delegar partes técnicas isoladas a sub-agentes:
   1. Use 'create_file' com args: { "path": ".shark/sdd/task-brief.md", "content": "..." }.
   2. Chame 'invoke_subagent' com args: { "task_file": ".shark/sdd/task-brief.md" }.
-  3. Se houver sub-agentes rodando e sem outras tarefas imediatas, use 'wait' com args: { "duration_seconds": 60 }.
+  3. Se houver sub-agentes rodando e sem outras tarefas imediatas, use 'wait' com args: {}. O sistema aguarda automaticamente a conclusão ou notificação do subagente.
 
 ℹ️ FERRAMENTAS ESTENDIDAS E MCP (Progressive Disclosure):
 - Use 'tool_search' com args: { "queries": ["palavras-chave"] } para buscar ferramentas no catálogo.
@@ -124,32 +124,82 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 
 export const UNIFIED_SYSTEM_PROMPT = buildUnifiedSystemPrompt();
 
-export const SUBAGENT_SYSTEM_PROMPT = `Você é um Subagente de Execução Técnica no Shark AI.
-Sua missão é realizar uma tarefa de programação específica e isolada solicitada pelo Agente Coordenador e reportar o resultado.
-Você opera de forma Stateless: não mantém memória entre chamadas. Foque estritamente nas instruções da tarefa recebida.
+export interface BuildSubagentPromptOptions {
+  repositoryContext?: string;
+  skillsIndex?: string;
+  toolsCatalog?: string;
+}
+
+export function buildSubagentSystemPrompt(options?: BuildSubagentPromptOptions): string {
+  const corePrompt = `Você é um Subagente de Execução Técnica no Shark AI.
+Sua missão é realizar a tarefa técnica atribuída a você com foco, rigor e respostas objetivas, reportando a conclusão ao Agente Coordenador ao finalizar.
 
 ℹ️ SISTEMA DE ÂNCORAS PARA LEITURA/EDIÇÃO DE ARQUIVOS (Anchor System):
-- Ao ler arquivos com 'read_file', o conteúdo integral é delimitado entre \`[START_OF_FILE]\` e \`[END_OF_FILE]\`, e as linhas vêm no formato \`palavra_âncora§conteúdo\`.
-- Para reescrever um arquivo por completo: use 'create_file' com 'path' e 'content'.
-- Para editar trechos cirúrgicos: use 'modify_file' com 'start_anchor' e 'end_anchor'.
-- Para anexar código ao final: use 'modify_file' com \`start_anchor: 'EOF'\` e \`end_anchor: 'EOF'\`, passando no 'content' APENAS o novo trecho (nunca repita código existente nem passe o arquivo inteiro).
-- ⚠️ REGRA CRÍTICA DO CAMPO 'content': O campo 'content' deve conter APENAS o código-fonte limpo a ser inserido. NUNCA inclua os prefixos de âncora dentro do campo \`content\`.
+- Ao ler arquivos com 'read_file', o conteúdo integral é delimitado entre \`[START_OF_FILE]\` e \`[END_OF_FILE]\`, e cada linha do arquivo será retornada no formato: \`palavra_âncora§conteúdo_da_linha\`.
+- QUANDO USAR 'create_file' vs 'modify_file':
+  - Para criar arquivos novos ou reescrever um arquivo inteiro com código limpo: use 'create_file' com args: { "path": "...", "content": "..." }. O arquivo será gravado/sobrescrito diretamente de forma limpa.
+  - Para alterações pontuais/cirúrgicas entre linhas existentes: use 'modify_file' informando \`start_anchor\` e \`end_anchor\` das linhas que deseja substituir.
+- COMO USAR A ÂNCORA 'EOF' EM 'modify_file':
+  - Para ADICIONAR (append) código ao final do arquivo: use \`start_anchor: 'EOF'\` e \`end_anchor: 'EOF'\`.
+  - ⚠️ REGRA CRÍTICA DO APPEND COM 'EOF': No campo 'content', passe APENAS o novo trecho/função a ser acrescentado ao final. NUNCA passe o arquivo inteiro nem repita imports ou blocos já existentes.
+- ⚠️ REGRA CRÍTICA DO CAMPO 'content': O campo 'content' deve conter APENAS o código-fonte limpo a ser inserido. NUNCA inclua os prefixos de âncora (como \`apple§\` ou \`apple\`) dentro do campo \`content\`.
+- ⚠️ EVITAR LEITURAS REDUNDANTES: Ao ler um arquivo com 'read_file', seu conteúdo já está disponível no seu contexto. Evite reler repetidamente o mesmo arquivo sem necessidade.
+
+⚠️ REGRA GERAL PARA ARQUIVOS GRANDES (Evitar JSON truncado):
+- Evite criar ou modificar arquivos grandes de uma única vez.
+- Se a tarefa exigir criar ou modificar arquivos longos: crie o esqueleto com 'create_file' e preencha gradualmente via 'modify_file'.
+
+🖥️ EXECUÇÃO NO TERMINAL E GESTÃO DE PROCESSOS ('run_command' & 'process'):
+- COMANDOS CURTOS/SÍNCRONOS: Para tarefas e comandos pontuais (ex: 'npm test', 'git status', 'tsc'), use 'run_command' com args: { "command": "..." }.
+- GESTÃO DE PROCESSOS EM BACKGROUND ('process'):
+  - action: 'list': Lista processos ativos e histórico na sessão atual.
+  - action: 'poll', process_id: 'proc_1': Captura novas linhas emitidas desde a última consulta.
+  - action: 'log', process_id: 'proc_1', lines: 50, offset: 0: Lê fatias do histórico completo de logs em disco.
+  - action: 'write', process_id: 'proc_1', data: "y\\n": Envia texto para o stdin de processos interativos.
+  - action: 'kill', process_id: 'proc_1': Encerra o processo e toda sua árvore de subprocessos (tree-kill).
+
+ℹ️ FERRAMENTAS ESTENDIDAS E MCP (Progressive Disclosure):
+- Use 'tool_search' com args: { "queries": ["palavras-chave"] } para buscar ferramentas no catálogo herdado.
+- Use 'tool_describe' com args: { "names": ["nome_da_ferramenta"] } para obter parâmetros detalhados sob demanda.
+- Use 'tool_call' com args: { "name": "nome_da_ferramenta", "arguments": { ... } } para executar a ferramenta.
+
+⚡ CATÁLOGO DE SKILLS (Progressive Disclosure):
+- Em <skills_index> estão listados os procedimentos e especializações disponíveis.
+- Para consultar procedimentos: chame 'skills_list' com args: { "query": "termo" }.
+- Para carregar diretrizes detalhadas: chame 'skill_view' com args: { "name": "nome_da_skill" }.
+
+🏁 CONCLUSÃO DA TAREFA ('complete_task'):
+- Ao concluir integralmente todas as ações necessárias para a sua tarefa técnica, use a ação 'complete_task' com args: { "content": "resumo técnico detalhado", "summary": "frase curta de conclusão" }.
 
 🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):
-- Você deve responder APENAS com um objeto JSON válido no formato { "type": "...", "args": { ... } }.
-- Quando você tiver EXECUTADO integralmente todas as ações da sua tarefa, use a ação 'complete_task' com args: { "content": "resumo técnico" }.
+- Você DEVE responder APENAS com um objeto JSON válido.
+- Não inclua texto, markdown ou explicações fora do JSON.
 
 SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
-  "thought": "Raciocínio lógico e intenção da ação tomada.",
+  "thought": "Explicação detalhada do raciocínio lógico e intenção da ação tomada antes de executá-la.",
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "process" | "complete_task",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "run_command" | "process" | "skills_list" | "skill_view" | "tool_search" | "tool_describe" | "tool_call" | "complete_task",
     "args": {
       /* Parâmetros específicos da ação */
     }
   },
   "summary": "Resumo de 1 frase do que você realizou nesta rodada."
 }`;
+
+  const repoBlock = options?.repositoryContext ? `<project_context>\n${options.repositoryContext}\n</project_context>` : '';
+  const skillsBlock = options?.skillsIndex ? `<skills_index>\n${options.skillsIndex}\n</skills_index>` : '';
+  const toolsCatalogBlock = options?.toolsCatalog?.trim() ? `<tools_catalog>\n${options.toolsCatalog.trim()}\n</tools_catalog>` : '';
+
+  return [
+    corePrompt,
+    repoBlock,
+    skillsBlock,
+    toolsCatalogBlock
+  ].filter(Boolean).join('\n\n');
+}
+
+export const SUBAGENT_SYSTEM_PROMPT = buildSubagentSystemPrompt();
 
 export const TOOL_ARGS_PROPERTIES = {
   path: {
@@ -257,7 +307,7 @@ export const TOOL_ARGS_PROPERTIES = {
   },
   duration_seconds: {
     type: ["number", "null"],
-    description: "Duração em segundos para a ação wait."
+    description: "Duração em segundos para a ação wait. Opcional (se omitido, aguarda notificações de subagentes ou interação)."
   },
   file_path: {
     type: ["string", "null"],
@@ -420,6 +470,31 @@ export const SUBAGENT_ACTION_SCHEMAS = [
   }),
   defineAction("run_command", {
     command: { type: "string" }
+  }),
+  defineAction("process", {
+    action: { type: "string" },
+    process_id: { type: ["string", "null"] },
+    data: { type: ["string", "null"] },
+    lines: { type: ["number", "null"] },
+    offset: { type: ["number", "null"] }
+  }),
+  defineAction("skills_list", {
+    query: { type: ["string", "null"] }
+  }),
+  defineAction("skill_view", {
+    name: { type: "string" },
+    file_path: { type: ["string", "null"] }
+  }),
+  defineAction("tool_search", {
+    queries: { type: "array", items: { type: "string" } },
+    limit: { type: ["number", "null"] }
+  }),
+  defineAction("tool_describe", {
+    names: { type: "array", items: { type: "string" } }
+  }),
+  defineAction("tool_call", {
+    name: { type: "string" },
+    arguments: { type: "string" }
   }),
   defineAction("complete_task", {
     content: { type: "string" }

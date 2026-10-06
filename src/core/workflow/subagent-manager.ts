@@ -5,6 +5,7 @@ import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { tui } from '../../ui/tui.js';
 import { MessageQueue } from './message-queue.js';
+import { ConfigManager } from '../config-manager.js';
 
 interface SubagentState {
     id: string;
@@ -89,14 +90,18 @@ export class SubagentManager {
     }
 
     private checkWatchdog() {
-        const timeoutMs = 5 * 60 * 1000; // 5 minutes
+        this.reloadLedger();
+        const config = ConfigManager.getInstance().getConfig() as any;
+        const opt = config?.['openai-compatible'] || {};
+        const timeoutMs = opt.timeoutMs ?? (opt.timeoutMinutes ? opt.timeoutMinutes * 60 * 1000 : 10 * 60 * 1000);
+        const timeoutMinutes = Math.round(timeoutMs / 60000);
         const now = Date.now();
 
         for (const [id, state] of this.subagents.entries()) {
             if (state.status === 'running') {
                 const lastActive = (state as any).lastActiveAt || (state as any).createdAt || now;
                 if (now - lastActive > timeoutMs) {
-                    this.terminateHungSubagent(id, `Subagent timed out after 5 minutes of inactivity.`);
+                    this.terminateHungSubagent(id, `Subagent timed out after ${timeoutMinutes} minutes of inactivity.`);
                 }
             }
         }
@@ -162,11 +167,17 @@ export class SubagentManager {
             }
 
             const existing = data.subagents[id] || {};
+            const role = updates.role || existing.role || process.env.SHARK_SUBAGENT_ROLE || 'subagent';
+            const status = updates.status || existing.status || 'running';
+            const type = updates.type || existing.type || 'subagent';
             data.subagents[id] = {
                 id,
+                type,
+                role,
+                status,
                 ...existing,
                 ...updates,
-                lastActiveAt: Date.now()
+                lastActiveAt: updates.lastActiveAt ?? Date.now()
             };
             data.lastUpdated = Date.now();
 
@@ -235,6 +246,14 @@ export class SubagentManager {
                 params: cleanParams
             }
         });
+    }
+
+    recordHeartbeat(id: string) {
+        const state = this.subagents.get(id);
+        if (state) {
+            (state as any).lastActiveAt = Date.now();
+        }
+        this.writeLedger(id, { lastActiveAt: Date.now() });
     }
 
     registerParentQueue(parentId: string, queue: MessageQueue) {
@@ -556,7 +575,7 @@ export class SubagentManager {
                         const lastLogs = this.getSubagentLogs(id, 15);
                         const fallbackMsg = `[Subagent Notification] Subagent ${sub.Role} (${id}) failed (Exit Code: ${exitCode}). Last console logs:\n${lastLogs}`;
                         const mailboxDir = path.resolve(projectRoot, '.shark', 'mailbox', parentId);
-                        const hasMessages = fs.existsSync(mailboxDir) && fs.readdirSync(mailboxDir).length > 0;
+                        const hasMessages = fs.existsSync(mailboxDir) && fs.readdirSync(mailboxDir).filter(f => !f.endsWith('.processed')).length > 0;
                         if (!hasMessages) {
                             this.sendMessage(parentId, fallbackMsg);
                         }

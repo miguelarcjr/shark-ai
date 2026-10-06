@@ -65,4 +65,24 @@ describe('ProviderResolver', () => {
             stream: true
         });
     });
+
+    it('should forward extraBody to OpenAICompatibleProvider when specified', () => {
+        const mockConfig = {
+            provider: 'openai-compatible',
+            'openai-compatible': {
+                baseURL: 'https://openrouter.ai/api/v1',
+                apiKey: 'test-key',
+                model: 'deepseek/deepseek-v4-flash-0731',
+                extraBody: {
+                    reasoning: { max_tokens: 1000 }
+                }
+            }
+        };
+        vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue(mockConfig as any);
+
+        const provider = ProviderResolver.getProvider('developer_agent');
+        expect((provider as any).options.extraBody).toEqual({
+            reasoning: { max_tokens: 1000 }
+        });
+    });
 });

@@ -439,7 +439,7 @@ ${logSnippet ? `Initial output:\n-----------------------------------------------
         const proc = await manager.spawn(command, {
             sessionId,
             watchPatterns: options?.watchPatterns,
-            notifyOnComplete: options?.notifyOnComplete !== false,
+            notifyOnComplete: false,
             onWatchPatternMatched: (p, l) => {
                 watchTriggered = true;
                 matchedPattern = p;
@@ -463,6 +463,7 @@ ${logSnippet ? `Initial output:\n-----------------------------------------------
         }
 
         // Process is still running -> auto-promote to background!
+        manager.setNotifyOnComplete(proc.id, options?.notifyOnComplete !== false);
         const logs = await manager.getLogs(proc.id, { lines: 20 });
         const logSnippet = logs.lines.join('\n').trim();
         const reason = watchTriggered

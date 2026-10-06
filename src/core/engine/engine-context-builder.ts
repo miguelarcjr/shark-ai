@@ -10,7 +10,7 @@ import { skillManager } from '../workflow/skill-manager.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
 import { ForkReviewAgent } from '../workflow/fork-review-agent.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
-import { buildUnifiedSystemPrompt } from '../api/prompts.js';
+import { buildUnifiedSystemPrompt, buildSubagentSystemPrompt } from '../api/prompts.js';
 import { HistoryManager } from '../workflow/history-manager.js';
 import { subagentManager } from '../workflow/subagent-manager.js';
 import { tui } from '../../ui/tui.js';
@@ -64,25 +64,44 @@ export class EngineContextBuilder {
         );
         const mcpManifest = mcpTools.length > 0 ? generateTieredManifest(mcpTools).manifestText : undefined;
 
-        // 2. Memory & Skills
+        // 2. Project Context & Skills
+        let contextContent = '';
+        const defaultContextPath = path.resolve(projectRoot, '_sharkrc', 'project-context.md');
+        const specificContextPath = options.context ? path.resolve(projectRoot, options.context) : defaultContextPath;
+        if (fs.existsSync(specificContextPath)) {
+            try {
+                contextContent = fs.readFileSync(specificContextPath, 'utf-8');
+            } catch (e) {
+                tui.log.warning(`Failed to read context file: ${e}`);
+            }
+        }
+
         const memoryStore = new MemoryStore();
         let memorySnapshot = await memoryStore.loadSnapshot();
         const skillsMetadata = await skillManager.getAvailableSkillsMetadata();
         const skillsIndex = skillManager.formatSkillsIndex(skillsMetadata);
 
-        let dynamicSystemPrompt = buildUnifiedSystemPrompt({
-            snapshot: memorySnapshot,
-            toolsCatalog: mcpManifest,
-            skillsIndex: skillsIndex || undefined
-        });
-
-        const updateDynamicPrompt = async () => {
-            memorySnapshot = await memoryStore.loadSnapshot();
-            dynamicSystemPrompt = buildUnifiedSystemPrompt({
+        const buildSystemPrompt = () => {
+            if (isSubagent) {
+                return buildSubagentSystemPrompt({
+                    repositoryContext: contextContent || undefined,
+                    skillsIndex: skillsIndex || undefined,
+                    toolsCatalog: mcpManifest
+                });
+            }
+            return buildUnifiedSystemPrompt({
                 snapshot: memorySnapshot,
+                repositoryContext: contextContent || undefined,
                 toolsCatalog: mcpManifest,
                 skillsIndex: skillsIndex || undefined
             });
+        };
+
+        let dynamicSystemPrompt = buildSystemPrompt();
+
+        const updateDynamicPrompt = async () => {
+            memorySnapshot = await memoryStore.loadSnapshot();
+            dynamicSystemPrompt = buildSystemPrompt();
         };
 
         // 3. Conversation & Provider
@@ -116,19 +135,7 @@ export class EngineContextBuilder {
             }
         });
 
-        // 5. Read project context file
-        let contextContent = '';
-        const defaultContextPath = path.resolve(projectRoot, '_sharkrc', 'project-context.md');
-        const specificContextPath = options.context ? path.resolve(projectRoot, options.context) : defaultContextPath;
-        if (fs.existsSync(specificContextPath)) {
-            try {
-                contextContent = fs.readFileSync(specificContextPath, 'utf-8');
-            } catch (e) {
-                tui.log.warning(`Failed to read context file: ${e}`);
-            }
-        }
-
-        // 6. Assemble base execution prompt
+        // 5. Assemble base execution prompt
         const buildBasePrompt = (instruction: string) => {
             if (hasExistingHistory && !isSubagent) {
                 return instruction || '';
@@ -141,6 +148,12 @@ export class EngineContextBuilder {
             if (options.history) {
                 prompt += `\n\n--- PREVIOUS EXECUTION SUMMARY ---\n${options.history}\n----------------------------------\n`;
             }
+
+            if (isSubagent) {
+                prompt += `\n\n🟢 EXECUTION MODE (SUBAGENT)\n\n👉 **CURRENT TASK**: "${instruction || ''}"\n\nFoque exclusivamente em executar as instruções técnicas acima e, ao finalizar com sucesso, execute a ação 'complete_task'.\n`;
+                return prompt;
+            }
+
             prompt += `\n\n🟢 EXECUTION MODE\n
 You are a highly skilled Developer Agent.
 👉 **CURRENT TASK**: "${instruction || ''}"
