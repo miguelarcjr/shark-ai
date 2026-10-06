@@ -8,6 +8,7 @@ import pino from 'pino';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import * as readline from 'node:readline';
+import { execSync } from 'node:child_process';
 
 // Importa os módulos desacoplados do Shark AI (Core + WhatsApp Adapter)
 import {
@@ -122,59 +123,104 @@ async function startWhatsAppBot() {
             } as any);
         },
         async sendMedia(chatId, media) {
-            if (!fs.existsSync(media.filePath)) {
-                await sock.sendMessage(chatId, { text: `⚠️ Arquivo não encontrado: ${media.filePath}` });
-                return;
-            }
+            try {
+                if (!fs.existsSync(media.filePath)) {
+                    await sock.sendMessage(chatId, { text: `⚠️ Arquivo não encontrado: ${media.filePath}` });
+                    return;
+                }
 
-            const stats = fs.statSync(media.filePath);
-            const fileSizeMB = stats.size / (1024 * 1024);
+                let effectiveFilePath = media.filePath;
+                let effectiveMime = media.mimeType;
 
-            if (fileSizeMB > 100) {
-                await sock.sendMessage(chatId, {
-                    text: `⚠️ Arquivo muito grande para envio via WhatsApp (${fileSizeMB.toFixed(1)}MB > limite de 100MB):\n${media.filePath}`
-                });
-                return;
-            }
+                // WhatsApp exige MP4 (H.264/AAC) para reprodução inline de vídeos.
+                // Gravações do Playwright (.webm) são convertidas via ffmpeg para máxima compatibilidade.
+                if (media.filePath.endsWith('.webm') || media.mimeType === 'video/webm') {
+                    const mp4Path = media.filePath.replace(/\.webm$/i, '.mp4');
+                    try {
+                        execSync(`ffmpeg -y -i "${media.filePath}" -c:v libx264 -pix_fmt yuv420p -c:a aac "${mp4Path}"`, {
+                            stdio: 'pipe',
+                            timeout: 30000
+                        });
+                        if (fs.existsSync(mp4Path)) {
+                            effectiveFilePath = mp4Path;
+                            effectiveMime = 'video/mp4';
+                        }
+                    } catch (convErr: any) {
+                        console.warn(`[sendMedia] Não foi possível converter .webm para .mp4 via ffmpeg:`, convErr?.message || convErr);
+                    }
+                }
 
-            const buffer = fs.readFileSync(media.filePath);
-            const fileName = media.fileName || path.basename(media.filePath);
-            const caption = media.caption;
+                const stats = fs.statSync(effectiveFilePath);
+                const fileSizeMB = stats.size / (1024 * 1024);
 
-            if (media.mimeType.startsWith('image/')) {
-                await sock.sendMessage(chatId, {
-                    image: buffer,
-                    mimetype: media.mimeType,
-                    caption
-                });
-            } else if (media.mimeType.startsWith('video/')) {
-                if (fileSizeMB <= 16) {
+                if (fileSizeMB > 100) {
                     await sock.sendMessage(chatId, {
-                        video: buffer,
-                        mimetype: media.mimeType,
+                        text: `⚠️ Arquivo muito grande para envio via WhatsApp (${fileSizeMB.toFixed(1)}MB > limite de 100MB):\n${effectiveFilePath}`
+                    });
+                    return;
+                }
+
+                const buffer = fs.readFileSync(effectiveFilePath);
+                const fileName = path.basename(effectiveFilePath);
+                const caption = media.caption;
+
+                console.log(`📤 [sendMedia] Enviando para ${chatId}: ${fileName} (${effectiveMime}, ${fileSizeMB.toFixed(2)}MB)`);
+
+                if (effectiveMime.startsWith('image/')) {
+                    await sock.sendMessage(chatId, {
+                        image: buffer,
+                        mimetype: effectiveMime,
                         caption
                     });
+                } else if (effectiveMime.startsWith('video/')) {
+                    if (effectiveMime === 'video/mp4' && fileSizeMB <= 16) {
+                        await sock.sendMessage(chatId, {
+                            video: buffer,
+                            mimetype: 'video/mp4',
+                            caption
+                        });
+                    } else {
+                        // Vídeos não-MP4 ou acima de 16MB são enviados como documento preservando o arquivo original
+                        await sock.sendMessage(chatId, {
+                            document: buffer,
+                            mimetype: effectiveMime,
+                            fileName,
+                            caption
+                        });
+                    }
+                } else if (effectiveMime.startsWith('audio/')) {
+                    await sock.sendMessage(chatId, {
+                        audio: buffer,
+                        mimetype: effectiveMime
+                    });
                 } else {
-                    // Vídeos entre 16MB e 100MB são enviados como documento preservando o arquivo original
                     await sock.sendMessage(chatId, {
                         document: buffer,
-                        mimetype: media.mimeType,
+                        mimetype: effectiveMime,
                         fileName,
                         caption
                     });
                 }
-            } else if (media.mimeType.startsWith('audio/')) {
-                await sock.sendMessage(chatId, {
-                    audio: buffer,
-                    mimetype: media.mimeType
-                });
-            } else {
-                await sock.sendMessage(chatId, {
-                    document: buffer,
-                    mimetype: media.mimeType,
-                    fileName,
-                    caption
-                });
+                console.log(`✅ [sendMedia] Mídia enviada com sucesso para ${chatId}: ${fileName}`);
+            } catch (err: any) {
+                console.error(`❌ [sendMedia] Erro ao enviar mídia para ${chatId}:`, err);
+                try {
+                    // Fallback resiliente: enviar como documento genérico se o envio nativo de mídia falhar
+                    const buffer = fs.readFileSync(media.filePath);
+                    const fileName = path.basename(media.filePath);
+                    await sock.sendMessage(chatId, {
+                        document: buffer,
+                        mimetype: 'application/octet-stream',
+                        fileName,
+                        caption: media.caption ? `${media.caption} (anexo)` : undefined
+                    });
+                    console.log(`✅ [sendMedia] Mídia enviada via fallback de documento para ${chatId}: ${fileName}`);
+                } catch (fallbackErr: any) {
+                    console.error(`❌ [sendMedia] Falha também no fallback para ${chatId}:`, fallbackErr);
+                    await sock.sendMessage(chatId, {
+                        text: `⚠️ Erro ao enviar arquivo \`${path.basename(media.filePath)}\`: ${err.message || err}`
+                    }).catch(() => {});
+                }
             }
         },
         onRawMessage(handler) {

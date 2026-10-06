@@ -242,7 +242,8 @@ export class StackSpotProvider implements AIProvider {
     }
 
     async completePrompt(prompt: string, options?: CompletePromptOptions): Promise<string> {
-        const token = await ensureValidToken();
+        const realm = await getActiveRealm();
+        const token = await ensureValidToken(realm);
         const effectiveAgentId = this.getAgentId();
         const agentUrl = `${STACKSPOT_AGENT_API_BASE}/v1/agent/${effectiveAgentId}/chat`;
 

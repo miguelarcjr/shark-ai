@@ -38,7 +38,7 @@ export interface PreparedEngineContext {
     bridgeTools: BridgeToolsManager;
     memoryStore: MemoryStore;
     activeProvider: any;
-    activeConversationId: string;
+    activeConversationId?: string;
     conversationKey: string;
     forkReviewAgent: ForkReviewAgent;
     updateDynamicPrompt: () => Promise<void>;
