@@ -219,18 +219,38 @@ async function startWhatsAppBot() {
             const isGroup = chatId.endsWith('@g.us');
             const senderId = msg.key.participant || chatId;
 
+            let cleanText = text;
+
             // Filtro de grupos: só responde se for mencionado com @Shark ou prefixo /shark
             if (isGroup) {
                 const mentions = msg.message?.extendedTextMessage?.contextInfo?.mentionedJid || [];
-                const botJid = sock.user?.id.split(':')[0] + '@s.whatsapp.net';
-                const isMentioned = mentions.includes(botJid) || text.toLowerCase().startsWith('/shark');
+                const botUser = sock.user?.id || '';
+                const botNum = botUser.split(':')[0].replace(/[^0-9]/g, '');
+                const isTaggedInJid = mentions.some((m: string) => botNum && m.includes(botNum));
+                const lower = text.toLowerCase();
+                const isTextMentioned = lower.startsWith('@shark') || lower.startsWith('/shark') || lower.includes('@shark');
 
-                if (!isMentioned) {
+                if (!isTaggedInJid && !isTextMentioned) {
                     continue;
                 }
+
+                // Remove o prefixo @shark ou /shark para deixar o comando/mensagem limpo
+                cleanText = cleanText
+                    .replace(/^@shark\b/i, '')
+                    .replace(/^\/shark\b/i, '')
+                    .trim();
+
+                // Se a mensagem continha apenas a menção @shark sem instrução
+                if (!cleanText) {
+                    await transport.sendText(chatId, '🦈 Olá! Como posso te ajudar com o código hoje? Digite sua instrução ou `/help` para comandos.');
+                    continue;
+                }
+            } else if (cleanText.toLowerCase().startsWith('@shark')) {
+                // Em DM, se o usuário tiver o hábito de digitar @shark, remove o prefixo amigavelmente
+                cleanText = cleanText.replace(/^@shark\b/i, '').trim() || cleanText;
             }
 
-            console.log(`📩 Mensagem recebida [${chatId}]: "${text}"`);
+            console.log(`📩 Mensagem recebida [${chatId}]: "${cleanText}"`);
 
             const sessionId = `whatsapp:dm:${chatId}`;
 
@@ -247,14 +267,14 @@ async function startWhatsAppBot() {
             }
 
             // --- Comandos de Controle Rápido via WhatsApp ---
-            if (text === '/pwd' || text === '/workspace') {
+            if (cleanText === '/pwd' || cleanText === '/workspace') {
                 const activeWs = engine.getSessionWorkspace(sessionId);
                 await transport.sendText(chatId, `📁 *Workspace ativo:*\n\`${activeWs}\``);
                 continue;
             }
 
-            if (text.startsWith('/use ') || text.startsWith('/workspace ')) {
-                const targetDir = text.replace(/^(\/use|\/workspace)\s+/, '').trim();
+            if (cleanText.startsWith('/use ') || cleanText.startsWith('/workspace ')) {
+                const targetDir = cleanText.replace(/^(\/use|\/workspace)\s+/, '').trim();
                 const resolved = path.resolve(targetDir);
                 if (fs.existsSync(resolved)) {
                     engine.setSessionWorkspace(sessionId, resolved);
@@ -265,7 +285,7 @@ async function startWhatsAppBot() {
                 continue;
             }
 
-            if (text === '/help') {
+            if (cleanText === '/help') {
                 await transport.sendText(
                     chatId,
                     `🦈 *Shark AI WhatsApp Bot*\n\n` +
@@ -280,7 +300,7 @@ async function startWhatsAppBot() {
 
             // Despacha para o WhatsAppAdapter (onde passa pelo debouncer de 800ms antes do turno)
             if (rawMessageHandler) {
-                rawMessageHandler(chatId, text, senderId);
+                rawMessageHandler(chatId, cleanText, senderId);
             }
         }
     });
