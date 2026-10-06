@@ -59,6 +59,14 @@ export class SessionWorkspaceManager {
     ): Promise<string> {
         const res = this.resolve(chatId);
         if (res.exists) {
+            // Garante auto-cura caso a pasta já exista mas falte o shark-workflow.json na raiz
+            const rootWorkflow = path.join(res.fullPath, 'shark-workflow.json');
+            if (!existsSync(rootWorkflow)) {
+                const legacyWorkflow = path.join(res.fullPath, '.shark', 'workflow.json');
+                if (existsSync(legacyWorkflow)) {
+                    await fs.copyFile(legacyWorkflow, rootWorkflow).catch(() => {});
+                }
+            }
             return res.fullPath;
         }
 
@@ -85,7 +93,7 @@ export class SessionWorkspaceManager {
                     await fs.cp(this.skillsSourceDir, targetSkills, { recursive: true, force: true });
                 }
 
-                // 2. Inicializar .shark/workflow.json
+                // 2. Inicializar shark-workflow.json na raiz e .shark/workflow.json
                 const sharkDir = path.join(targetDir, '.shark');
                 await fs.mkdir(sharkDir, { recursive: true });
                 const workflowState = {
@@ -101,9 +109,15 @@ export class SessionWorkspaceManager {
                         version: '0.1.0'
                     }
                 };
+                const workflowJsonStr = JSON.stringify(workflowState, null, 2);
+                await fs.writeFile(
+                    path.join(targetDir, 'shark-workflow.json'),
+                    workflowJsonStr,
+                    'utf-8'
+                );
                 await fs.writeFile(
                     path.join(sharkDir, 'workflow.json'),
-                    JSON.stringify(workflowState, null, 2),
+                    workflowJsonStr,
                     'utf-8'
                 );
 
