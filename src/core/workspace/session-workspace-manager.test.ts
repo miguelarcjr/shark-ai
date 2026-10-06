@@ -61,10 +61,10 @@ describe('SessionWorkspaceManager', () => {
         const context = await fs.readFile(path.join(wsPath, '_sharkrc', 'project-context.md'), 'utf-8');
         expect(context).toContain('user_5511888888888');
 
-        const workflowRaw = await fs.readFile(path.join(wsPath, '.shark', 'workflow.json'), 'utf-8');
+        const workflowRaw = await fs.readFile(path.join(wsPath, 'shark-workflow.json'), 'utf-8');
         const workflow = JSON.parse(workflowRaw);
         expect(workflow.projectName).toBe('user_5511888888888');
-        expect(workflow.techStack).toBe('node-ts');
+        expect(workflow.techStack).toBe('unknown');
     });
 
     it('reutiliza a inicialização sem recriar se o diretório já existir', async () => {

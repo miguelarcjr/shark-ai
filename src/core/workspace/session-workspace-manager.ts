@@ -99,7 +99,7 @@ export class SessionWorkspaceManager {
                 const workflowState = {
                     projectId: `ws-${res.dirName}`,
                     projectName: res.dirName,
-                    techStack: 'node-ts',
+                    techStack: 'unknown',
                     currentStage: 'business_analysis',
                     stageStatus: 'pending',
                     lastUpdated: new Date().toISOString(),
