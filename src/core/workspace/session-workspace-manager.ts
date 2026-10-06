@@ -2,6 +2,7 @@ import * as path from 'node:path';
 import * as fs from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
 
 export interface WorkspaceResolution {
     dirName: string;
@@ -59,13 +60,27 @@ export class SessionWorkspaceManager {
     ): Promise<string> {
         const res = this.resolve(chatId);
         if (res.exists) {
-            // Garante auto-cura caso a pasta já exista mas falte o shark-workflow.json na raiz
+            // Garante auto-cura caso a pasta já exista mas falte o shark-workflow.json na raiz ou projectId seja inválido
             const rootWorkflow = path.join(res.fullPath, 'shark-workflow.json');
             if (!existsSync(rootWorkflow)) {
                 const legacyWorkflow = path.join(res.fullPath, '.shark', 'workflow.json');
                 if (existsSync(legacyWorkflow)) {
                     await fs.copyFile(legacyWorkflow, rootWorkflow).catch(() => {});
                 }
+            }
+            if (existsSync(rootWorkflow)) {
+                try {
+                    const content = await fs.readFile(rootWorkflow, 'utf-8');
+                    const parsed = JSON.parse(content);
+                    if (parsed.projectId && typeof parsed.projectId === 'string' && parsed.projectId.startsWith('ws-')) {
+                        parsed.projectId = randomUUID();
+                        await fs.writeFile(rootWorkflow, JSON.stringify(parsed, null, 2), 'utf-8');
+                        const legacyWorkflow = path.join(res.fullPath, '.shark', 'workflow.json');
+                        if (existsSync(legacyWorkflow)) {
+                            await fs.writeFile(legacyWorkflow, JSON.stringify(parsed, null, 2), 'utf-8');
+                        }
+                    }
+                } catch {}
             }
             return res.fullPath;
         }
@@ -97,7 +112,7 @@ export class SessionWorkspaceManager {
                 const sharkDir = path.join(targetDir, '.shark');
                 await fs.mkdir(sharkDir, { recursive: true });
                 const workflowState = {
-                    projectId: `ws-${res.dirName}`,
+                    projectId: randomUUID(),
                     projectName: res.dirName,
                     techStack: 'unknown',
                     currentStage: 'business_analysis',
