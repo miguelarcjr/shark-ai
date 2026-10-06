@@ -10,3 +10,6 @@ export * from './adapters/adapter.interface.js';
 export * from './adapters/cli/cli-adapter.js';
 export * from './adapters/whatsapp/whatsapp-adapter.js';
 export * from './adapters/whatsapp/chunker.js';
+
+// Workspace
+export * from './workspace/session-workspace-manager.js';
