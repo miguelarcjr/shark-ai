@@ -134,4 +134,9 @@ shark-debug.log
 .vitest_membox_storage/
 
 # Testing Sandbox
-test-sandbox/
+test-sandbox/
+
+# Runtime Workspaces (WhatsApp Bot, Multi-channel)
+workspaces/
+examples/**/workspaces/
+
