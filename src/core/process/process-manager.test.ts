@@ -33,10 +33,13 @@ describe('ProcessManager', () => {
         expect(proc.status).toBe('running');
         expect(fs.existsSync(proc.logPath)).toBe(true);
 
-        // Wait briefly for process to finish
-        await new Promise(resolve => setTimeout(resolve, 800));
-
-        const updated = manager.get(proc.id);
+        // Wait for process to finish
+        let updated: any;
+        for (let i = 0; i < 30; i++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            updated = manager.get(proc.id);
+            if (updated?.status === 'completed') break;
+        }
         expect(updated).toBeDefined();
         expect(updated!.status).toBe('completed');
         expect(updated!.exitCode).toBe(0);
@@ -88,7 +91,11 @@ describe('ProcessManager', () => {
     it('should retrieve sliced historical logs via getLogs()', async () => {
         const cmd = `node -e "for (let i = 1; i <= 10; i++) console.log(\\"entry \\" + i);"`;
         const proc = await manager.spawn(cmd, { sessionId: testSession });
-        await new Promise(resolve => setTimeout(resolve, 700));
+        for (let i = 0; i < 30; i++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            const p = manager.get(proc.id);
+            if (p?.status === 'completed') break;
+        }
 
         // Tail logs
         const tail = await manager.getLogs(proc.id, { lines: 3 });
@@ -173,8 +180,13 @@ describe('ProcessManager', () => {
         expect(fs.existsSync(proc.logPath)).toBe(true);
         expect(proc.logPath).not.toContain(':dm:');
 
-        await new Promise(resolve => setTimeout(resolve, 500));
-        const updated = manager.get(proc.id);
+        // Wait for process to complete
+        let updated: any;
+        for (let i = 0; i < 30; i++) {
+            await new Promise(resolve => setTimeout(resolve, 100));
+            updated = manager.get(proc.id);
+            if (updated?.status === 'completed') break;
+        }
         expect(updated?.status).toBe('completed');
 
         // Cleanup
