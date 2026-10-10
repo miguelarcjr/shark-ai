@@ -6,15 +6,26 @@ import type { CronToolArgs, CronToolResult, CronJob } from './cron-types.js';
 export interface CronToolHandlerOptions {
     storage?: CronStorage;
     scheduler?: CronScheduler;
+    originChannel?: string;
+    originRecipientId?: string;
 }
 
 export class CronToolHandler {
     private storage: CronStorage;
     private scheduler?: CronScheduler;
+    private originChannel?: string;
+    private originRecipientId?: string;
 
     constructor(options: CronToolHandlerOptions = {}) {
         this.storage = options.storage || new CronStorage();
         this.scheduler = options.scheduler;
+        this.originChannel = options.originChannel;
+        this.originRecipientId = options.originRecipientId;
+    }
+
+    public setOrigin(originChannel?: string, originRecipientId?: string): void {
+        this.originChannel = originChannel;
+        this.originRecipientId = originRecipientId;
     }
 
     public async handleAction(args: CronToolArgs): Promise<CronToolResult> {
@@ -65,6 +76,8 @@ export class CronToolHandler {
             no_agent: args.no_agent,
             skills: args.skills,
             deliver: args.deliver || 'origin',
+            origin_channel: this.originChannel,
+            origin_recipient_id: this.originRecipientId,
             created_at: now,
             next_run_at: nextRunAt,
             run_count: 0

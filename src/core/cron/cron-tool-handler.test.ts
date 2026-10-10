@@ -97,4 +97,17 @@ describe('CronToolHandler', () => {
         const emptyList = await handler.handleAction({ action: 'list' });
         expect(emptyList.count).toBe(0);
     });
+
+    it('should record origin_channel and origin_recipient_id when set', async () => {
+        handler.setOrigin('whatsapp', '120363431367146933@g.us');
+        const res = await handler.handleAction({
+            action: 'create',
+            schedule: 'every 1h',
+            prompt: 'monitor repo'
+        });
+
+        expect(res.success).toBe(true);
+        expect(res.job?.origin_channel).toBe('whatsapp');
+        expect(res.job?.origin_recipient_id).toBe('120363431367146933@g.us');
+    });
 });

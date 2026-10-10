@@ -15,6 +15,12 @@ import { tui } from '../../ui/tui.js';
 import { EngineContextBuilder } from './engine-context-builder.js';
 import { TurnLoopRunner, type DevelopmentResult } from './turn-loop-runner.js';
 import { setupProcessCleanup, terminateChildSubagents } from './subagent-sync.js';
+import * as path from 'node:path';
+import { CronStorage } from '../cron/cron-storage.js';
+import { CronScheduler } from '../cron/cron-scheduler.js';
+import { CronExecutor, type ExecutorRunResult } from '../cron/cron-executor.js';
+import { CronToolHandler } from '../cron/cron-tool-handler.js';
+import type { CronJob } from '../cron/cron-types.js';
 
 export { DevelopmentResult };
 
@@ -40,6 +46,7 @@ export interface EngineRunOptions {
     sessionId?: string;
     projectRoot?: string;
     skipMemory?: boolean;
+    origin?: { channelId: string; senderId: string; isGroup?: boolean };
 }
 
 function isUserCancellation(content: any): boolean {
@@ -61,6 +68,10 @@ export class AgentEngine {
     private skipMemory: boolean;
     private forkReviewAgents = new Map<string, ForkReviewAgent>();
     private sessionWorkspaces = new Map<string, string>();
+    private cronStorage: CronStorage;
+    private cronScheduler: CronScheduler;
+    private cronExecutor: CronExecutor;
+    private cronToolHandler: CronToolHandler;
 
     constructor(options: AgentEngineOptions = {}) {
         this.sessionId = options.sessionId || `session_${Date.now()}`;
@@ -71,6 +82,91 @@ export class AgentEngine {
         this.taskId = options.taskId;
         this.contextPath = options.context;
         this.skipMemory = options.skipMemory ?? false;
+
+        const cronDir = path.resolve(this.projectRoot, '.shark', 'cron');
+        this.cronStorage = new CronStorage(cronDir);
+        this.cronScheduler = new CronScheduler({ storage: this.cronStorage });
+        this.cronExecutor = new CronExecutor({ storage: this.cronStorage, projectRoot: this.projectRoot });
+        this.cronToolHandler = new CronToolHandler({
+            storage: this.cronStorage,
+            scheduler: this.cronScheduler,
+            originChannel: 'cli',
+            originRecipientId: 'local'
+        });
+
+        this.cronScheduler.setJobDispatcher(async (job) => {
+            const result = await this.cronExecutor.execute(job);
+            await this.deliverCronResult(job, result);
+        });
+    }
+
+    public getCronScheduler(): CronScheduler {
+        return this.cronScheduler;
+    }
+
+    public getCronToolHandler(): CronToolHandler {
+        return this.cronToolHandler;
+    }
+
+    public startScheduler(): void {
+        this.cronScheduler.start();
+    }
+
+    public stopScheduler(): void {
+        this.cronScheduler.stop();
+    }
+
+    public async deliverCronResult(job: CronJob, result: ExecutorRunResult): Promise<void> {
+        if (result.silent || result.output.includes('[SILENT]')) {
+            return;
+        }
+
+        let targetChannel: string;
+        if (job.deliver === 'local') {
+            return;
+        } else if (job.deliver === 'origin') {
+            targetChannel = job.origin_channel || 'cli';
+        } else {
+            targetChannel = job.deliver;
+        }
+
+        const recipientId = job.origin_recipient_id || 'local';
+
+        let messageText: string;
+        if (!result.success) {
+            messageText = `⚠️ Cron '${job.id}' falhou: ${result.output || 'Erro na execução'}`;
+        } else {
+            if (targetChannel === 'cli') {
+                const reportFile = result.outputFilePath || job.last_output_file || '';
+                messageText = `ℹ️ [Cron: ${job.id}] Concluído. Relatório em ${reportFile}`;
+            } else {
+                let content = result.output;
+                if (content.length > 3500) {
+                    const reportFile = result.outputFilePath || job.last_output_file || '';
+                    content = content.slice(0, 3500) + `\n\n📄 [Relatório completo salvo em ${reportFile}]`;
+                }
+                messageText = content;
+            }
+        }
+
+        const targetAdapter = this.adapters.find(a => a.channelId === targetChannel);
+        if (targetAdapter) {
+            if (targetChannel === 'cli') {
+                await Promise.resolve(targetAdapter.emit({
+                    type: 'reasoning_delta',
+                    sessionId: this.sessionId,
+                    delta: result.success ? `[info] ${messageText}` : `[warning] ${messageText}`
+                }));
+            } else {
+                await Promise.resolve(targetAdapter.emit({
+                    type: 'turn_completed',
+                    sessionId: `${targetChannel}:dm:${recipientId}`,
+                    summary: messageText
+                }));
+            }
+        } else if (targetChannel === 'cli') {
+            tui.log.info(messageText);
+        }
     }
 
     public attachAdapter(adapter: AgentChannelAdapter) {
@@ -220,6 +316,10 @@ export class AgentEngine {
         }
 
         // 4. Action Executor
+        const originChannel = options.origin?.channelId || 'cli';
+        const originRecipientId = options.origin?.senderId || 'local';
+        this.cronToolHandler.setOrigin(originChannel, originRecipientId);
+
         const actionExecutor = new AgentActionExecutor({
             projectRoot,
             sessionId: effectiveSessionId,
@@ -236,7 +336,10 @@ export class AgentEngine {
             activeConversationId,
             currentTaskId: effectiveTaskId,
             messageQueue,
-            skipMemory: options.skipMemory ?? this.skipMemory
+            skipMemory: options.skipMemory ?? this.skipMemory,
+            cronToolHandler: this.cronToolHandler,
+            originChannel,
+            originRecipientId
         });
 
         // 5. Configuração de encerramento seguro de processos
@@ -255,6 +358,11 @@ export class AgentEngine {
             error: (msg: string) => tui.log.error(`${subagentPrefix}${msg}`),
             success: (msg: string) => tui.log.success(`${subagentPrefix}${msg}`),
         };
+
+        const shouldManageScheduler = !isSubagent && process.env.SHARK_CRON_EXECUTION !== 'true';
+        if (shouldManageScheduler && !this.cronScheduler.isRunning()) {
+            this.cronScheduler.start();
+        }
 
         try {
             const result = await TurnLoopRunner.run({
@@ -286,6 +394,9 @@ export class AgentEngine {
             log.success('✅ Task Scope Completed');
             return result;
         } finally {
+            if (shouldManageScheduler) {
+                this.cronScheduler.stop();
+            }
             cleanupAgentTools();
             await context.mcpManager.closeAll();
             processCleanup.dispose();
@@ -331,7 +442,8 @@ export class AgentEngine {
                 taskInstruction: message.text,
                 auto: true,
                 sessionId: effectiveSessionId,
-                projectRoot: activeProjectRoot
+                projectRoot: activeProjectRoot,
+                origin: message.origin
             });
 
             if (!result.success && (result.summary.includes('Interrupted') || result.summary.includes('cancelled') || result.summary.includes('user_cancelled'))) {

@@ -163,4 +163,94 @@ describe('AgentEngine Core', () => {
         expect(interrupted).toBeDefined();
         expect(interrupted?.type === 'turn_interrupted' && interrupted.reason).toContain('user_cancelled');
     });
+
+    it('should deliver cron execution result to matching adapter', async () => {
+        const adapter = new MockAdapter();
+        const engine = new AgentEngine({
+            sessionId: 'test-cron-delivery',
+            leaseManager: leaseMgr,
+            approvalsManager: approvalsMgr
+        });
+        engine.attachAdapter(adapter);
+
+        await engine.deliverCronResult({
+            id: 'job-1',
+            schedule: 'every 1h',
+            status: 'scheduled',
+            deliver: 'origin',
+            origin_channel: 'mock',
+            origin_recipient_id: 'chat-999',
+            created_at: Date.now(),
+            next_run_at: Date.now() + 3600000,
+            run_count: 1
+        }, {
+            success: true,
+            output: 'Backup finished successfully.',
+            silent: false,
+            outputFilePath: '.shark/cron/output/job-1.md'
+        });
+
+        const turnCompleted = adapter.emittedEvents.find(e => e.type === 'turn_completed') as any;
+        expect(turnCompleted).toBeDefined();
+        expect(turnCompleted.sessionId).toBe('mock:dm:chat-999');
+        expect(turnCompleted.summary).toBe('Backup finished successfully.');
+    });
+
+    it('should deliver failure alert when cronjob execution fails', async () => {
+        const adapter = new MockAdapter();
+        const engine = new AgentEngine({
+            sessionId: 'test-cron-fail',
+            leaseManager: leaseMgr,
+            approvalsManager: approvalsMgr
+        });
+        engine.attachAdapter(adapter);
+
+        await engine.deliverCronResult({
+            id: 'job-err',
+            schedule: 'every 1h',
+            status: 'failed',
+            deliver: 'mock',
+            origin_channel: 'mock',
+            origin_recipient_id: 'chat-err',
+            created_at: Date.now(),
+            next_run_at: Date.now() + 3600000,
+            run_count: 1
+        }, {
+            success: false,
+            output: 'Database connection refused',
+            silent: false
+        });
+
+        const turnCompleted = adapter.emittedEvents.find(e => e.type === 'turn_completed') as any;
+        expect(turnCompleted).toBeDefined();
+        expect(turnCompleted.summary).toContain("⚠️ Cron 'job-err' falhou: Database connection refused");
+    });
+
+    it('should suppress external delivery when output contains [SILENT]', async () => {
+        const adapter = new MockAdapter();
+        const engine = new AgentEngine({
+            sessionId: 'test-cron-silent',
+            leaseManager: leaseMgr,
+            approvalsManager: approvalsMgr
+        });
+        engine.attachAdapter(adapter);
+
+        await engine.deliverCronResult({
+            id: 'job-sil',
+            schedule: 'every 1h',
+            status: 'scheduled',
+            deliver: 'origin',
+            origin_channel: 'mock',
+            origin_recipient_id: 'chat-sil',
+            created_at: Date.now(),
+            next_run_at: Date.now() + 3600000,
+            run_count: 1
+        }, {
+            success: true,
+            output: 'Nothing changed [SILENT]',
+            silent: true
+        });
+
+        expect(adapter.emittedEvents.length).toBe(0);
+    });
 });

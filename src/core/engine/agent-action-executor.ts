@@ -14,6 +14,9 @@ import type { BridgeToolsManager } from '../tools/bridge/bridge-tools.js';
 import { truncateToolOutput } from '../utils/text-truncator.js';
 import type { MessageQueue } from '../workflow/message-queue.js';
 import { detectMimeType } from '../utils/mime-detector.js';
+import { CronStorage } from '../cron/cron-storage.js';
+import { CronToolHandler } from '../cron/cron-tool-handler.js';
+import type { CronToolArgs } from '../cron/cron-types.js';
 import { tui } from '../../ui/tui.js';
 import { colors } from '../../ui/colors.js';
 
@@ -30,6 +33,9 @@ export interface AgentActionExecutorOptions {
     currentTaskId?: string;
     messageQueue?: MessageQueue;
     skipMemory?: boolean;
+    cronToolHandler?: CronToolHandler;
+    originChannel?: string;
+    originRecipientId?: string;
 }
 
 export interface ActionResult {
@@ -51,6 +57,7 @@ export class AgentActionExecutor {
     private currentTaskId?: string;
     private messageQueue?: MessageQueue;
     private skipMemory: boolean;
+    private cronToolHandler: CronToolHandler;
     private recentReadCounts = new Map<string, number>();
 
     constructor(options: AgentActionExecutorOptions) {
@@ -66,6 +73,11 @@ export class AgentActionExecutor {
         this.currentTaskId = options.currentTaskId;
         this.messageQueue = options.messageQueue;
         this.skipMemory = options.skipMemory ?? false;
+        this.cronToolHandler = options.cronToolHandler || new CronToolHandler({
+            storage: new CronStorage(path.resolve(this.projectRoot, '.shark', 'cron')),
+            originChannel: options.originChannel || 'cli',
+            originRecipientId: options.originRecipientId || 'local'
+        });
         this.anchorManager = new AnchorStateManager();
 
         if (this.messageQueue) {
@@ -439,6 +451,30 @@ export class AgentActionExecutor {
                     break;
                 }
 
+                case 'cronjob': {
+                    const cronArgs: CronToolArgs = {
+                        action: action.args?.action || action.action,
+                        id: action.args?.id || action.id,
+                        name: action.args?.name || action.name,
+                        schedule: action.args?.schedule || action.schedule,
+                        prompt: action.args?.prompt || action.prompt,
+                        script: action.args?.script || action.script,
+                        monitor_script: action.args?.monitor_script || action.monitor_script,
+                        no_agent: action.args?.no_agent ?? action.no_agent,
+                        skills: action.args?.skills || action.skills,
+                        deliver: action.args?.deliver || action.deliver
+                    };
+                    try {
+                        const res = await this.cronToolHandler.handleAction(cronArgs);
+                        output = res.success
+                            ? `[Action cronjob(${cronArgs.action}) Success]: ${res.message}${res.jobs ? `\nJobs:\n${JSON.stringify(res.jobs, null, 2)}` : ''}`
+                            : `[Action cronjob(${cronArgs.action}) Failed]: ${res.message}`;
+                    } catch (e: any) {
+                        output = `[Action cronjob Failed]: ${e.message}`;
+                    }
+                    break;
+                }
+
                 case 'tool_search': {
                     if (this.bridgeToolsManager) {
                         const queries = action.args?.queries || (action.query ? [action.query] : []);
@@ -574,6 +610,8 @@ export class AgentActionExecutor {
                 return `Action: ${action.args?.action || action.action} on ${action.args?.target || action.target}`;
             case 'invoke_subagent':
                 return `TaskFile: ${action.args?.task_file || action.task_file || ''}`;
+            case 'cronjob':
+                return `Cron: ${action.args?.action || action.action} (${action.args?.schedule || action.schedule || action.args?.id || action.id || ''})`;
             case 'tool_call': {
                 const toolName = action.args?.name || action.tool_name || '';
                 const rawArgs = action.args?.arguments ?? action.tool_args;

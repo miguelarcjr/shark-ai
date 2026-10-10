@@ -253,5 +253,54 @@ describe('AgentActionExecutor', () => {
         expect(result.success).toBe(true);
         expect(result.output).toContain('Escrita em memória persistente ignorada (skip_memory ativo nesta sessão)');
     });
+
+    it('should execute cronjob tool action successfully', async () => {
+        const executor = new AgentActionExecutor({
+            projectRoot: testDir,
+            emitOutbound: () => {},
+            sessionId: 'sess-test'
+        });
+
+        const result = await executor.executeAction({
+            type: 'cronjob',
+            args: {
+                action: 'create',
+                schedule: 'every 1h',
+                prompt: 'monitor server'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.output).toContain('[Action cronjob(create) Success]');
+        expect(result.output).toContain('created successfully');
+    });
+
+    it('should list registered cronjobs via cronjob action', async () => {
+        const executor = new AgentActionExecutor({
+            projectRoot: testDir,
+            emitOutbound: () => {},
+            sessionId: 'sess-test'
+        });
+
+        await executor.executeAction({
+            type: 'cronjob',
+            args: {
+                action: 'create',
+                schedule: 'every 30m',
+                prompt: 'check alerts'
+            }
+        });
+
+        const listResult = await executor.executeAction({
+            type: 'cronjob',
+            args: {
+                action: 'list'
+            }
+        });
+
+        expect(listResult.success).toBe(true);
+        expect(listResult.output).toContain('[Action cronjob(list) Success]');
+        expect(listResult.output).toContain('Found 1 registered jobs');
+    });
 });
 
