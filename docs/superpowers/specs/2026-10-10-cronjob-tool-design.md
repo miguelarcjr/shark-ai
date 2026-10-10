@@ -218,6 +218,9 @@ O parser suporta quatro formatos determinísticos:
    * Tentativas de invocar a ação `memory` para gravar no perfil do usuário ou na memória do repositório são bloqueadas.
 5. **Bloqueio de Ferramentas Interativas**:
    * Ações que exigem interação humana no terminal (como `talk_with_user`) são desativadas ou respondem com erro informando a ausência de operador humano.
+6. **Suporte a Subagentes em Tarefas Complexas**:
+   * O agente instanciado pelo cronjob pode invocar `invoke_subagent` para paralelizar tarefas técnicas em segundo plano.
+   * Todos os subprocessos filhos herdam automaticamente a flag `--skip-memory` e a desativação da ferramenta `cronjob` (garantindo que a trava antirrecursiva e a proteção de memória abranjam toda a árvore de execução).
 
 ---
 
