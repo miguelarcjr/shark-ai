@@ -33,7 +33,7 @@
 - Consumes: Nothing
 - Produces: `CronJobStatus`, `CronJob`, `CronDatabase`, `CronToolAction`, `CronToolArgs`, `CronToolResult`
 
-- [ ] **Step 1: Write `src/core/cron/cron-types.ts`**
+- [x] **Step 1: Write `src/core/cron/cron-types.ts`**
 
 ```typescript
 export type CronJobStatus = 'scheduled' | 'running' | 'paused' | 'completed' | 'failed';
@@ -91,18 +91,18 @@ export interface CronToolResult {
 }
 ```
 
-- [ ] **Step 2: Write `src/core/cron/index.ts`**
+- [x] **Step 2: Write `src/core/cron/index.ts`**
 
 ```typescript
 export * from './cron-types.js';
 ```
 
-- [ ] **Step 3: Verify TypeScript compilation**
+- [x] **Step 3: Verify TypeScript compilation**
 
 Run: `npx tsc --noEmit`
 Expected: PASS with 0 errors
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add src/core/cron/cron-types.ts src/core/cron/index.ts
@@ -121,7 +121,7 @@ git commit -m "feat(cron): add cron data models and type definitions"
 - Consumes: `CronDatabase`, `CronJob` from `src/core/cron/cron-types.js`
 - Produces: `CronStorage` with methods `loadDatabase()`, `saveDatabase()`, `acquireLock()`, `releaseLock()`, `withLock<T>()`
 
-- [ ] **Step 1: Write failing test in `src/core/cron/cron-storage.test.ts`**
+- [x] **Step 1: Write failing test in `src/core/cron/cron-storage.test.ts`**
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -199,12 +199,12 @@ describe('CronStorage', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/cron/cron-storage.test.ts`
 Expected: FAIL (Cannot find module `./cron-storage.js`)
 
-- [ ] **Step 3: Write implementation in `src/core/cron/cron-storage.ts`**
+- [x] **Step 3: Write implementation in `src/core/cron/cron-storage.ts`**
 
 ```typescript
 import * as fs from 'node:fs';
@@ -330,19 +330,19 @@ export class CronStorage {
 }
 ```
 
-- [ ] **Step 4: Update `src/core/cron/index.ts` to export CronStorage**
+- [x] **Step 4: Update `src/core/cron/index.ts` to export CronStorage**
 
 ```typescript
 export * from './cron-types.js';
 export * from './cron-storage.js';
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest run src/core/cron/cron-storage.test.ts`
 Expected: PASS (4 tests passing)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/cron/cron-storage.ts src/core/cron/cron-storage.test.ts src/core/cron/index.ts
@@ -361,7 +361,7 @@ git commit -m "feat(cron): add atomic cron storage and file lock manager"
 - Consumes: `CronStorage`, `CronJob`, `CronDatabase` from `src/core/cron/`
 - Produces: `CronScheduler` with `parseSchedule()`, `calculateNextRun()`, `tick()`, `start()`, `stop()`, `isRunning()`
 
-- [ ] **Step 1: Write failing test in `src/core/cron/cron-scheduler.test.ts`**
+- [x] **Step 1: Write failing test in `src/core/cron/cron-scheduler.test.ts`**
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -497,12 +497,12 @@ describe('CronScheduler', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/cron/cron-scheduler.test.ts`
 Expected: FAIL (Cannot find module `./cron-scheduler.js`)
 
-- [ ] **Step 3: Write implementation in `src/core/cron/cron-scheduler.ts`**
+- [x] **Step 3: Write implementation in `src/core/cron/cron-scheduler.ts`**
 
 ```typescript
 import { CronStorage } from './cron-storage.js';
@@ -703,7 +703,7 @@ export class CronScheduler {
 }
 ```
 
-- [ ] **Step 4: Update `src/core/cron/index.ts`**
+- [x] **Step 4: Update `src/core/cron/index.ts`**
 
 ```typescript
 export * from './cron-types.js';
@@ -711,12 +711,12 @@ export * from './cron-storage.js';
 export * from './cron-scheduler.js';
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest run src/core/cron/cron-scheduler.test.ts`
 Expected: PASS (5 tests passing)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/cron/cron-scheduler.ts src/core/cron/cron-scheduler.test.ts src/core/cron/index.ts
@@ -735,7 +735,7 @@ git commit -m "feat(cron): add scheduler engine with overlap prevention and catc
 - Consumes: `CronStorage`, `CronJob` from `src/core/cron/`
 - Produces: `CronExecutor` with `execute(job: CronJob): Promise<{ success: boolean, output: string, silent: boolean }>`
 
-- [ ] **Step 1: Write failing test in `src/core/cron/cron-executor.test.ts`**
+- [x] **Step 1: Write failing test in `src/core/cron/cron-executor.test.ts`**
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -829,12 +829,12 @@ describe('CronExecutor', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/cron/cron-executor.test.ts`
 Expected: FAIL (Cannot find module `./cron-executor.js`)
 
-- [ ] **Step 3: Write implementation in `src/core/cron/cron-executor.ts`**
+- [x] **Step 3: Write implementation in `src/core/cron/cron-executor.ts`**
 
 ```typescript
 import * as fs from 'node:fs';
@@ -994,7 +994,7 @@ export class CronExecutor {
 }
 ```
 
-- [ ] **Step 4: Update `src/core/cron/index.ts`**
+- [x] **Step 4: Update `src/core/cron/index.ts`**
 
 ```typescript
 export * from './cron-types.js';
@@ -1003,12 +1003,12 @@ export * from './cron-scheduler.js';
 export * from './cron-executor.js';
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest run src/core/cron/cron-executor.test.ts`
 Expected: PASS (3 tests passing)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/cron/cron-executor.ts src/core/cron/cron-executor.test.ts src/core/cron/index.ts
@@ -1027,7 +1027,7 @@ git commit -m "feat(cron): add subprocess and script executor with watchdog and 
 - Consumes: `CronStorage`, `CronScheduler`, `CronToolArgs` from `src/core/cron/`
 - Produces: `CronToolHandler` with `handleAction(args: CronToolArgs): Promise<CronToolResult>`
 
-- [ ] **Step 1: Write failing test in `src/core/cron/cron-tool-handler.test.ts`**
+- [x] **Step 1: Write failing test in `src/core/cron/cron-tool-handler.test.ts`**
 
 ```typescript
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -1132,12 +1132,12 @@ describe('CronToolHandler', () => {
 });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/cron/cron-tool-handler.test.ts`
 Expected: FAIL (Cannot find module `./cron-tool-handler.js`)
 
-- [ ] **Step 3: Write implementation in `src/core/cron/cron-tool-handler.ts`**
+- [x] **Step 3: Write implementation in `src/core/cron/cron-tool-handler.ts`**
 
 ```typescript
 import * as crypto from 'node:crypto';
@@ -1309,7 +1309,7 @@ export class CronToolHandler {
 }
 ```
 
-- [ ] **Step 4: Update `src/core/cron/index.ts`**
+- [x] **Step 4: Update `src/core/cron/index.ts`**
 
 ```typescript
 export * from './cron-types.js';
@@ -1319,12 +1319,12 @@ export * from './cron-executor.js';
 export * from './cron-tool-handler.js';
 ```
 
-- [ ] **Step 5: Run tests to verify they pass**
+- [x] **Step 5: Run tests to verify they pass**
 
 Run: `npx vitest run src/core/cron/cron-tool-handler.test.ts`
 Expected: PASS (5 tests passing)
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/core/cron/cron-tool-handler.ts src/core/cron/cron-tool-handler.test.ts src/core/cron/index.ts
@@ -1343,12 +1343,12 @@ git commit -m "feat(cron): add tool handler with parameter validation and recurs
 - Consumes: `defineAction`, `COORDINATOR_ACTION_SCHEMAS`, `buildUnifiedSystemPrompt`
 - Produces: `cronjob` action schema in coordinator schemas and prompt instructions
 
-- [ ] **Step 1: Check existing schema tests**
+- [x] **Step 1: Check existing schema tests**
 
 Run: `npx vitest run src/commands/export-schema.test.ts`
 Expected: PASS
 
-- [ ] **Step 2: Add `cronjob` section to `buildUnifiedSystemPrompt` in `src/core/api/prompts.ts`**
+- [x] **Step 2: Add `cronjob` section to `buildUnifiedSystemPrompt` in `src/core/api/prompts.ts`**
 
 In `src/core/api/prompts.ts`, add the section before `SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:`:
 ```typescript
@@ -1364,7 +1364,7 @@ In `src/core/api/prompts.ts`, add the section before `SUA SAÍDA DEVE SEGUIR EXA
 - SUPRESSÃO SILENCIOSA COM '[SILENT]': Se a resposta do job contiver o token '[SILENT]', nenhuma notificação externa é emitida.
 ```
 
-- [ ] **Step 3: Register `defineAction("cronjob", ...)` in `COORDINATOR_ACTION_SCHEMAS`**
+- [x] **Step 3: Register `defineAction("cronjob", ...)` in `COORDINATOR_ACTION_SCHEMAS`**
 
 In `src/core/api/prompts.ts`, add:
 ```typescript
@@ -1384,12 +1384,12 @@ In `src/core/api/prompts.ts`, add:
 And add `"cronjob"` to the action enum in `buildUnifiedSystemPrompt`:
 `"type": "create_file" | ... | "cronjob"`
 
-- [ ] **Step 4: Run export-schema tests to verify validity**
+- [x] **Step 4: Run export-schema tests to verify validity**
 
 Run: `npx vitest run src/commands/export-schema.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/api/prompts.ts
@@ -1409,18 +1409,18 @@ git commit -m "feat(cron): register cronjob action in prompts and coordinator js
 - Consumes: Commander options in `dev.ts`
 - Produces: `skipMemory` boolean passed to `interactiveDeveloperAgent` and `AgentActionExecutor`
 
-- [ ] **Step 1: Add `--skip-memory` option in `src/commands/dev.ts`**
+- [x] **Step 1: Add `--skip-memory` option in `src/commands/dev.ts`**
 
 ```typescript
     .option('--skip-memory', 'Skip persistent memory modifications during task execution', false)
 ```
 Pass `skipMemory: options.skipMemory` to `interactiveDeveloperAgent`.
 
-- [ ] **Step 2: Update `DeveloperAgentOptions` in `src/core/agents/developer-agent.ts`**
+- [x] **Step 2: Update `DeveloperAgentOptions` in `src/core/agents/developer-agent.ts`**
 
 Add `skipMemory?: boolean` to `DeveloperAgentOptions` and pass it to `AgentEngine` constructor and options.
 
-- [ ] **Step 3: Honor `skipMemory` in `src/core/engine/agent-action-executor.ts`**
+- [x] **Step 3: Honor `skipMemory` in `src/core/engine/agent-action-executor.ts`**
 
 In `executeAction(action)` for `memory` action:
 ```typescript
@@ -1432,12 +1432,12 @@ if (this.skipMemory) {
 }
 ```
 
-- [ ] **Step 4: Run dev tests**
+- [x] **Step 4: Run dev tests**
 
 Run: `npx vitest run src/commands/dev.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/commands/dev.ts src/core/agents/developer-agent.ts src/core/engine/agent-action-executor.ts
@@ -1457,7 +1457,7 @@ git commit -m "feat(cron): add --skip-memory flag and memory isolation"
 - Consumes: `CronToolHandler`, `CronScheduler`, `CronExecutor`
 - Produces: Seamless execution of `cronjob` from LLM responses and delivery routing to adapters
 
-- [ ] **Step 1: Write integration test in `src/core/engine/agent-action-executor.test.ts`**
+- [x] **Step 1: Write integration test in `src/core/engine/agent-action-executor.test.ts`**
 
 ```typescript
 it('should execute cronjob tool action successfully', async () => {
@@ -1479,7 +1479,7 @@ it('should execute cronjob tool action successfully', async () => {
 });
 ```
 
-- [ ] **Step 2: Integrate `CronToolHandler` and `CronScheduler` into `AgentEngine`**
+- [x] **Step 2: Integrate `CronToolHandler` and `CronScheduler` into `AgentEngine`**
 
 In `src/core/engine/agent-engine.ts`:
 - Instantiate `CronStorage`, `CronScheduler`, `CronExecutor`, and `CronToolHandler` per session/project.
@@ -1487,7 +1487,7 @@ In `src/core/engine/agent-engine.ts`:
 - Connect the output delivery to registered adapters matching `job.origin_channel` or `job.deliver`.
 - In `runInteractive()`, start `cronScheduler.start()` and stop on termination.
 
-- [ ] **Step 3: Connect `cronjob` in `AgentActionExecutor.ts`**
+- [x] **Step 3: Connect `cronjob` in `AgentActionExecutor.ts`**
 
 In `executeAction(action)`:
 ```typescript
@@ -1496,12 +1496,12 @@ if (action.type === 'cronjob') {
 }
 ```
 
-- [ ] **Step 4: Run full test suite**
+- [x] **Step 4: Run full test suite**
 
 Run: `npm test`
 Expected: All tests PASS with zero regressions
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/engine/agent-engine.ts src/core/engine/agent-action-executor.ts src/core/engine/agent-action-executor.test.ts
