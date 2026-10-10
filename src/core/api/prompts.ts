@@ -87,6 +87,17 @@ Você possui memória persistente que é carregada em todas as sessões. Use a a
 - Para enviar arquivos, vídeos de gravações de testes (ex: Playwright .webm), capturas de tela (.png), áudios ou documentos (.pdf) para o usuário (inclusive via WhatsApp e CLI), utilize a ação 'send_file' com args: { "path": "caminho_do_arquivo", "caption": "legenda descritiva opcional" }.
 - O caminho pode ser relativo à raiz do projeto ou absoluto.
 
+🕒 AGENDAMENTO DE TAREFAS AUTÔNOMAS ('cronjob'):
+- Para criar rotinas, lembretes, monitoramentos e tarefas recorrentes que executam em segundo plano, utilize a ação 'cronjob'.
+- PARÂMETROS DE 'cronjob':
+  - action: 'create' | 'list' | 'update' | 'pause' | 'resume' | 'run' | 'remove'
+  - schedule: '30m' (relativo), 'every 2h' (intervalo), '0 9 * * *' (cron), ou data ISO '2026-10-15T10:00:00Z'
+  - prompt: 'instrução técnica auto-contida para execução com LLM'
+  - script: 'comando a ser executado diretamente' (obrigatório se no_agent: true)
+  - monitor_script: 'script de pré-coleta; acorda a LLM apenas quando a saída alterar'
+  - deliver: 'origin' (devolve onde foi criado), 'local' (salva silenciosamente em arquivo markdown), ou canal nomeado
+- SUPRESSÃO SILENCIOSA COM '[SILENT]': Se a resposta do job contiver o token '[SILENT]', qualquer notificação externa é completamente suprimida.
+
 🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):
 - Você DEVE responder APENAS com um objeto JSON válido.
 - Todas as ações seguem o envelope uniforme { "type": "...", "args": { ... } }.
@@ -96,7 +107,7 @@ SUA SAÍDA DEVE SEGUIR EXATAMENTE ESTE FORMATO JSON:
 {
   "thought": "Explicação detalhada do raciocínio lógico e intenção da ação tomada antes de executá-la.",
   "action": {
-    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "send_file" | "run_command" | "process" | "tool_search" | "tool_describe" | "tool_call" | "skills_list" | "skill_view" | "skill_manage" | "talk_with_user" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search",
+    "type": "create_file" | "modify_file" | "read_file" | "list_files" | "search_file" | "search_code" | "delete_file" | "send_file" | "run_command" | "process" | "tool_search" | "tool_describe" | "tool_call" | "skills_list" | "skill_view" | "skill_manage" | "talk_with_user" | "invoke_subagent" | "complete_task" | "wait" | "notify_user" | "memory" | "session_search" | "cronjob",
     "args": {
       /* Parâmetros específicos da ferramenta selecionada */
     }
@@ -436,6 +447,18 @@ export const COORDINATOR_ACTION_SCHEMAS = [
   defineAction("session_search", {
     query: { type: "string" },
     limit: { type: ["number", "null"] }
+  }),
+  defineAction("cronjob", {
+    action: { type: "string", enum: ["create", "list", "update", "pause", "resume", "run", "remove"] },
+    id: { type: ["string", "null"] },
+    name: { type: ["string", "null"] },
+    schedule: { type: ["string", "null"] },
+    prompt: { type: ["string", "null"] },
+    script: { type: ["string", "null"] },
+    monitor_script: { type: ["string", "null"] },
+    no_agent: { type: ["boolean", "null"] },
+    skills: { type: ["array", "null"], items: { type: "string" } },
+    deliver: { type: ["string", "null"] }
   })
 ];
 
