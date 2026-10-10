@@ -49,7 +49,9 @@ export interface CronJob {
     script?: string;                // Caminho do script para execução direta (no_agent: true)
     no_agent?: boolean;             // Se true: executa script sem LLM
     skills?: string[];              // Skills a serem injetadas no contexto do job
-    deliver: 'origin' | 'local' | 'whatsapp' | string; // Destino do relatório
+    deliver: 'origin' | 'local' | string; // Destino do relatório ('origin', 'local', ou channelId específico)
+    origin_channel?: string;        // Identificador agnóstico do canal (ex: 'cli', 'whatsapp', 'telegram', 'discord')
+    origin_recipient_id?: string;   // Identificador de destino no canal (ex: chatId, userId, threadId)
     created_at: number;             // Timestamp de criação (ms)
     next_run_at: number;            // Timestamp da próxima execução planejada (ms)
     last_run_at?: number;           // Timestamp da última execução (ms)
@@ -166,10 +168,10 @@ O parser suporta quatro formatos determinísticos:
 * **Supressão por `[SILENT]`**: Se o relatório ou `stdout` for ou contiver o marcador `[SILENT]`, nenhuma notificação externa é emitida.
 * **Destino do Relatório**:
   * `local`: Nenhuma notificação externa é enviada além da gravação em disco.
-  * `origin`:
-    * Se no CLI (`shark dev`): exibe um aviso não intrusivo de uma linha no terminal (`ℹ️ [Cron: <id>] Concluído. Relatório em .shark/cron/output/...`).
-    * Se no WhatsApp: despacha a mensagem de retorno no chat de origem.
-  * `whatsapp`: Envia diretamente através do canal configurado.
+  * `origin`: Resolve o canal de origem gravado no job (`job.origin_channel` e `job.origin_recipient_id`). Localiza o `AgentChannelAdapter` correspondente por `adapter.channelId`:
+    * Se `origin_channel === 'cli'`: exibe aviso não intrusivo de uma linha no terminal (`ℹ️ [Cron: <id>] Concluído. Relatório em .shark/cron/output/...`).
+    * Se for um canal de mensageria (ex: `whatsapp`, `telegram`, `discord`): despacha a mensagem diretamente para o `origin_recipient_id` através do respectivo adapter acoplado à engine.
+  * **Canal Nomeado Específico** (ex: `deliver: 'whatsapp'` ou `deliver: 'telegram'`): Despacha diretamente pelo adapter correspondente registrado no sistema.
 
 ---
 
