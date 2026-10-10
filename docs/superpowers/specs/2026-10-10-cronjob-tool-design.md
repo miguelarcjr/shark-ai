@@ -48,6 +48,8 @@ export interface CronJob {
     prompt?: string;                // Instrução auto-contida para execução com LLM
     script?: string;                // Caminho do script para execução direta (no_agent: true)
     no_agent?: boolean;             // Se true: executa script sem LLM
+    monitor_script?: string;        // Script determinístico de pré-coleta (Diff Watchdog)
+    last_monitor_hash?: string;     // Hash SHA-256 da última saída do monitor_script
     skills?: string[];              // Skills a serem injetadas no contexto do job
     deliver: 'origin' | 'local' | string; // Destino do relatório ('origin', 'local', ou channelId específico)
     origin_channel?: string;        // Identificador agnóstico do canal (ex: 'cli', 'whatsapp', 'telegram', 'discord')
@@ -56,6 +58,7 @@ export interface CronJob {
     next_run_at: number;            // Timestamp da próxima execução planejada (ms)
     last_run_at?: number;           // Timestamp da última execução (ms)
     run_count: number;              // Quantidade total de disparos
+    catch_up_occurrences?: number;  // Quantidade de recuperações por atraso/offline
     last_status?: string;           // Status da última rodada
     last_output_file?: string;      // Caminho do último relatório em .shark/cron/output/
 }
@@ -95,9 +98,9 @@ O modelo interage via action unificada `cronjob` contendo o parâmetro `action`:
 ```
 
 ### 3.2 Operações Suportadas (`args.action`)
-* **`create`**: Cria um novo agendamento. Parâmetros: `schedule` (obrigatório), `prompt` ou `script`, `no_agent`, `deliver`, `skills`.
+* **`create`**: Cria um novo agendamento. Parâmetros: `schedule` (obrigatório), `prompt` ou `script`, `monitor_script`, `no_agent`, `deliver`, `skills`. Retorna `{ success: true, scheduler_running: boolean, job: { ... } }`.
 * **`list`**: Retorna a lista de tarefas agendadas com IDs, status, próximo disparo e destino de entrega.
-* **`update`**: Atualização parcial de configurações existentes (`id`, `schedule`, `prompt`, `script`, `deliver`, `skills`).
+* **`update`**: Atualização parcial de configurações existentes (`id`, `schedule`, `prompt`, `script`, `monitor_script`, `deliver`, `skills`).
 * **`pause`**: Pausa temporariamente a execução de um agendamento (`id`).
 * **`resume`**: Reativa um agendamento pausado ou rearma uma execução única concluída (`id`).
 * **`run`**: Força a execução assíncrona imediata fora da janela agendada (`id`).
@@ -119,12 +122,13 @@ O parser suporta quatro formatos determinísticos:
     schedule: { type: ["string", "null"] },
     prompt: { type: ["string", "null"] },
     script: { type: ["string", "null"] },
+    monitor_script: { type: ["string", "null"] },
     no_agent: { type: ["boolean", "null"] },
     skills: { type: ["array", "null"], items: { type: "string" } },
     deliver: { type: ["string", "null"] }
   })
   ```
-* **System Prompt do Coordenador**: Adição de uma seção dedicada descrevendo as capacidades da ferramenta, sintaxes e o token `[SILENT]`.
+* **System Prompt do Coordenador**: Adição de uma seção dedicada descrevendo as capacidades da ferramenta, sintaxes, feedback do scheduler e o token `[SILENT]`.
 * **Trava Antirrecursiva nos Subagentes**: A action `cronjob` **não** é registrada em `SUBAGENT_ACTION_SCHEMAS`.
 
 ---
@@ -132,19 +136,29 @@ O parser suporta quatro formatos determinísticos:
 ## 4. Motor de Execução e Ciclo do Scheduler
 
 ### 4.1 Ticker em Segundo Plano (`CronScheduler`)
-1. O agendador inicializa junto com a sessão ativa (`shark dev` ou bot de mensagens) rodando com `.unref()`.
-2. A cada 60s (ou no tempo da próxima tarefa agendada iminente):
+1. **Loop com `.unref()`**: O agendador inicializa junto com a sessão ativa (`shark dev` ou bot de mensagens) rodando a cada 60s (ou no tempo da próxima tarefa agendada iminente) sem prender o encerramento do processo.
+2. **Prevenção de Sobreposição (*Prevent Overlap*)**:
+   * O scheduler mantém um controle em memória `_running_job_ids: Set<string>`.
+   * Se o ciclo de varredura constatar que o disparo anterior daquele `job.id` ainda está executando, registra *"already running — skipping"* e pula o novo disparo, aguardando a finalização da instância ativa.
+3. **Política de Atraso e Coalescimento (*Catch-up Policy / Missed Runs*)**:
+   * **Sem acúmulo em rajada (*No Backfill Storm*)**: Se o computador ficou desligado ou o processo offline por horas, o sistema nunca dispara todas as instâncias acumuladas sequencialmente.
+   * **Tarefas Recorrentes (*Interval / Cron*)**: O scheduler realiza **coalescimento (*coalescing*)**: executa a tarefa **apenas 1 vez** para compensar o período offline, incrementa `catch_up_occurrences` e reancora o carimbo `next_run_at` para o próximo horário regular da agenda.
+   * **Tarefas Pontuais (*One-shot*)**: Possuem tolerância rígida de atraso (`ONESHOT_GRACE_SECONDS = 120s`). Se o horário tiver vencido além de 2 minutos durante o período offline, a tarefa caduca e é marcada como `completed` com status `"expired: grace period exceeded"` sem disparar fora de contexto.
+4. **Controle de Concorrência e Rate Limit**:
+   * Pool assíncrona limitando execuções simultâneas com LLM (teto configurável `maxConcurrentJobs: 3`).
+   * Erros de rate limit (HTTP 429) ou transitórios de rede na chamada da LLM acionam *jittered exponential backoff* com até 3 retentativas.
+5. **Ciclo do Tick**:
    * Adquire o arquivo `.tick.lock`.
    * Identifica jobs com `status === 'scheduled'` e `next_run_at <= Date.now()`.
    * Atualiza `status = 'running'` e grava no banco atômico.
-   * Calcula o próximo horário de disparo para jobs recorrentes (`run_count++`). Para tarefas únicas, define `status = 'completed'` após o disparo.
+   * Para tarefas recorrentes, calcula o próximo horário de disparo regular (`run_count++`). Para tarefas pontuais, marca `status = 'completed'`.
    * Libera a trava `.tick.lock`.
 
 ### 4.2 Executor de Tarefas (`CronExecutor`)
 
-#### Modo Agente (`agent-backed`, padrão)
+#### Modo Agente Completo (`agent-backed`, padrão)
 * Cria o arquivo com a instrução isolada da tarefa em `.shark/cron/tasks/task-<jobId>.md`.
-* Se houver `skills` declaradas no job, injeta o conteúdo das skills como instruções iniciais.
+* Se houver `skills` declaradas no job, lê e injeta o conteúdo das skills como instruções iniciais.
 * Spawna um subprocesso Node.js com o binário do Shark:
   ```typescript
   const args = [
@@ -159,19 +173,32 @@ O parser suporta quatro formatos determinísticos:
 * Coleta o resultado ao término do processo.
 
 #### Modo Script sem Tokens (`no_agent: true`)
-* Executa o comando ou script local via `child_process.execFile` ou `child_process.exec`.
-* Não aciona a LLM e não gasta tokens.
+* Executa o comando ou script local diretamente via `child_process.execFile` ou `child_process.exec`.
+* Não aciona a LLM e consome **zero tokens**.
 * Captura o `stdout` e o código de saída.
 
-### 4.3 Roteador de Entrega (`deliver`) e Token `[SILENT]`
-* Todo resultado é gravado em `.shark/cron/output/<jobId>-<timestamp>.md`.
-* **Supressão por `[SILENT]`**: Se o relatório ou `stdout` for ou contiver o marcador `[SILENT]`, nenhuma notificação externa é emitida.
+#### Modo Monitoramento por Diferença (*Monitor Script / Diff Watchdog*)
+* Se o job possuir `monitor_script`:
+  1. O executor roda o script leve de pré-coleta de dados em segundo plano (sem LLM).
+  2. Calcula o hash SHA-256 do `stdout`.
+  3. Se `hash === job.last_monitor_hash`: descarta a execução silenciosamente (zero tokens gastos, nada mudou).
+  4. Se `hash !== job.last_monitor_hash`: grava o novo hash e instancia a sessão completa com LLM, injetando o novo output para análise do agente.
+
+### 4.3 Roteador de Entrega (`deliver`), Chunking e Alerta de Falhas
+* Todo resultado é gravado integralmente em `.shark/cron/output/<jobId>-<timestamp>.md`.
+* **Supressão por `[SILENT]`**: Se o relatório ou `stdout` contiver o token `[SILENT]`, qualquer notificação externa é completamente suprimida.
+* **Divisão Inteligente de Mensagens (*Smart Chunking*)**:
+  * Em canais de mensageria (como WhatsApp), utiliza o fatiador inteligente (baseado em [`splitWhatsAppMessage`](file:///d:/projetos/bmadspot/src/core/adapters/whatsapp/chunker.ts)) dividindo mensagens em blocos de até ~3.500 caracteres preservando quebras de linha e blocos de código (`code fences`).
+  * **Corte com Salvamento Local (*Truncate & Save*)**: Para relatórios muito volumosos que gerariam *flooding* de mensagens, o texto enviado no chat é cortado nos primeiros ~3.500 caracteres acompanhado do rodapé: `\n\n📄 [Relatório completo salvo em .shark/cron/output/<jobId>-<timestamp>.md]`.
 * **Destino do Relatório**:
   * `local`: Nenhuma notificação externa é enviada além da gravação em disco.
   * `origin`: Resolve o canal de origem gravado no job (`job.origin_channel` e `job.origin_recipient_id`). Localiza o `AgentChannelAdapter` correspondente por `adapter.channelId`:
     * Se `origin_channel === 'cli'`: exibe aviso não intrusivo de uma linha no terminal (`ℹ️ [Cron: <id>] Concluído. Relatório em .shark/cron/output/...`).
     * Se for um canal de mensageria (ex: `whatsapp`, `telegram`, `discord`): despacha a mensagem diretamente para o `origin_recipient_id` através do respectivo adapter acoplado à engine.
-  * **Canal Nomeado Específico** (ex: `deliver: 'whatsapp'` ou `deliver: 'telegram'`): Despacha diretamente pelo adapter correspondente registrado no sistema.
+  * **Canal Nomeado Específico** (ex: `deliver: 'whatsapp'`): Despacha diretamente pelo adapter correspondente registrado no sistema.
+* **Política de Notificação em Falhas**:
+  * Se o script falhar ou o job estourar o limite de tempo do Watchdog, o erro é registrado no histórico do job (`status: 'failed'`).
+  * O sistema **não tenta retentar em loop imediato**; ele envia um alerta formatado (`⚠️ Cron '<id>' falhou: <motivo>`) para o canal configurado e aguarda o próximo ciclo regular da agenda.
 
 ---
 
@@ -201,7 +228,7 @@ Os testes serão implementados utilizando **Vitest**:
 | Arquivo de Teste | Foco de Cobertura |
 | :--- | :--- |
 | `src/core/cron/cron-storage.test.ts` | Gravação atômica, aquisição/liberação de `.tick.lock`, tratamento de locks órfãos e persistência em `jobs.json`. |
-| `src/core/cron/cron-scheduler.test.ts` | Parsing de formatos (`30m`, `every 2h`, `0 9 * * *`, ISO), cálculo de `next_run_at`, transições de status (`scheduled`, `running`, `completed`). |
-| `src/core/cron/cron-executor.test.ts` | Execução de scripts com `no_agent: true`, supressão com `[SILENT]`, gravação em `.shark/cron/output/` e atuação do Watchdog em timeouts. |
-| `src/core/cron/cron-tool-handler.test.ts` | Ações `create`, `list`, `update`, `pause`, `resume`, `run`, `remove`, validação de erros e travas de segurança. |
-| `src/core/engine/agent-action-executor.test.ts` | Integração ponta a ponta da action `cronjob` através do JSON do modelo. |
+| `src/core/cron/cron-scheduler.test.ts` | Parsing de formatos (`30m`, `every 2h`, `0 9 * * *`, ISO), cálculo de `next_run_at`, prevenção de sobreposição (*overlap prevention*), coalescimento pós-offline (*coalescing*) e expiração de one-shots com tolerância (`ONESHOT_GRACE_SECONDS`). |
+| `src/core/cron/cron-executor.test.ts` | Execução de scripts (`no_agent: true`), modo Monitoramento por Diferença (*Diff Watchdog* com hash SHA-256), supressão com `[SILENT]`, gravação em `.shark/cron/output/`, chunking inteligente e atuação do Watchdog em timeouts. |
+| `src/core/cron/cron-tool-handler.test.ts` | Ações `create`, `list`, `update`, `pause`, `resume`, `run`, `remove`, retorno com diagnóstico de scheduler (`scheduler_running`), validação de erros e travas de segurança. |
+| `src/core/engine/agent-action-executor.test.ts` | Integração ponta a ponta da action `cronjob` através do JSON do modelo, despacho por adapters agnósticos e garantia de isolamento (`--skip-memory`). |
