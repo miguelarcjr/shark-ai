@@ -29,6 +29,7 @@ export interface AgentActionExecutorOptions {
     activeConversationId?: string;
     currentTaskId?: string;
     messageQueue?: MessageQueue;
+    skipMemory?: boolean;
 }
 
 export interface ActionResult {
@@ -49,6 +50,7 @@ export class AgentActionExecutor {
     private activeConversationId?: string;
     private currentTaskId?: string;
     private messageQueue?: MessageQueue;
+    private skipMemory: boolean;
     private recentReadCounts = new Map<string, number>();
 
     constructor(options: AgentActionExecutorOptions) {
@@ -63,6 +65,7 @@ export class AgentActionExecutor {
         this.activeConversationId = options.activeConversationId;
         this.currentTaskId = options.currentTaskId;
         this.messageQueue = options.messageQueue;
+        this.skipMemory = options.skipMemory ?? false;
         this.anchorManager = new AnchorStateManager();
 
         if (this.messageQueue) {
@@ -303,6 +306,10 @@ export class AgentActionExecutor {
                 }
 
                 case 'memory': {
+                    if (this.skipMemory) {
+                        output = '[Action memory Skipped]: Aviso: Escrita em memória persistente ignorada (skip_memory ativo nesta sessão).';
+                        break;
+                    }
                     const target = (action.args?.target || action.target || 'memory') as 'memory' | 'user';
                     const act = action.args?.action || action.action || 'read';
                     try {

@@ -232,5 +232,26 @@ describe('AgentActionExecutor', () => {
         const result = await executor.executeAction({ type: 'list_files', args: { path: '  ' } });
         expect(result.output).toContain('[Action list_files(.) Success]');
     });
+
+    it('skips memory modifications when skipMemory is enabled', async () => {
+        const executor = new AgentActionExecutor({
+            projectRoot: testDir,
+            emitOutbound: () => {},
+            sessionId: 'sess-test',
+            skipMemory: true
+        });
+
+        const result = await executor.executeAction({
+            type: 'memory',
+            args: {
+                action: 'add',
+                target: 'memory',
+                content: 'Test persistent memory note'
+            }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.output).toContain('Escrita em memória persistente ignorada (skip_memory ativo nesta sessão)');
+    });
 });
 

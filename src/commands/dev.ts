@@ -19,6 +19,7 @@ export const devCommand = new Command('dev')
     .option('--auto', 'Automatically approve all actions without prompting')
     .option('--export-schema', 'Export the agent response JSON schema')
     .option('--taskId <id>', 'ID of the current subagent task')
+    .option('--skip-memory', 'Skip persistent memory modifications during task execution', false)
     .option('--graph', 'Enable real-time memory graph visualization', false)
     .action(async (options) => {
         if (options.exportSchema) {
@@ -61,7 +62,8 @@ export const devCommand = new Command('dev')
                 taskInstruction,
                 context: options.context,
                 auto: options.yes || options.auto,
-                taskId: options.taskId
+                taskId: options.taskId,
+                skipMemory: options.skipMemory
             });
             if (!result.success) {
                 console.error('Task execution failed:', result.summary);

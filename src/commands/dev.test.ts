@@ -14,6 +14,7 @@ describe('Dev Command (Single Agent)', () => {
         devCommand.setOptionValue('auto', undefined);
         devCommand.setOptionValue('exportSchema', undefined);
         devCommand.setOptionValue('taskId', undefined);
+        devCommand.setOptionValue('skipMemory', undefined);
     });
 
     it('should call interactiveDeveloperAgent with correct options (with -y)', async () => {
@@ -111,6 +112,20 @@ describe('Dev Command (Single Agent)', () => {
                 fs.unlinkSync(tempFile);
             }
         }
+    });
+
+    it('should call interactiveDeveloperAgent with skipMemory option when --skip-memory is provided', async () => {
+        vi.mocked(interactiveDeveloperAgent).mockResolvedValue({
+            success: true,
+            summary: 'Task completed'
+        });
+
+        await devCommand.parseAsync(['node', 'shark', 'dev', '-t', 'Build UI', '--skip-memory']);
+
+        expect(interactiveDeveloperAgent).toHaveBeenCalledWith(expect.objectContaining({
+            taskInstruction: 'Build UI',
+            skipMemory: true
+        }));
     });
 });
 

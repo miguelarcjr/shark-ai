@@ -27,6 +27,7 @@ export interface AgentEngineOptions {
     bridgeToolsManager?: BridgeToolsManager;
     taskId?: string;
     context?: string;
+    skipMemory?: boolean;
 }
 
 export interface EngineRunOptions {
@@ -38,6 +39,7 @@ export interface EngineRunOptions {
     messageQueue?: MessageQueue;
     sessionId?: string;
     projectRoot?: string;
+    skipMemory?: boolean;
 }
 
 function isUserCancellation(content: any): boolean {
@@ -56,6 +58,7 @@ export class AgentEngine {
     private bridgeToolsManager?: BridgeToolsManager;
     private taskId?: string;
     private contextPath?: string;
+    private skipMemory: boolean;
     private forkReviewAgents = new Map<string, ForkReviewAgent>();
     private sessionWorkspaces = new Map<string, string>();
 
@@ -67,6 +70,7 @@ export class AgentEngine {
         this.bridgeToolsManager = options.bridgeToolsManager;
         this.taskId = options.taskId;
         this.contextPath = options.context;
+        this.skipMemory = options.skipMemory ?? false;
     }
 
     public attachAdapter(adapter: AgentChannelAdapter) {
@@ -231,7 +235,8 @@ export class AgentEngine {
             onMemoryUpdated: () => context.updateDynamicPrompt(),
             activeConversationId,
             currentTaskId: effectiveTaskId,
-            messageQueue
+            messageQueue,
+            skipMemory: options.skipMemory ?? this.skipMemory
         });
 
         // 5. Configuração de encerramento seguro de processos

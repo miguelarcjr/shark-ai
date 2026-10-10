@@ -12,6 +12,7 @@ export interface DeveloperAgentOptions {
     context?: string;
     history?: string;
     auto?: boolean;
+    skipMemory?: boolean;
 }
 
 /**
@@ -31,7 +32,8 @@ export async function interactiveDeveloperAgent(options: DeveloperAgentOptions =
         auto: isBatchMode,
         projectRoot,
         taskId: options.taskId,
-        context: options.context
+        context: options.context,
+        skipMemory: options.skipMemory
     });
 
     engine.attachAdapter(cliAdapter);
