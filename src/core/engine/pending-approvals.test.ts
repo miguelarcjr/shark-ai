@@ -6,12 +6,20 @@ import * as path from 'node:path';
 describe('PendingApprovalsManager', () => {
     const testDbPath = path.resolve(process.cwd(), '.shark', 'test-approvals.db');
 
+    const cleanDb = () => {
+        for (const f of [testDbPath, `${testDbPath}-wal`, `${testDbPath}-shm`]) {
+            if (fs.existsSync(f)) {
+                try { fs.unlinkSync(f); } catch {}
+            }
+        }
+    };
+
     beforeEach(() => {
-        if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+        cleanDb();
     });
 
     afterEach(() => {
-        if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath);
+        cleanDb();
     });
 
     it('creates, resolves atomically and prevents duplicate resolutions', async () => {

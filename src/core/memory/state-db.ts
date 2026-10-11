@@ -18,13 +18,22 @@ export class StateDB {
   private db: any;
 
   constructor(dbPath?: string) {
-    const finalPath = dbPath || path.join(process.cwd(), '.shark', 'state.db');
-    const dir = path.dirname(finalPath);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+    const isTestEnv = !!(process.env.VITEST || process.env.NODE_ENV === 'test');
+    const finalPath = dbPath || (isTestEnv ? ':memory:' : path.join(process.cwd(), '.shark', 'state.db'));
+    if (finalPath !== ':memory:') {
+      const dir = path.dirname(finalPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
     }
 
     this.db = new DatabaseSync(finalPath);
+    try {
+      if (finalPath !== ':memory:') {
+        this.db.exec('PRAGMA journal_mode = WAL;');
+      }
+      this.db.exec('PRAGMA busy_timeout = 10000;');
+    } catch {}
     this.initSchema();
   }
 

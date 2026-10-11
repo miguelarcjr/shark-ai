@@ -22,11 +22,20 @@ export class PendingApprovalsManager {
     private db: any;
 
     constructor(dbPath?: string) {
-        const resolvedPath = dbPath || path.resolve(process.cwd(), '.shark', 'state.db');
-        const dir = path.dirname(resolvedPath);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const isTestEnv = !!(process.env.VITEST || process.env.NODE_ENV === 'test');
+        const resolvedPath = dbPath || (isTestEnv ? ':memory:' : path.resolve(process.cwd(), '.shark', 'state.db'));
+        if (resolvedPath !== ':memory:') {
+            const dir = path.dirname(resolvedPath);
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        }
 
         this.db = new DatabaseSync(resolvedPath);
+        try {
+            if (resolvedPath !== ':memory:') {
+                this.db.exec('PRAGMA journal_mode = WAL;');
+            }
+            this.db.exec('PRAGMA busy_timeout = 10000;');
+        } catch {}
         this.initSchema();
     }
 
