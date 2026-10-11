@@ -72,6 +72,7 @@ export class AgentEngine {
     private cronScheduler: CronScheduler;
     private cronExecutor: CronExecutor;
     private cronToolHandler: CronToolHandler;
+    private activeMessageQueue?: MessageQueue;
 
     constructor(options: AgentEngineOptions = {}) {
         this.sessionId = options.sessionId || `session_${Date.now()}`;
@@ -167,6 +168,14 @@ export class AgentEngine {
         } else if (targetChannel === 'cli') {
             tui.log.info(messageText);
         }
+
+        if (this.activeMessageQueue) {
+            this.activeMessageQueue.enqueue({
+                type: 'subagent_notification',
+                content: `[Cron: ${job.id}] ${result.success ? 'Concluído com sucesso' : 'Falhou'}.\n${result.output}`,
+                timestamp: Date.now()
+            });
+        }
     }
 
     public attachAdapter(adapter: AgentChannelAdapter) {
@@ -226,6 +235,7 @@ export class AgentEngine {
         const effectiveSessionId = options.sessionId || this.sessionId || 'default';
         const projectRoot = options.projectRoot || this.getSessionWorkspace(effectiveSessionId);
         const messageQueue = options.messageQueue || new MessageQueue();
+        this.activeMessageQueue = messageQueue;
         const myId = effectiveTaskId || 'parent';
 
         // 1. Prepara contexto e subsistemas via EngineContextBuilder
@@ -403,6 +413,7 @@ export class AgentEngine {
             if (this.currentTurnAbort === abortController) {
                 this.currentTurnAbort = undefined;
             }
+            this.activeMessageQueue = undefined;
         }
     }
 
