@@ -176,7 +176,7 @@ Your goal is to address the user's request:
         let currentBasePrompt = buildBasePrompt(options.taskInstruction || '');
 
         return {
-            dynamicSystemPrompt,
+            get dynamicSystemPrompt() { return dynamicSystemPrompt; },
             get basePrompt() { return currentBasePrompt; },
             setTaskInstruction: (instruction: string) => {
                 currentBasePrompt = buildBasePrompt(instruction);

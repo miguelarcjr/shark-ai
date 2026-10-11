@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import path from 'node:path';
+import fs from 'node:fs';
 import { interactiveDeveloperAgent, waitForInputOrNotification } from './developer-agent.js';
 import { MessageQueue } from '../workflow/message-queue.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
@@ -159,6 +160,8 @@ describe('DeveloperAgent', () => {
     });
 
     it('should refresh memory snapshot when memory action is executed', async () => {
+        const memFile = path.resolve(process.cwd(), '.shark', 'MEMORY.md');
+        try { if (fs.existsSync(memFile)) fs.unlinkSync(memFile); } catch {}
         let callCount = 0;
         vi.mocked(mockProvider.streamChat).mockImplementation(async () => {
             callCount++;
@@ -190,16 +193,19 @@ describe('DeveloperAgent', () => {
             } as any;
         });
 
+        try {
+            await interactiveDeveloperAgent({
+                taskId: 'test-memory-refresh',
+                taskInstruction: 'Update memory',
+                auto: true,
+            });
 
-        await interactiveDeveloperAgent({
-            taskId: 'test-memory-refresh',
-            taskInstruction: 'Update memory',
-            auto: true,
-        });
-
-        expect(callCount).toBe(2);
-        const secondCallArgs = vi.mocked(mockProvider.streamChat).mock.calls[1];
-        expect(secondCallArgs[1].systemPrompt).toContain('New project convention: Vitest ESM');
+            expect(callCount).toBe(2);
+            const secondCallArgs = vi.mocked(mockProvider.streamChat).mock.calls[1];
+            expect(secondCallArgs[1].systemPrompt).toContain('New project convention: Vitest ESM');
+        } finally {
+            try { if (fs.existsSync(memFile)) fs.unlinkSync(memFile); } catch {}
+        }
     });
 
 
