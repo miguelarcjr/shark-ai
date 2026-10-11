@@ -113,6 +113,12 @@ export const NATIVE_TOOLS_REGISTRY: Record<string, NativeToolDefinition> = {
         required: [],
         optional: ['summary', 'content'],
         exampleArgs: { summary: 'Tarefa finalizada com sucesso.', content: 'Todos os testes foram executados e passaram.' }
+    },
+    cronjob: {
+        description: 'Gerencia tarefas agendadas (cronjobs) para execução futura ou recorrente.',
+        required: ['action'],
+        optional: ['schedule', 'prompt', 'script', 'monitor_script', 'no_agent', 'skills', 'deliver', 'id', 'name'],
+        exampleArgs: { action: 'create', schedule: 'every 1h', prompt: 'Verificar status do servidor' }
     }
 };
 

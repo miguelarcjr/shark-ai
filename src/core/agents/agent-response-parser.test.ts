@@ -377,5 +377,51 @@ describe('AgentResponseParser', () => {
         expect((parsed.action as any)?.timeout_seconds).toBe(60);
         expect((parsed.action as any)?.watch_patterns).toEqual(["Local: http://localhost:4200"]);
     });
+
+    it('should parse cronjob action with full arguments', () => {
+        const raw = JSON.stringify({
+            thought: "Agendando monitoramento do servidor",
+            action: {
+                type: "cronjob",
+                args: {
+                    action: "create",
+                    schedule: "every 1h",
+                    prompt: "Verificar healthcheck e logar status",
+                    deliver: "origin"
+                }
+            },
+            summary: "Agendamento criado com sucesso"
+        });
+        const parsed = parseAgentResponse(raw);
+        expect(parsed.isError).toBe(false);
+        expect(parsed.action?.type).toBe("cronjob");
+        expect((parsed.action as any)?.action).toBe("create");
+        expect((parsed.action as any)?.schedule).toBe("every 1h");
+        expect((parsed.action as any)?.prompt).toBe("Verificar healthcheck e logar status");
+        expect((parsed.action as any)?.deliver).toBe("origin");
+    });
+
+    it('should parse raw StackSpot provider response containing cronjob', () => {
+        const stackspotRaw = {
+            message: JSON.stringify({
+                thought: "Criando cronjob via StackSpot AI",
+                action: {
+                    type: "cronjob",
+                    args: {
+                        action: "create",
+                        schedule: "every 30m",
+                        prompt: "checar integridade do banco"
+                    }
+                },
+                summary: "Cronjob registrado"
+            }),
+            conversation_id: "stackspot-conv-456"
+        };
+        const parsed = parseAgentResponse(stackspotRaw);
+        expect(parsed.isError).toBe(false);
+        expect(parsed.conversation_id).toBe("stackspot-conv-456");
+        expect(parsed.action?.type).toBe("cronjob");
+        expect((parsed.action as any)?.schedule).toBe("every 30m");
+    });
 });
 

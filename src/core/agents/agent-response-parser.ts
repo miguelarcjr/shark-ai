@@ -51,6 +51,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         'complete_task',
         'wait',
         'notify_user',
+        'cronjob',
         'ast_list_structure',
         'ast_get_method',
         'ast_add_method', 'ast_modify_method', 'ast_remove_method',
@@ -85,6 +86,14 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     action: z.string().nullable().optional(),
     old_str: z.string().nullable().optional(),
     limit: z.number().nullable().optional(),
+    schedule: z.string().nullable().optional(),
+    prompt: z.string().nullable().optional(),
+    script: z.string().nullable().optional(),
+    monitor_script: z.string().nullable().optional(),
+    no_agent: z.boolean().nullable().optional(),
+    skills: z.array(z.string()).nullable().optional(),
+    deliver: z.string().nullable().optional(),
+    id: z.string().nullable().optional(),
  
     // search_code fields
     query: z.string().nullable().optional(),
