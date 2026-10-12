@@ -45,7 +45,7 @@ describe('TurnLoopRunner', () => {
         });
 
         expect(result.success).toBe(true);
-        expect(result.summary).toBe('Finished building component');
+        expect(result.summary).toBe('All done!');
     });
 
     it('handles complete_task action properly', async () => {
@@ -89,6 +89,48 @@ describe('TurnLoopRunner', () => {
         });
 
         expect(result.success).toBe(true);
-        expect(result.summary).toBe('Completed via action');
+        expect(result.summary).toBe('Detailed info');
+    });
+
+    it('terminates immediately in batch mode when provider returns standard conversational message', async () => {
+        const mockProvider = {
+            streamChat: vi.fn().mockResolvedValue({
+                message: 'Aqui está sua resposta direta!'
+            })
+        };
+
+        const mockContext = {
+            dynamicSystemPrompt: 'prompt',
+            basePrompt: 'task base',
+            activeProvider: mockProvider,
+            activeConversationId: 'c1',
+            conversationKey: 'k1',
+            mcpManager: { getAvailableTools: () => [] },
+            forkReviewAgent: {
+                onUserTurn: vi.fn(),
+                onToolIteration: vi.fn(),
+                maybeTriggerReview: vi.fn(),
+                currentReviewPromise: undefined
+            },
+            updateDynamicPrompt: vi.fn()
+        } as any;
+
+        const actionExecutor = {
+            executeAction: vi.fn()
+        } as any;
+
+        const result = await TurnLoopRunner.run({
+            sessionId: 's1',
+            projectRoot: process.cwd(),
+            isBatchMode: true,
+            messageQueue: new MessageQueue(),
+            abortController: new AbortController(),
+            actionExecutor,
+            context: mockContext
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.summary).toBe('Aqui está sua resposta direta!');
     });
 });
+

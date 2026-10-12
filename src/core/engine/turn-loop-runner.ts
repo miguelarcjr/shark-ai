@@ -217,8 +217,9 @@ export class TurnLoopRunner {
                     console.log(mainContent);
                 }
 
-                finalSummary = response.message.split('TASK_COMPLETED:')[1].trim();
-                log.success(`✔ Task Completed: ${finalSummary}`);
+                const taskSummary = response.message.split('TASK_COMPLETED:')[1].trim();
+                log.success(`✔ Task Completed: ${taskSummary}`);
+                finalSummary = mainContent || taskSummary;
 
                 if (effectiveTaskId) {
                     subagentManager.updateSubagentSummary(effectiveTaskId, finalSummary);
@@ -371,7 +372,7 @@ export class TurnLoopRunner {
                             `[Subagent Notification] Subagent ${role} (${effectiveTaskId}) completed.\nResult Details:\n${detailedContent}`
                         );
                     }
-                    finalSummary = taskSummary;
+                    finalSummary = detailedContent || taskSummary;
                     keepGoing = false;
                     break;
                 } else {
@@ -384,14 +385,14 @@ export class TurnLoopRunner {
                         const nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
                         userDraftBuffer = (nextMsg as any).draft || '';
                         if (nextMsg.type === 'user' && isUserCancellation(nextMsg.content)) {
-                            finalSummary = taskSummary;
+                            finalSummary = detailedContent || taskSummary;
                             keepGoing = false;
                             break;
                         }
                         currentPrompt = nextMsg.content;
                         continue;
                     } else {
-                        finalSummary = taskSummary;
+                        finalSummary = detailedContent || taskSummary;
                         keepGoing = false;
                         break;
                     }
