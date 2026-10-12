@@ -21,6 +21,7 @@ export const devCommand = new Command('dev')
     .option('--taskId <id>', 'ID of the current subagent task')
     .option('--skip-memory', 'Skip persistent memory modifications during task execution', false)
     .option('--graph', 'Enable real-time memory graph visualization', false)
+    .option('--result-file <path>', 'Path to write structured JSON execution result')
     .action(async (options) => {
         if (options.exportSchema) {
             console.log(JSON.stringify(AGENT_RESPONSE_JSON_SCHEMA, null, 2));
@@ -65,6 +66,25 @@ export const devCommand = new Command('dev')
                 taskId: options.taskId,
                 skipMemory: options.skipMemory
             });
+
+            if (options.resultFile) {
+                try {
+                    const resultPayload = {
+                        success: result.success,
+                        summary: result.summary,
+                        error: result.error || null
+                    };
+                    const targetPath = path.resolve(process.cwd(), options.resultFile);
+                    const dir = path.dirname(targetPath);
+                    if (!fs.existsSync(dir)) {
+                        fs.mkdirSync(dir, { recursive: true });
+                    }
+                    fs.writeFileSync(targetPath, JSON.stringify(resultPayload, null, 2), 'utf-8');
+                } catch (writeErr: any) {
+                    console.error('Failed to write result file:', writeErr.message);
+                }
+            }
+
             if (!result.success) {
                 console.error('Task execution failed:', result.summary);
                 process.exit(1);

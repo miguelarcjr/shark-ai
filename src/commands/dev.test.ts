@@ -127,5 +127,31 @@ describe('Dev Command (Single Agent)', () => {
             skipMemory: true
         }));
     });
+
+    it('should write execution result to --result-file when provided', async () => {
+        vi.mocked(interactiveDeveloperAgent).mockResolvedValue({
+            success: true,
+            summary: 'Resultado da tarefa do cron'
+        });
+
+        const fs = await import('node:fs');
+        const path = await import('node:path');
+        const tempResultFile = path.resolve(process.cwd(), 'temp-result-test.json');
+
+        try {
+            await devCommand.parseAsync(['node', 'shark', 'dev', '-t', 'Test result output', '-y', '--result-file', tempResultFile]);
+            expect(fs.existsSync(tempResultFile)).toBe(true);
+            const content = JSON.parse(fs.readFileSync(tempResultFile, 'utf-8'));
+            expect(content).toEqual({
+                success: true,
+                summary: 'Resultado da tarefa do cron',
+                error: null
+            });
+        } finally {
+            if (fs.existsSync(tempResultFile)) {
+                fs.unlinkSync(tempResultFile);
+            }
+        }
+    });
 });
 
