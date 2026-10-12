@@ -113,6 +113,35 @@ describe('HistoryManager', () => {
             expect(updatedRaw[updatedRaw.length - 1].content).toBe('Assistant response 1');
         });
     });
+
+    describe('mergeConsecutiveRoles', () => {
+        it('should merge consecutive user messages with double newline separator', async () => {
+            const { mergeConsecutiveRoles } = await import('./history-manager.js');
+            const input = [
+                { role: 'system' as const, content: 'sys' },
+                { role: 'user' as const, content: '[Cron delivery: Daily Report]\nDone.' },
+                { role: 'user' as const, content: 'What is the next step?' }
+            ];
+            const result = mergeConsecutiveRoles(input);
+            expect(result).toHaveLength(2);
+            expect(result[0]).toEqual({ role: 'system', content: 'sys' });
+            expect(result[1]).toEqual({
+                role: 'user',
+                content: '[Cron delivery: Daily Report]\nDone.\n\nWhat is the next step?'
+            });
+        });
+
+        it('should keep already alternating roles unchanged', async () => {
+            const { mergeConsecutiveRoles } = await import('./history-manager.js');
+            const input = [
+                { role: 'user' as const, content: 'Hello' },
+                { role: 'assistant' as const, content: 'Hi' },
+                { role: 'user' as const, content: 'Help' }
+            ];
+            const result = mergeConsecutiveRoles(input);
+            expect(result).toEqual(input);
+        });
+    });
 });
 
 

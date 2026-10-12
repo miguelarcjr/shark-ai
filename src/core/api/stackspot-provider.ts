@@ -8,7 +8,7 @@ import { getActiveRealm } from '../auth/get-active-realm.js';
 import { ConfigManager } from '../config-manager.js';
 import { UNIFIED_SYSTEM_PROMPT, SUBAGENT_SYSTEM_PROMPT } from './prompts.js';
 import { FileLogger } from '../debug/file-logger.js';
-import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
+import { HistoryManager, ChatMessage, mergeConsecutiveRoles } from '../workflow/history-manager.js';
 import crypto from 'node:crypto';
 import { skillManager } from '../workflow/skill-manager.js';
 import { compactToolOutputRetroactively, cleanResponseObject } from './openai-compatible-provider.js';
@@ -122,7 +122,7 @@ export class StackSpotProvider implements AIProvider {
             
             let compiledPrompt = `SYSTEM INSTRUCTIONS:\n${staticSystem}\n\n`;
             
-            const historyCopy = history.filter(m => m.role !== 'system');
+            const historyCopy = mergeConsecutiveRoles(history.filter(m => m.role !== 'system'));
             const newPromptMsg = historyCopy.pop();
             
             for (const msg of historyCopy) {

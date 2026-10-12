@@ -1,7 +1,7 @@
 import { AIProvider, ChatOptions, CompletePromptOptions } from './provider.interface.js';
 import { AgentResponse, parseAgentResponse } from '../agents/agent-response-parser.js';
 import { toCanonicalAssistantMessage } from '../agents/canonical-response.js';
-import { HistoryManager, ChatMessage } from '../workflow/history-manager.js';
+import { HistoryManager, ChatMessage, mergeConsecutiveRoles } from '../workflow/history-manager.js';
 import { UNIFIED_SYSTEM_PROMPT, SUBAGENT_SYSTEM_PROMPT, COORDINATOR_RESPONSE_JSON_SCHEMA, SUBAGENT_RESPONSE_JSON_SCHEMA, AGENT_RESPONSE_JSON_SCHEMA } from './prompts.js';
 import crypto from 'node:crypto';
 import { FileLogger } from '../debug/file-logger.js';
@@ -207,10 +207,12 @@ export class OpenAICompatibleProvider implements AIProvider {
             requestMessages.push(newPromptMsg);
         }
 
+        const normalizedRequestMessages = mergeConsecutiveRoles(requestMessages);
+
         const useStream = this.options.stream !== false;
         const requestPayload: any = {
             model: this.options.model,
-            messages: requestMessages,
+            messages: normalizedRequestMessages,
             stream: useStream,
             temperature: 0.2,
             ...(this.options.extraBody || {})

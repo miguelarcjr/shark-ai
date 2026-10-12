@@ -6,6 +6,27 @@ export interface ChatMessage {
     content: string;
 }
 
+/**
+ * Sanitiza o array de mensagens em memória antes de enviar à API da LLM,
+ * fundindo mensagens consecutivas com o mesmo papel (ex: user seguido de user).
+ * Preserva o histórico físico íntegro no banco e garante conformidade de transporte.
+ */
+export function mergeConsecutiveRoles(messages: ChatMessage[]): ChatMessage[] {
+    const result: ChatMessage[] = [];
+    for (const msg of messages) {
+        if (!msg || !msg.content) continue;
+        if (result.length > 0 && result[result.length - 1].role === msg.role) {
+            result[result.length - 1] = {
+                ...result[result.length - 1],
+                content: `${result[result.length - 1].content}\n\n${msg.content}`
+            };
+        } else {
+            result.push({ ...msg });
+        }
+    }
+    return result;
+}
+
 export class HistoryManager {
     private static getHistoryDir(): string {
         const dir = path.resolve(process.cwd(), '_sharkrc', 'history');
