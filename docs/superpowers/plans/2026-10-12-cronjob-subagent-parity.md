@@ -27,7 +27,7 @@
 - Consumes: `options.resultFile?: string` from CLI args.
 - Produces: Writes atomic JSON `{ success: boolean, summary: string, error?: string | null }` to specified path.
 
-- [ ] **Step 1: Write the failing test for `--result-file`**
+- [x] **Step 1: Write the failing test for `--result-file`**
 
 In `src/commands/dev.test.ts`, add:
 ```typescript
@@ -47,12 +47,12 @@ In `src/commands/dev.test.ts`, add:
     });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/commands/dev.test.ts`
 Expected: FAIL (argument unknown or file not created)
 
-- [ ] **Step 3: Implement `--result-file` option in `src/commands/dev.ts`**
+- [x] **Step 3: Implement `--result-file` option in `src/commands/dev.ts`**
 
 In `src/commands/dev.ts`, register the option:
 ```typescript
@@ -97,12 +97,12 @@ And in the action handler:
         }
 ```
 
-- [ ] **Step 4: Run test to verify it passes**
+- [x] **Step 4: Run test to verify it passes**
 
 Run: `npx vitest run src/commands/dev.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/commands/dev.ts src/commands/dev.test.ts; git commit -m "feat(cli): add --result-file option to dev command"
@@ -120,7 +120,7 @@ git add src/commands/dev.ts src/commands/dev.test.ts; git commit -m "feat(cli): 
 - Consumes: `process.env.SHARK_CRON_EXECUTION`, `job: CronJob`, `result: ExecutorRunResult`.
 - Produces: `process.send({ type: 'cron_completion', success, summary })`, message formatted with `[Cron: <name>]`.
 
-- [ ] **Step 1: Write the failing tests for Cron IPC and Delivery Formatting**
+- [x] **Step 1: Write the failing tests for Cron IPC and Delivery Formatting**
 
 In `src/core/engine/agent-engine.test.ts`, add tests:
 ```typescript
@@ -185,12 +185,12 @@ In `src/core/engine/agent-engine.test.ts`, add tests:
     });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/engine/agent-engine.test.ts`
 Expected: FAIL (header format missing or condition mismatch)
 
-- [ ] **Step 3: Update `AgentEngine` with IPC emit and delivery formatting**
+- [x] **Step 3: Update `AgentEngine` with IPC emit and delivery formatting**
 
 In `src/core/engine/agent-engine.ts`, in `runInteractive` after task completion (around line 438):
 ```typescript
@@ -244,12 +244,12 @@ And in `deliverCronResult(job: CronJob, result: ExecutorRunResult)`:
         }
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [x] **Step 4: Run tests to verify they pass**
 
 Run: `npx vitest run src/core/engine/agent-engine.test.ts`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/engine/agent-engine.ts src/core/engine/agent-engine.test.ts; git commit -m "feat(engine): add cron IPC completion and WhatsApp delivery formatting"
@@ -267,7 +267,7 @@ git add src/core/engine/agent-engine.ts src/core/engine/agent-engine.test.ts; gi
 - Consumes: `job.script` (pre-run), `job.prompt`, `job.skills`, `child.stdout`, `child.stderr`, IPC message `cron_completion`, `--result-file`.
 - Produces: `ExecutorRunResult` with clean output, console logs piped to `.shark/cron/output/<jobId>-console.log`, `silent: boolean`.
 
-- [ ] **Step 1: Write unit tests in `cron-executor.test.ts`**
+- [x] **Step 1: Write unit tests in `cron-executor.test.ts`**
 
 Add tests for:
 1. Pre-execution script output injected into task prompt when `!job.no_agent && job.script`.
@@ -304,12 +304,12 @@ Add tests for:
     });
 ```
 
-- [ ] **Step 2: Run test to verify it fails**
+- [x] **Step 2: Run test to verify it fails**
 
 Run: `npx vitest run src/core/cron/cron-executor.test.ts`
 Expected: FAIL (methods not yet defined)
 
-- [ ] **Step 3: Implement `buildTaskBriefContent` and Subagent IPC / Pipe in `CronExecutor`**
+- [x] **Step 3: Implement `buildTaskBriefContent` and Subagent IPC / Pipe in `CronExecutor`**
 
 In `src/core/cron/cron-executor.ts`:
 1. Add `buildTaskBriefContent(job: CronJob, preScriptOutput?: string): string`:
@@ -431,12 +431,12 @@ Set up `.pipe()` for logs and IPC listener:
         });
 ```
 
-- [ ] **Step 4: Run all cron tests**
+- [x] **Step 4: Run all cron tests**
 
 Run: `npx vitest run src/core/cron/`
 Expected: PASS
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/core/cron/cron-executor.ts src/core/cron/cron-executor.test.ts; git commit -m "feat(cron): refactor executor with subagent pipe streams, IPC message, and pre-run script injection"
@@ -449,12 +449,12 @@ git add src/core/cron/cron-executor.ts src/core/cron/cron-executor.test.ts; git 
 **Files:**
 - Test: `src/core/cron/cron-executor.test.ts`, `src/core/cron/cron-delivery-mirror.test.ts`, `src/core/engine/agent-engine.test.ts`, `src/commands/dev.test.ts`
 
-- [ ] **Step 1: Run complete vitest test suite**
+- [x] **Step 1: Run complete vitest test suite**
 
 Run: `npm test`
 Expected: ALL PASS
 
-- [ ] **Step 2: Commit any remaining docs/polish**
+- [x] **Step 2: Commit any remaining docs/polish**
 
 ```bash
 git add docs/superpowers/plans/2026-10-12-cronjob-subagent-parity.md; git commit -m "docs(cron): add complete implementation plan for cronjob subagent parity"
