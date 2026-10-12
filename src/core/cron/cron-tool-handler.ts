@@ -65,6 +65,9 @@ export class CronToolHandler {
         const nextRunAt = calculateNextRunAt(args.schedule, now);
         const jobId = `job-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
 
+        const isOrigin = !args.deliver || args.deliver === 'origin';
+        const attachToSession = args.attach_to_session !== undefined ? args.attach_to_session : isOrigin;
+
         const newJob: CronJob = {
             id: jobId,
             name: args.name,
@@ -76,6 +79,7 @@ export class CronToolHandler {
             no_agent: args.no_agent,
             skills: args.skills,
             deliver: args.deliver || 'origin',
+            attach_to_session: attachToSession,
             origin_channel: this.originChannel,
             origin_recipient_id: this.originRecipientId,
             created_at: now,
@@ -123,6 +127,7 @@ export class CronToolHandler {
         if (args.monitor_script !== undefined) job.monitor_script = args.monitor_script;
         if (args.skills !== undefined) job.skills = args.skills;
         if (args.deliver !== undefined) job.deliver = args.deliver;
+        if (args.attach_to_session !== undefined) job.attach_to_session = args.attach_to_session;
 
         this.storage.saveDatabase(db);
         return { success: true, message: `Job '${args.id}' updated.`, job };

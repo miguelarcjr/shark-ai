@@ -12,6 +12,7 @@ export interface CronJob {
     last_monitor_hash?: string;
     skills?: string[];
     deliver: 'origin' | 'local' | string;
+    attach_to_session?: boolean;
     origin_channel?: string;
     origin_recipient_id?: string;
     created_at: number;
@@ -41,6 +42,7 @@ export interface CronToolArgs {
     no_agent?: boolean;
     skills?: string[];
     deliver?: string;
+    attach_to_session?: boolean;
 }
 
 export interface CronToolResult {

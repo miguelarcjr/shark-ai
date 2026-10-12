@@ -110,4 +110,44 @@ describe('CronToolHandler', () => {
         expect(res.job?.origin_channel).toBe('whatsapp');
         expect(res.job?.origin_recipient_id).toBe('120363431367146933@g.us');
     });
+
+    it('should default attach_to_session to true when deliver is origin or omitted', async () => {
+        const res = await handler.handleAction({
+            action: 'create',
+            schedule: '10m',
+            prompt: 'test prompt',
+            deliver: 'origin'
+        });
+        expect(res.success).toBe(true);
+        expect(res.job?.attach_to_session).toBe(true);
+
+        const resOmitted = await handler.handleAction({
+            action: 'create',
+            schedule: '10m',
+            prompt: 'test prompt'
+        });
+        expect(resOmitted.success).toBe(true);
+        expect(resOmitted.job?.attach_to_session).toBe(true);
+    });
+
+    it('should default attach_to_session to false for third party deliver unless explicit', async () => {
+        const res = await handler.handleAction({
+            action: 'create',
+            schedule: '10m',
+            prompt: 'test prompt',
+            deliver: 'whatsapp:12345'
+        });
+        expect(res.success).toBe(true);
+        expect(res.job?.attach_to_session).toBe(false);
+
+        const resExplicit = await handler.handleAction({
+            action: 'create',
+            schedule: '10m',
+            prompt: 'test prompt',
+            deliver: 'whatsapp:12345',
+            attach_to_session: true
+        });
+        expect(resExplicit.success).toBe(true);
+        expect(resExplicit.job?.attach_to_session).toBe(true);
+    });
 });

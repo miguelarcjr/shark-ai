@@ -103,6 +103,48 @@ export const NATIVE_TOOLS_REGISTRY: Record<string, NativeToolDefinition> = {
         optional: ['file_path'],
         exampleArgs: { name: 'brainstorming' }
     },
+    skill_manage: {
+        description: 'Cria, edita, aplica patch ou remove arquivos/skills no repositório.',
+        required: ['action', 'name'],
+        optional: ['content', 'file_path', 'old_string', 'new_string'],
+        exampleArgs: { action: 'patch', name: 'my-skill', old_string: 'old', new_string: 'new' }
+    },
+    activate_skill: {
+        description: 'Ativa uma skill específica no fluxo atual.',
+        required: [],
+        optional: ['name', 'skill_name'],
+        exampleArgs: { name: 'brainstorming' }
+    },
+    invoke_subagent: {
+        description: 'Delega uma tarefa técnica isolada para um subagente.',
+        required: [],
+        optional: ['task_file', 'Subagents'],
+        exampleArgs: { task_file: '.shark/sdd/task-brief.md' }
+    },
+    wait: {
+        description: 'Aguarda a conclusão ou notificação de processos em background ou subagentes.',
+        required: [],
+        optional: [],
+        exampleArgs: {}
+    },
+    notify_user: {
+        description: 'Envia uma notificação direta ao usuário.',
+        required: ['content'],
+        optional: [],
+        exampleArgs: { content: 'Processo concluído com sucesso.' }
+    },
+    memory: {
+        description: 'Gerencia memória persistente (projeto ou usuário).',
+        required: ['action', 'target'],
+        optional: ['content', 'old_str', 'id'],
+        exampleArgs: { action: 'add', target: 'memory', content: 'Fato durável' }
+    },
+    session_search: {
+        description: 'Pesquisa histórico de conversas anteriores.',
+        required: ['query'],
+        optional: ['limit'],
+        exampleArgs: { query: 'termo de busca', limit: 5 }
+    },
     talk_with_user: {
         description: 'Envia uma mensagem direta de conversa ou pergunta para o usuário humano.',
         required: ['content'],
@@ -117,7 +159,7 @@ export const NATIVE_TOOLS_REGISTRY: Record<string, NativeToolDefinition> = {
     cronjob: {
         description: 'Gerencia tarefas agendadas (cronjobs) para execução futura ou recorrente.',
         required: ['action'],
-        optional: ['schedule', 'prompt', 'script', 'monitor_script', 'no_agent', 'skills', 'deliver', 'id', 'name'],
+        optional: ['schedule', 'prompt', 'script', 'monitor_script', 'no_agent', 'skills', 'deliver', 'attach_to_session', 'id', 'name'],
         exampleArgs: { action: 'create', schedule: 'every 1h', prompt: 'Verificar status do servidor' }
     }
 };

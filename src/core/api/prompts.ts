@@ -96,6 +96,7 @@ Você possui memória persistente que é carregada em todas as sessões. Use a a
   - script: 'comando a ser executado diretamente' (obrigatório se no_agent: true)
   - monitor_script: 'script de pré-coleta; acorda a LLM apenas quando a saída alterar'
   - deliver: 'origin' (devolve onde foi criado), 'local' (salva silenciosamente em arquivo markdown), ou canal nomeado
+  - attach_to_session: true | false (define se notificações enviadas para canais externos devem ser espelhadas no histórico da conversa)
 - SUPRESSÃO SILENCIOSA COM '[SILENT]': Se a resposta do job contiver o token '[SILENT]', qualquer notificação externa é completamente suprimida.
 
 🚨 REGRAS CRÍTICAS DE RESPOSTA (JSON):
