@@ -2,10 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CronStorage } from './cron-storage.js';
-import { CronExecutor } from './cron-executor.js';
+import { CronExecutor, isExecutionSilent } from './cron-executor.js';
 import type { CronJob } from './cron-types.js';
 
-describe('CronExecutor', () => {
+describe('CronExecutor', { timeout: 15000 }, () => {
     const testDir = path.resolve(process.cwd(), '.shark', 'test-cron-executor');
     let storage: CronStorage;
     let executor: CronExecutor;
@@ -85,5 +85,50 @@ describe('CronExecutor', () => {
         const secondRun = await executor.execute(job);
         expect(secondRun.diffDetected).toBe(false);
         expect(secondRun.silent).toBe(true);
+    });
+
+    describe('isExecutionSilent', () => {
+        it('should return true for standalone [SILENT] token', () => {
+            expect(isExecutionSilent('[SILENT]')).toBe(true);
+            expect(isExecutionSilent('  [SILENT]  \n')).toBe(true);
+        });
+
+        it('should return true when bot response after Shark Dev is [SILENT]', () => {
+            const output = `[START] working...\n[INFO] 🤖 Shark Dev:\n[SILENT]\n[SUCCESS] ✔ Task Completed: [SILENT]`;
+            expect(isExecutionSilent(output)).toBe(true);
+        });
+
+        it('should NOT return true when [SILENT] is only mentioned in thoughts or instructions', () => {
+            const output = `[START] working...\n[INFO] 💭 Se houver mudanças, devo enviar alerta em vez de suprimir com [SILENT].\n[INFO] 🤖 Shark Dev:\n🚨 ALERTA DO GIT WATCHDOG 🚨\nForam detectadas 26 mudanças.\n[SUCCESS] ✔ Task Completed: Alerta do Git Watchdog`;
+            expect(isExecutionSilent(output)).toBe(false);
+        });
+    });
+
+    describe('buildTaskBriefContent and pre-execution script injection', () => {
+        it('should build task brief with _CRON_HINT and preScriptOutput', () => {
+            const job: CronJob = {
+                id: 'job-prescript',
+                name: 'Monitoramento de Servidor',
+                schedule: 'every 1h',
+                status: 'scheduled',
+                prompt: 'Analise o status dos servidores.',
+                skills: ['domain-research'],
+                script: 'node -e "console.log(\'SERVER_OK=true\')"',
+                no_agent: false,
+                created_at: Date.now(),
+                next_run_at: Date.now() + 3600000,
+                run_count: 0
+            };
+
+            const content = executor.buildTaskBriefContent(job, 'SERVER_OK=true');
+            expect(content).toContain('# Scheduled Cron Task: Monitoramento de Servidor');
+            expect(content).toContain('[IMPORTANT: You are running as a scheduled cron job.');
+            expect(content).toContain('SILENT: If there is genuinely nothing new to report, respond with exactly "[SILENT]"');
+            expect(content).toContain('AUTONOMY: Do not ask questions or prompt the user for confirmation');
+            expect(content).toContain('> Injected Skills: domain-research');
+            expect(content).toContain('## Dados Coletados pelo Script de Monitoramento / Pré-Execução:');
+            expect(content).toContain('SERVER_OK=true');
+            expect(content).toContain('Analise o status dos servidores.');
+        });
     });
 });
