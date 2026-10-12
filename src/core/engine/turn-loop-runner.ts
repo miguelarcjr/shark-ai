@@ -14,6 +14,7 @@ import type { AgentActionExecutor } from './agent-action-executor.js';
 export interface DevelopmentResult {
     success: boolean;
     summary: string;
+    error?: string;
 }
 
 export interface TurnLoopOptions {
@@ -311,24 +312,37 @@ export class TurnLoopRunner {
                         const rawHistory = await HistoryManager.getRawHistory(activeConversationId);
                         void forkReviewAgent.maybeTriggerReview(rawHistory);
                     }
-                    const nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode);
-                    if (nextMsg.type === 'user') {
-                        forkReviewAgent.onUserTurn();
-                        if (isUserCancellation(nextMsg.content)) {
-                            keepGoing = false;
-                            break;
+                    if (!isBatchMode || subagentManager.getActiveSubagentsForParent(myId).length > 0) {
+                        const nextMsg = await waitForInputOrNotification(messageQueue, 'Your answer:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                        userDraftBuffer = (nextMsg as any).draft || '';
+                        if (nextMsg.type === 'user') {
+                            forkReviewAgent.onUserTurn();
+                            if (isUserCancellation(nextMsg.content)) {
+                                finalSummary = response.message;
+                                keepGoing = false;
+                                break;
+                            }
                         }
+                        currentPrompt = nextMsg.content;
+                        continue;
+                    } else {
+                        finalSummary = response.message;
+                        keepGoing = false;
+                        break;
                     }
-                    currentPrompt = nextMsg.content;
                 } else {
                     log.warning('No action or message returned by the agent.');
-                    const nextMsg = await waitForInputOrNotification(messageQueue, 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', subagentPrefix, undefined, isBatchMode);
+                    if (isBatchMode && subagentManager.getActiveSubagentsForParent(myId).length === 0) {
+                        return { success: true, summary: 'Task completed without summary.' };
+                    }
+                    const nextMsg = await waitForInputOrNotification(messageQueue, 'Agent returned empty response. Type a message to continue or press Ctrl+C to cancel:', subagentPrefix, undefined, isBatchMode, userDraftBuffer);
+                    userDraftBuffer = (nextMsg as any).draft || '';
                     if (nextMsg.type === 'user' && isUserCancellation(nextMsg.content)) {
                         return { success: true, summary: 'Task completed without summary.' };
                     }
                     currentPrompt = nextMsg.content;
+                    continue;
                 }
-                continue;
             }
 
             forkReviewAgent.onToolIteration();

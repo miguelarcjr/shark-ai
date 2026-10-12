@@ -115,6 +115,7 @@ describe('CronExecutor', { timeout: 15000 }, () => {
                 skills: ['domain-research'],
                 script: 'node -e "console.log(\'SERVER_OK=true\')"',
                 no_agent: false,
+                deliver: 'local',
                 created_at: Date.now(),
                 next_run_at: Date.now() + 3600000,
                 run_count: 0
