@@ -20,6 +20,8 @@ import { CronStorage } from '../cron/cron-storage.js';
 import { CronScheduler } from '../cron/cron-scheduler.js';
 import { CronExecutor, type ExecutorRunResult } from '../cron/cron-executor.js';
 import { CronToolHandler } from '../cron/cron-tool-handler.js';
+import { CronDeliveryMirror } from '../cron/cron-delivery-mirror.js';
+import { conversationManager } from '../workflow/conversation-manager.js';
 import type { CronJob } from '../cron/cron-types.js';
 
 export { DevelopmentResult };
@@ -150,23 +152,44 @@ export class AgentEngine {
             }
         }
 
+        let deliverySuccess = false;
         const targetAdapter = this.adapters.find(a => a.channelId === targetChannel);
         if (targetAdapter) {
-            if (targetChannel === 'cli') {
-                await Promise.resolve(targetAdapter.emit({
-                    type: 'reasoning_delta',
-                    sessionId: this.sessionId,
-                    delta: result.success ? `[info] ${messageText}` : `[warning] ${messageText}`
-                }));
-            } else {
-                await Promise.resolve(targetAdapter.emit({
-                    type: 'turn_completed',
-                    sessionId: `${targetChannel}:dm:${recipientId}`,
-                    summary: messageText
-                }));
+            try {
+                if (targetChannel === 'cli') {
+                    await Promise.resolve(targetAdapter.emit({
+                        type: 'reasoning_delta',
+                        sessionId: this.sessionId,
+                        delta: result.success ? `[info] ${messageText}` : `[warning] ${messageText}`
+                    }));
+                } else {
+                    await Promise.resolve(targetAdapter.emit({
+                        type: 'turn_completed',
+                        sessionId: `${targetChannel}:dm:${recipientId}`,
+                        summary: messageText
+                    }));
+                }
+                deliverySuccess = true;
+            } catch (err) {
+                deliverySuccess = false;
             }
         } else if (targetChannel === 'cli') {
             tui.log.info(messageText);
+            deliverySuccess = true;
+        }
+
+        // Espelha a notificação na sessão da conversa (Delivery Mirroring)
+        if (deliverySuccess) {
+            try {
+                await CronDeliveryMirror.mirrorToSession({
+                    job,
+                    deliveredText: messageText,
+                    deliverySuccess: true,
+                    projectRoot: this.projectRoot
+                });
+            } catch (err) {
+                console.warn('[AgentEngine] Erro ao executar mirrorToSession:', err);
+            }
         }
 
         if (this.activeMessageQueue) {
@@ -314,7 +337,7 @@ export class AgentEngine {
                 const handled = await onSlashCommand(initialInstruction);
                 if (handled) {
                     if (forkReviewAgent.currentReviewPromise) {
-                        await forkReviewAgent.currentReviewPromise.catch(() => {});
+                        void forkReviewAgent.currentReviewPromise.catch(() => {});
                     }
                     const summary = lastSlashResult?.summary || `Command ${initialInstruction} executed.`;
                     return { success: true, summary };
@@ -389,7 +412,7 @@ export class AgentEngine {
             terminateChildSubagents(myId);
 
             if (forkReviewAgent.currentReviewPromise) {
-                await forkReviewAgent.currentReviewPromise.catch(() => {});
+                void forkReviewAgent.currentReviewPromise.catch(() => {});
             }
 
             if (effectiveTaskId && process.env.SHARK_PARENT_ID) {
@@ -493,6 +516,29 @@ export class AgentEngine {
             return this.sessionWorkspaces.get(sessionId)!;
         }
         return this.projectRoot || process.cwd();
+    }
+
+    public async resetSessionConversation(sessionId: string): Promise<boolean> {
+        this.abortCurrentTurn('Conversation cleared by user');
+        const conversationKey = `session_${sessionId}`;
+        const activeProjectRoot = this.getSessionWorkspace(sessionId);
+        const originalCwd = process.cwd();
+        try {
+            if (activeProjectRoot && activeProjectRoot !== originalCwd) {
+                try {
+                    process.chdir(activeProjectRoot);
+                } catch {}
+            }
+            await conversationManager.clearConversationId(conversationKey);
+            this.forkReviewAgents.delete(sessionId);
+            return true;
+        } finally {
+            if (process.cwd() !== originalCwd) {
+                try {
+                    process.chdir(originalCwd);
+                } catch {}
+            }
+        }
     }
 
     private handleApprovalResponse(event: any) {

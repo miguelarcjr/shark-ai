@@ -5,6 +5,7 @@ import type { AgentInboundEvent, AgentOutboundEvent } from './events.js';
 import { SessionLeaseManager } from './session-lease.js';
 import { PendingApprovalsManager } from './pending-approvals.js';
 import { ProviderResolver } from '../api/provider-resolver.js';
+import { conversationManager } from '../workflow/conversation-manager.js';
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 
@@ -260,5 +261,54 @@ describe('AgentEngine Core', () => {
         });
 
         expect(adapter.emittedEvents.length).toBe(0);
+    });
+
+    it('clears conversationId and aborts active turn on resetSessionConversation', async () => {
+        const engine = new AgentEngine({
+            sessionId: 'test-sess-reset',
+            leaseManager: leaseMgr,
+            approvalsManager: approvalsMgr
+        });
+
+        const clearSpy = vi.spyOn(conversationManager, 'clearConversationId').mockResolvedValue();
+        const result = await engine.resetSessionConversation('test-sess-reset');
+
+        expect(result).toBe(true);
+        expect(clearSpy).toHaveBeenCalledWith('session_test-sess-reset');
+    });
+
+    it('should mirror delivered cron result to session when adapter emits successfully', async () => {
+        const { CronDeliveryMirror } = await import('../cron/cron-delivery-mirror.js');
+        const mirrorSpy = vi.spyOn(CronDeliveryMirror, 'mirrorToSession').mockResolvedValue(true);
+
+        const adapter = new MockAdapter();
+        const engine = new AgentEngine({
+            sessionId: 'test-cron-mirror',
+            leaseManager: leaseMgr,
+            approvalsManager: approvalsMgr
+        });
+        engine.attachAdapter(adapter);
+
+        await engine.deliverCronResult({
+            id: 'job-mirror-test',
+            schedule: '10m',
+            status: 'scheduled',
+            deliver: 'mock',
+            origin_channel: 'mock',
+            origin_recipient_id: 'chat-mirror',
+            created_at: Date.now(),
+            next_run_at: Date.now() + 600000,
+            run_count: 1
+        }, {
+            success: true,
+            output: 'Mirror test output',
+            silent: false
+        });
+
+        expect(mirrorSpy).toHaveBeenCalled();
+        const callArgs = mirrorSpy.mock.calls[0][0];
+        expect(callArgs.job.id).toBe('job-mirror-test');
+        expect(callArgs.deliverySuccess).toBe(true);
+        expect(callArgs.deliveredText).toContain('Mirror test output');
     });
 });
