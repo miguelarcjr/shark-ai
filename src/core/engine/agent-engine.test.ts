@@ -202,7 +202,39 @@ describe('AgentEngine Core', () => {
         const turnCompleted = adapter.emittedEvents.find(e => e.type === 'turn_completed') as any;
         expect(turnCompleted).toBeDefined();
         expect(turnCompleted.sessionId).toBe('mock:dm:chat-999');
-        expect(turnCompleted.summary).toBe('Backup finished successfully.');
+        expect(turnCompleted.summary).toBe('[Cron: job-1]\nBackup finished successfully.');
+    });
+
+    it('should format remote delivery with [Cron: name] header when job has name', async () => {
+        const adapter = new MockAdapter();
+        const engine = new AgentEngine({
+            sessionId: 'test-cron-named',
+            leaseManager: leaseMgr,
+            approvalsManager: approvalsMgr
+        });
+        engine.attachAdapter(adapter);
+
+        await engine.deliverCronResult({
+            id: 'job-named-1',
+            name: 'Relatório Diário',
+            schedule: 'every 1h',
+            status: 'scheduled',
+            deliver: 'origin',
+            origin_channel: 'mock',
+            origin_recipient_id: 'chat-999',
+            created_at: Date.now(),
+            next_run_at: Date.now() + 3600000,
+            run_count: 1
+        }, {
+            success: true,
+            output: 'Tudo operacional.',
+            cleanOutput: 'Tudo operacional.',
+            silent: false
+        });
+
+        const turnCompleted = adapter.emittedEvents.find(e => e.type === 'turn_completed') as any;
+        expect(turnCompleted).toBeDefined();
+        expect(turnCompleted.summary).toBe('[Cron: Relatório Diário]\nTudo operacional.');
     });
 
     it('should deliver failure alert when cronjob execution fails', async () => {
@@ -257,6 +289,7 @@ describe('AgentEngine Core', () => {
         }, {
             success: true,
             output: 'Nothing changed [SILENT]',
+            cleanOutput: '[SILENT]',
             silent: true
         });
 

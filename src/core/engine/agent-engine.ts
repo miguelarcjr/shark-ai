@@ -36,6 +36,7 @@ export interface AgentEngineOptions {
     taskId?: string;
     context?: string;
     skipMemory?: boolean;
+    keepSchedulerRunning?: boolean;
 }
 
 export interface EngineRunOptions {
@@ -75,6 +76,7 @@ export class AgentEngine {
     private cronExecutor: CronExecutor;
     private cronToolHandler: CronToolHandler;
     private activeMessageQueue?: MessageQueue;
+    private keepSchedulerRunning: boolean;
 
     constructor(options: AgentEngineOptions = {}) {
         this.sessionId = options.sessionId || `session_${Date.now()}`;
@@ -85,6 +87,7 @@ export class AgentEngine {
         this.taskId = options.taskId;
         this.contextPath = options.context;
         this.skipMemory = options.skipMemory ?? false;
+        this.keepSchedulerRunning = options.keepSchedulerRunning ?? false;
 
         const cronDir = path.resolve(this.projectRoot, '.shark', 'cron');
         this.cronStorage = new CronStorage(cronDir);
@@ -94,13 +97,18 @@ export class AgentEngine {
             storage: this.cronStorage,
             scheduler: this.cronScheduler,
             originChannel: 'cli',
-            originRecipientId: 'local'
+            originRecipientId: 'local',
+            projectRoot: this.projectRoot
         });
 
         this.cronScheduler.setJobDispatcher(async (job) => {
             const result = await this.cronExecutor.execute(job);
             await this.deliverCronResult(job, result);
         });
+
+        if (this.keepSchedulerRunning) {
+            this.cronScheduler.start();
+        }
     }
 
     public getCronScheduler(): CronScheduler {
@@ -112,15 +120,22 @@ export class AgentEngine {
     }
 
     public startScheduler(): void {
+        this.keepSchedulerRunning = true;
         this.cronScheduler.start();
     }
 
     public stopScheduler(): void {
+        this.keepSchedulerRunning = false;
         this.cronScheduler.stop();
     }
 
+    public isSchedulerRunning(): boolean {
+        return this.cronScheduler.isRunning();
+    }
+
     public async deliverCronResult(job: CronJob, result: ExecutorRunResult): Promise<void> {
-        if (result.silent || result.output.includes('[SILENT]')) {
+        const cleanText = (result.cleanOutput || result.output || '').trim();
+        if (result.silent || cleanText === '[SILENT]' || /^\s*\[SILENT\]\s*$/i.test(cleanText)) {
             return;
         }
 
@@ -134,21 +149,22 @@ export class AgentEngine {
         }
 
         const recipientId = job.origin_recipient_id || 'local';
+        const jobTitle = job.name || job.id;
 
         let messageText: string;
         if (!result.success) {
-            messageText = `⚠️ Cron '${job.id}' falhou: ${result.output || 'Erro na execução'}`;
+            messageText = `⚠️ Cron '${jobTitle}' falhou: ${cleanText || 'Erro na execução'}`;
         } else {
             if (targetChannel === 'cli') {
                 const reportFile = result.outputFilePath || job.last_output_file || '';
-                messageText = `ℹ️ [Cron: ${job.id}] Concluído. Relatório em ${reportFile}`;
+                messageText = `ℹ️ [Cron: ${jobTitle}] Concluído. Relatório em ${reportFile}`;
             } else {
-                let content = result.output;
+                let content = cleanText;
                 if (content.length > 3500) {
                     const reportFile = result.outputFilePath || job.last_output_file || '';
                     content = content.slice(0, 3500) + `\n\n📄 [Relatório completo salvo em ${reportFile}]`;
                 }
-                messageText = content;
+                messageText = `[Cron: ${jobTitle}]\n${content}`;
             }
         }
 
@@ -185,7 +201,7 @@ export class AgentEngine {
                     job,
                     deliveredText: messageText,
                     deliverySuccess: true,
-                    projectRoot: this.projectRoot
+                    projectRoot: job.project_root || this.projectRoot
                 });
             } catch (err) {
                 console.warn('[AgentEngine] Erro ao executar mirrorToSession:', err);
@@ -193,7 +209,7 @@ export class AgentEngine {
         }
 
         if (this.activeMessageQueue) {
-            this.activeMessageQueue.enqueue({
+            this.activeMessageQueue.push({
                 type: 'subagent_notification',
                 content: `[Cron: ${job.id}] ${result.success ? 'Concluído com sucesso' : 'Falhou'}.\n${result.output}`,
                 timestamp: Date.now()
@@ -351,7 +367,7 @@ export class AgentEngine {
         // 4. Action Executor
         const originChannel = options.origin?.channelId || 'cli';
         const originRecipientId = options.origin?.senderId || 'local';
-        this.cronToolHandler.setOrigin(originChannel, originRecipientId);
+        this.cronToolHandler.setOrigin(originChannel, originRecipientId, projectRoot);
 
         const actionExecutor = new AgentActionExecutor({
             projectRoot,
@@ -392,7 +408,7 @@ export class AgentEngine {
             success: (msg: string) => tui.log.success(`${subagentPrefix}${msg}`),
         };
 
-        const shouldManageScheduler = !isSubagent && process.env.SHARK_CRON_EXECUTION !== 'true';
+        const shouldManageScheduler = !isSubagent && process.env.SHARK_CRON_EXECUTION !== 'true' && !this.keepSchedulerRunning;
         if (shouldManageScheduler && !this.cronScheduler.isRunning()) {
             this.cronScheduler.start();
         }
@@ -424,10 +440,22 @@ export class AgentEngine {
                 );
             }
 
+            if (process.env.SHARK_CRON_EXECUTION === 'true' && typeof process.send === 'function' && !process.env.VITEST) {
+                try {
+                    process.send({
+                        type: 'cron_completion',
+                        jobId: effectiveTaskId?.replace(/^cron-/, ''),
+                        success: result.success,
+                        summary: result.summary,
+                        error: result.error || null
+                    });
+                } catch {}
+            }
+
             log.success('✅ Task Scope Completed');
             return result;
         } finally {
-            if (shouldManageScheduler) {
+            if (shouldManageScheduler && !this.keepSchedulerRunning) {
                 this.cronScheduler.stop();
             }
             cleanupAgentTools();
