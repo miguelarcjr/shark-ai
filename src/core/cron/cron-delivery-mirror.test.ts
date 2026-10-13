@@ -27,9 +27,15 @@ describe('CronDeliveryMirror', () => {
         fs.mkdirSync(testDir, { recursive: true });
     });
 
-    afterEach(() => {
+    afterEach(async () => {
         try {
             fs.rmSync(testDir, { recursive: true, force: true });
+        } catch {}
+        try {
+            const historyFile = path.resolve(process.cwd(), '_sharkrc', 'history', 'conv-test-mirror-session.json');
+            if (fs.existsSync(historyFile)) {
+                fs.unlinkSync(historyFile);
+            }
         } catch {}
     });
 
@@ -126,9 +132,13 @@ describe('CronDeliveryMirror', () => {
         
         // Mock or setup conversation in workflowManager
         const state = (await workflowManager.load()) || {
-            currentEpic: '',
-            currentPhase: '',
-            completedPhases: [],
+            projectId: 'a0eebc99-9c0b-4ef8-bb6d-6bb9bd380a11',
+            projectName: 'test-project',
+            techStack: 'node-ts' as const,
+            currentStage: 'business_analysis' as const,
+            stageStatus: 'pending' as const,
+            lastUpdated: new Date().toISOString(),
+            artifacts: [],
             conversations: {}
         };
         state.conversations = state.conversations || {};
