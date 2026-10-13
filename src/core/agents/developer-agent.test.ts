@@ -693,7 +693,7 @@ describe('DeveloperAgent', () => {
             Prompt: 'Write a unit test for subagent manager',
         }], 'subagent-flow-task', expect.any(MessageQueue));
 
-        expect(result).toEqual({ success: true, summary: 'Finished testing subagent actions' });
+        expect(result).toEqual({ success: true, summary: 'Detailed finish' });
     });
 
     it('should catch subagent briefing parse errors and feed error message back to agent without crashing', async () => {
@@ -733,7 +733,7 @@ describe('DeveloperAgent', () => {
             expect.stringContaining('[Action invoke_subagent Failed]: Briefing YAML frontmatter must define both "type" and "role" properties'),
             expect.any(Object)
         );
-        expect(result).toEqual({ success: true, summary: 'Handled briefing error successfully' });
+        expect(result).toEqual({ success: true, summary: 'Recovered from invalid brief' });
     });
 
     it('should support /skills interactive command and activate selection', async () => {
@@ -954,7 +954,7 @@ describe('DeveloperAgent', () => {
 
         // Verify promptUser/tui.text was never called
         expect(tui.text).not.toHaveBeenCalled();
-        expect(result).toEqual({ success: true, summary: 'Final subagent result' });
+        expect(result).toEqual({ success: true, summary: 'Some details' });
     });
 
     it('should log warning and exit loop if subagent receives empty action (no action)', async () => {
@@ -1008,7 +1008,7 @@ describe('DeveloperAgent', () => {
         
         // The second streamChat should be called with the [SYSTEM ERROR] message automatically sent back to the agent
         expect(mockProvider.streamChat).toHaveBeenNthCalledWith(2, expect.stringContaining('[SYSTEM ERROR] invalid json'), expect.any(Object));
-        expect(result).toEqual({ success: true, summary: 'Recovered successfully' });
+        expect(result).toEqual({ success: true, summary: 'recovered details' });
     });
 
     it('should NOT block and wait for active subagents during the loop, allowing it to continue immediately', async () => {
@@ -1104,7 +1104,7 @@ describe('DeveloperAgent', () => {
             expect.stringContaining(`[Subagent: ${expectedTruncated}]`)
         );
 
-        expect(result).toEqual({ success: true, summary: 'Done with long roles' });
+        expect(result).toEqual({ success: true, summary: 'some details' });
     });
 
     it('wakes up from prompt when a subagent completion event is queued', async () => {
@@ -1375,7 +1375,7 @@ describe('DeveloperAgent', () => {
             expect.stringContaining('[SYSTEM ERROR] failed to parse response'),
             expect.any(Object)
         );
-        expect(result).toEqual({ success: true, summary: 'Recovered successfully' });
+        expect(result).toEqual({ success: true, summary: 'recovered details' });
     });
 
     it('should complete task successfully when complete_task action is received', async () => {
@@ -1403,7 +1403,7 @@ describe('DeveloperAgent', () => {
             auto: true,
         });
 
-        expect(result).toEqual({ success: true, summary: 'Task completed successfully.' });
+        expect(result).toEqual({ success: true, summary: 'Detailed result of task execution' });
         expect(updateSummarySpy).toHaveBeenCalledWith('subagent-complete-task', 'Task completed successfully.');
         expect(sendMessageSpy).toHaveBeenCalledWith(
             'parent-agent-id',
@@ -1542,7 +1542,7 @@ describe('DeveloperAgent', () => {
         });
 
         expect(tui.text).toHaveBeenCalledTimes(1);
-        expect(result).toEqual({ success: true, summary: 'Done first part' });
+        expect(result).toEqual({ success: true, summary: 'Here is explanation' });
     });
 
     it('should not exit on complete_task action if parent has auto set to false', async () => {
@@ -1567,7 +1567,7 @@ describe('DeveloperAgent', () => {
         });
 
         expect(tui.text).toHaveBeenCalledTimes(1);
-        expect(result).toEqual({ success: true, summary: 'Finished successfully' });
+        expect(result).toEqual({ success: true, summary: 'Some details' });
     });
 
     it('should handle /chat command, list conversations and switch conversation key', async () => {

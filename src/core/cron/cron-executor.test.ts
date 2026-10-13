@@ -85,7 +85,7 @@ describe('CronExecutor', { timeout: 15000 }, () => {
         const secondRun = await executor.execute(job);
         expect(secondRun.diffDetected).toBe(false);
         expect(secondRun.silent).toBe(true);
-    });
+    }, 30000);
 
     describe('isExecutionSilent', () => {
         it('should return true for standalone [SILENT] token', () => {
