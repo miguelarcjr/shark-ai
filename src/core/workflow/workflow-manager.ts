@@ -40,8 +40,28 @@ export class WorkflowManager {
             // 2. Write to TMP
             await fs.writeFile(tmpPath, data, 'utf-8');
 
-            // 3. Rename TMP to Final (Atomic)
-            await fs.rename(tmpPath, filePath);
+            // 3. Rename TMP to Final (Atomic with retry for Windows locks)
+            let renamed = false;
+            for (let attempt = 0; attempt < 5; attempt++) {
+                try {
+                    await fs.rename(tmpPath, filePath);
+                    renamed = true;
+                    break;
+                } catch (err: any) {
+                    if ((err.code === 'EPERM' || err.code === 'EBUSY') && attempt < 4) {
+                        await new Promise(resolve => setTimeout(resolve, 50 * (attempt + 1)));
+                        continue;
+                    }
+                    if (attempt === 4) {
+                        // Fallback copy if rename fails due to persistent Windows file handle locks
+                        await fs.copyFile(tmpPath, filePath);
+                        await fs.unlink(tmpPath).catch(() => {});
+                        renamed = true;
+                        break;
+                    }
+                    throw err;
+                }
+            }
         } catch (error: any) {
             throw new Error(`Failed to save workflow state atomically: ${error.message}`);
         }

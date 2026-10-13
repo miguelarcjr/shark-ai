@@ -344,4 +344,30 @@ describe('AgentEngine Core', () => {
         expect(callArgs.deliverySuccess).toBe(true);
         expect(callArgs.deliveredText).toContain('Mirror test output');
     });
+
+    it('should discover workspace cron storages via getAllCronStorages', async () => {
+        const rootDir = path.resolve(process.cwd(), '.shark', 'test-engine-root');
+        const wsUserDir = path.resolve(rootDir, 'workspaces', 'user_test123');
+        const wsCronDir = path.resolve(wsUserDir, '.shark', 'cron');
+        fs.mkdirSync(wsCronDir, { recursive: true });
+        fs.writeFileSync(path.join(wsCronDir, 'jobs.json'), JSON.stringify({ version: 1, jobs: {} }), 'utf-8');
+
+        try {
+            const engine = new AgentEngine({
+                sessionId: 'test-multistorages',
+                projectRoot: rootDir,
+                leaseManager: leaseMgr,
+                approvalsManager: approvalsMgr
+            });
+
+            const storages = engine.getAllCronStorages();
+            const dbPaths = storages.map(s => s.getDbPath());
+            expect(dbPaths).toContain(path.join(rootDir, '.shark', 'cron', 'jobs.json'));
+            expect(dbPaths).toContain(path.join(wsCronDir, 'jobs.json'));
+        } finally {
+            try {
+                fs.rmSync(rootDir, { recursive: true, force: true });
+            } catch {}
+        }
+    });
 });

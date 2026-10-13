@@ -40,7 +40,8 @@ vi.mock('../workflow/history-manager.js', () => ({
         saveHistory: vi.fn().mockResolvedValue(undefined),
         getRawHistory: vi.fn().mockResolvedValue([]),
         saveRawHistory: vi.fn().mockResolvedValue(undefined)
-    }
+    },
+    mergeConsecutiveRoles: vi.fn((messages: any[]) => messages)
 }));
 
 vi.mock('../workflow/skill-manager.js', () => ({

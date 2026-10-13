@@ -28,12 +28,16 @@ process.on('unhandledRejection', (err: any) => {
 
 let isShuttingDown = false;
 let currentSocket: any = null;
+let currentEngine: AgentEngine | null = null;
 
 function handleGracefulShutdown(signal: string) {
     if (isShuttingDown) return;
     isShuttingDown = true;
     console.log(`\n🛑 [${signal}] Encerrando o bot do WhatsApp com segurança...`);
     try {
+        if (currentEngine) {
+            currentEngine.stopScheduler();
+        }
         if (currentSocket) {
             currentSocket.ev.removeAllListeners('connection.update');
             currentSocket.ev.removeAllListeners('messages.upsert');
@@ -239,11 +243,14 @@ async function startWhatsAppBot() {
 
     const engine = new AgentEngine({
         sessionId: '*',
-        projectRoot: defaultWorkspace
+        projectRoot: defaultWorkspace,
+        keepSchedulerRunning: true
     });
+    currentEngine = engine;
     const cliAdapter = new CliAdapter();
     engine.attachAdapter(whatsappAdapter);
     engine.attachAdapter(cliAdapter);
+    engine.startScheduler();
 
     // 5. Escuta mensagens recebidas do WhatsApp e repassa ao adapter
     sock.ev.on('messages.upsert', async ({ messages, type }) => {
@@ -313,6 +320,21 @@ async function startWhatsAppBot() {
             }
 
             // --- Comandos de Controle Rápido via WhatsApp ---
+            if (cleanText === '/clear' || cleanText === '/reset' || cleanText === '/new') {
+                try {
+                    await engine.resetSessionConversation(sessionId);
+                    await transport.sendText(
+                        chatId,
+                        '🧹 *Conversa resetada com sucesso!*\n\n' +
+                        'O histórico anterior foi arquivado e um novo chat limpo foi iniciado.\n' +
+                        'Como posso te ajudar agora?'
+                    );
+                } catch (err: any) {
+                    await transport.sendText(chatId, `⚠️ Erro ao resetar conversa: ${err.message}`);
+                }
+                continue;
+            }
+
             if (cleanText === '/pwd' || cleanText === '/workspace') {
                 const activeWs = engine.getSessionWorkspace(sessionId);
                 await transport.sendText(chatId, `📁 *Workspace ativo:*\n\`${activeWs}\``);
@@ -336,6 +358,7 @@ async function startWhatsAppBot() {
                     chatId,
                     `🦈 *Shark AI WhatsApp Bot*\n\n` +
                     `• Envie qualquer comando em linguagem natural para o agente.\n` +
+                    `• \`/clear\` ou \`/reset\` - Limpa o histórico e inicia um novo chat do zero.\n` +
                     `• \`/pwd\` - Exibe o diretório/projeto onde o agente está trabalhando.\n` +
                     `• \`/use <caminho>\` - Altera o diretório do projeto ativo.\n` +
                     `• \`/refine [foco]\` - Aciona o aprendizado reflexivo (Learning Loop) para atualizar memória e skills.\n` +

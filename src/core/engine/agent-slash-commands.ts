@@ -81,6 +81,15 @@ export async function handleSlashCommand(
         return { handled: true, autoApproveTools: nextState, summary: msg };
     }
 
+    if (trimmed === '/clear' || trimmed === '/reset' || trimmed === '/new') {
+        if (ctx.conversationKey) {
+            await conversationManager.clearConversationId(ctx.conversationKey);
+        }
+        const msg = '🧹 Conversa resetada com sucesso! Um novo chat foi iniciado.';
+        ctx.onLog('success', msg);
+        return { handled: true, summary: msg, activeConversationId: undefined };
+    }
+
     if (trimmed === '/compact') {
         if (!ctx.activeConversationId) {
             const msg = '⚠️ Nenhuma conversação ativa para compactar.';

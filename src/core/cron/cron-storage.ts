@@ -100,15 +100,20 @@ export class CronStorage {
         } catch {}
     }
 
-    public async withLock<T>(action: () => Promise<T> | T): Promise<T | null> {
-        if (!this.acquireLock()) {
-            return null;
+    public async withLock<T>(action: () => Promise<T> | T, retries = 10, retryDelayMs = 25): Promise<T | null> {
+        for (let i = 0; i <= retries; i++) {
+            if (this.acquireLock()) {
+                try {
+                    return await action();
+                } finally {
+                    this.releaseLock();
+                }
+            }
+            if (i < retries) {
+                await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+            }
         }
-        try {
-            return await action();
-        } finally {
-            this.releaseLock();
-        }
+        return null;
     }
 
     public getOutputDir(): string {
@@ -117,5 +122,13 @@ export class CronStorage {
 
     public getTasksDir(): string {
         return path.join(this.cronDir, 'tasks');
+    }
+
+    public getCronDir(): string {
+        return this.cronDir;
+    }
+
+    public getDbPath(): string {
+        return this.dbPath;
     }
 }

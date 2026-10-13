@@ -42,7 +42,20 @@ describe('CronScheduler', () => {
         const iso = '2026-10-11T12:00:00.000Z';
         const nextIso = calculateNextRunAt(iso, now);
         expect(nextIso).toBe(new Date(iso).getTime());
+
+        // 5-field cron expression: e.g. at 21:15 daily
+        const baseDate = new Date(2026, 9, 12, 20, 0, 0); // 20:00
+        const nextCron = calculateNextRunAt('15 21 * * *', baseDate.getTime());
+        const expectedDate = new Date(2026, 9, 12, 21, 15, 0);
+        expect(nextCron).toBe(expectedDate.getTime());
+
+        // 5-field cron expression starting with 0: e.g. at 06:00 daily
+        const nextMorning = calculateNextRunAt('0 6 * * *', baseDate.getTime());
+        const expectedMorning = new Date(2026, 9, 13, 6, 0, 0);
+        expect(nextMorning).toBe(expectedMorning.getTime());
     });
+
+
 
     it('should coalesce overdue recurring jobs into 1 execution', async () => {
         const now = Date.now();
@@ -127,5 +140,73 @@ describe('CronScheduler', () => {
 
         await scheduler.tick();
         expect(executedJobs).toHaveLength(0); // Skipped due to running state
+    });
+
+    it('should execute jobs across multiple storages via storageProvider', async () => {
+        const secondaryDir = path.resolve(process.cwd(), '.shark', 'test-cron-secondary');
+        fs.mkdirSync(secondaryDir, { recursive: true });
+        const secondaryStorage = new CronStorage(secondaryDir);
+
+        try {
+            const now = Date.now();
+            // Primary storage job
+            const db1 = storage.loadDatabase();
+            db1.jobs['job-primary'] = {
+                id: 'job-primary',
+                schedule: 'every 1m',
+                status: 'scheduled',
+                prompt: 'task primary',
+                deliver: 'local',
+                created_at: now,
+                next_run_at: now - 1000,
+                run_count: 0
+            };
+            storage.saveDatabase(db1);
+
+            // Secondary workspace storage job
+            const db2 = secondaryStorage.loadDatabase();
+            db2.jobs['job-secondary'] = {
+                id: 'job-secondary',
+                schedule: 'every 1m',
+                status: 'scheduled',
+                prompt: 'task secondary',
+                deliver: 'local',
+                created_at: now,
+                next_run_at: now - 2000,
+                run_count: 0
+            };
+            secondaryStorage.saveDatabase(db2);
+
+            const multiScheduler = new CronScheduler({
+                storage,
+                storageProvider: () => [storage, secondaryStorage],
+                tickIntervalMs: 50
+            });
+
+            const executedJobs: string[] = [];
+            multiScheduler.setJobDispatcher(async (j) => {
+                executedJobs.push(j.id);
+            });
+
+            await multiScheduler.tick();
+
+            expect(executedJobs).toContain('job-primary');
+            expect(executedJobs).toContain('job-secondary');
+
+            // Wait a tick for async executeJob status update to settle
+            await new Promise((r) => setTimeout(r, 50));
+
+            // Verify both databases were updated to scheduled / next_run_at recalculated
+            const updated1 = storage.loadDatabase().jobs['job-primary'];
+            const updated2 = secondaryStorage.loadDatabase().jobs['job-secondary'];
+            expect(updated1.status).toBe('scheduled');
+            expect(updated1.run_count).toBe(1);
+            expect(updated2.status).toBe('scheduled');
+            expect(updated2.run_count).toBe(1);
+        } finally {
+            try {
+                fs.rmSync(secondaryDir, { recursive: true, force: true });
+            } catch {}
+        }
     });
 });

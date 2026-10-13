@@ -114,7 +114,12 @@ export class CronExecutor {
     }
 
     private async executeAgentSubprocess(job: CronJob, cwd: string = this.projectRoot, preScriptOutput?: string): Promise<ExecutorRunResult> {
-        const tasksDir = this.storage.getTasksDir();
+        const tasksDir = job.project_root
+            ? path.join(job.project_root, '.shark', 'cron', 'tasks')
+            : this.storage.getTasksDir();
+        if (!fs.existsSync(tasksDir)) {
+            try { fs.mkdirSync(tasksDir, { recursive: true }); } catch {}
+        }
         const briefFile = path.join(tasksDir, `task-${job.id}-${Date.now()}.md`);
         const resultFile = path.join(tasksDir, `result-${job.id}-${Date.now()}.json`);
 

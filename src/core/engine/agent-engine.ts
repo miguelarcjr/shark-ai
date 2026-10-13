@@ -16,6 +16,7 @@ import { EngineContextBuilder } from './engine-context-builder.js';
 import { TurnLoopRunner, type DevelopmentResult } from './turn-loop-runner.js';
 import { setupProcessCleanup, terminateChildSubagents } from './subagent-sync.js';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import { CronStorage } from '../cron/cron-storage.js';
 import { CronScheduler } from '../cron/cron-scheduler.js';
 import { CronExecutor, type ExecutorRunResult } from '../cron/cron-executor.js';
@@ -91,7 +92,10 @@ export class AgentEngine {
 
         const cronDir = path.resolve(this.projectRoot, '.shark', 'cron');
         this.cronStorage = new CronStorage(cronDir);
-        this.cronScheduler = new CronScheduler({ storage: this.cronStorage });
+        this.cronScheduler = new CronScheduler({
+            storage: this.cronStorage,
+            storageProvider: () => this.getAllCronStorages()
+        });
         this.cronExecutor = new CronExecutor({ storage: this.cronStorage, projectRoot: this.projectRoot });
         this.cronToolHandler = new CronToolHandler({
             storage: this.cronStorage,
@@ -109,6 +113,38 @@ export class AgentEngine {
         if (this.keepSchedulerRunning) {
             this.cronScheduler.start();
         }
+    }
+
+    public getAllCronStorages(): CronStorage[] {
+        const storagesMap = new Map<string, CronStorage>();
+        storagesMap.set(this.cronStorage.getDbPath(), this.cronStorage);
+
+        // 1. Session workspaces registered dynamically
+        for (const wsPath of this.sessionWorkspaces.values()) {
+            try {
+                const storage = new CronStorage(path.resolve(wsPath, '.shark', 'cron'));
+                storagesMap.set(storage.getDbPath(), storage);
+            } catch {}
+        }
+
+        // 2. Discover workspaces from workspaces directory
+        const workspacesRoot = process.env.SHARK_WORKSPACES_ROOT || path.resolve(this.projectRoot, 'workspaces');
+        if (fs.existsSync(workspacesRoot)) {
+            try {
+                const entries = fs.readdirSync(workspacesRoot, { withFileTypes: true });
+                for (const entry of entries) {
+                    if (entry.isDirectory()) {
+                        const wsCronDir = path.resolve(workspacesRoot, entry.name, '.shark', 'cron');
+                        if (fs.existsSync(path.join(wsCronDir, 'jobs.json'))) {
+                            const storage = new CronStorage(wsCronDir);
+                            storagesMap.set(storage.getDbPath(), storage);
+                        }
+                    }
+                }
+            } catch {}
+        }
+
+        return Array.from(storagesMap.values());
     }
 
     public getCronScheduler(): CronScheduler {

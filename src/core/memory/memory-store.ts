@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
+import { ConfigManager } from '../config-manager.js';
 
 export interface MemorySnapshot {
   memory: string;
@@ -11,17 +12,48 @@ export interface MemorySnapshot {
   composedPromptBlock: string;
 }
 
+export interface MemoryStoreLimits {
+  memory?: number;
+  user?: number;
+  soul?: number;
+}
+
+export interface MemoryStoreOptions {
+  globalDir?: string;
+  localDir?: string;
+  limits?: MemoryStoreLimits;
+}
+
 export class MemoryStore {
-  public static readonly MEMORY_LIMIT = 2200;
-  public static readonly USER_LIMIT = 1375;
-  public static readonly SOUL_LIMIT = 1000;
+  public static readonly DEFAULT_MEMORY_LIMIT = 2200;
+  public static readonly DEFAULT_USER_LIMIT = 1375;
+  public static readonly DEFAULT_SOUL_LIMIT = 1000;
+
+  public static readonly MEMORY_LIMIT = MemoryStore.DEFAULT_MEMORY_LIMIT;
+  public static readonly USER_LIMIT = MemoryStore.DEFAULT_USER_LIMIT;
+  public static readonly SOUL_LIMIT = MemoryStore.DEFAULT_SOUL_LIMIT;
 
   private globalDir: string;
   private localDir: string;
+  private limits: Record<'memory' | 'user' | 'soul', number>;
 
-  constructor(customPaths?: { globalDir?: string; localDir?: string }) {
+  constructor(customPaths?: MemoryStoreOptions) {
     this.globalDir = customPaths?.globalDir || path.join(os.homedir(), '.shark');
     this.localDir = customPaths?.localDir || path.join(process.cwd(), '.shark');
+
+    const isCustomIsolatedTest = !!(customPaths?.globalDir || customPaths?.localDir);
+    let rcMemory: any = {};
+    if (!isCustomIsolatedTest) {
+      try {
+        rcMemory = ConfigManager.getInstance().getConfig()?.memory || {};
+      } catch {}
+    }
+
+    this.limits = {
+      memory: customPaths?.limits?.memory ?? rcMemory.memoryLimit ?? rcMemory.maxMemoryChars ?? MemoryStore.DEFAULT_MEMORY_LIMIT,
+      user: customPaths?.limits?.user ?? rcMemory.userLimit ?? rcMemory.maxUserChars ?? MemoryStore.DEFAULT_USER_LIMIT,
+      soul: customPaths?.limits?.soul ?? rcMemory.soulLimit ?? rcMemory.maxSoulChars ?? MemoryStore.DEFAULT_SOUL_LIMIT
+    };
   }
 
   private getPath(target: 'memory' | 'user' | 'soul'): string {
@@ -35,15 +67,8 @@ export class MemoryStore {
     }
   }
 
-  private getLimit(target: 'memory' | 'user' | 'soul'): number {
-    switch (target) {
-      case 'memory':
-        return MemoryStore.MEMORY_LIMIT;
-      case 'user':
-        return MemoryStore.USER_LIMIT;
-      case 'soul':
-        return MemoryStore.SOUL_LIMIT;
-    }
+  public getLimit(target: 'memory' | 'user' | 'soul'): number {
+    return this.limits[target] ?? MemoryStore.DEFAULT_MEMORY_LIMIT;
   }
 
   private async ensureDirAndFile(filePath: string, defaultContent: string): Promise<string> {
@@ -73,16 +98,19 @@ export class MemoryStore {
       this.readFile('memory')
     ]);
 
+    const memLimit = this.getLimit('memory');
+    const uLimit = this.getLimit('user');
+
     const memoryUsage = {
       current: memory.length,
-      max: MemoryStore.MEMORY_LIMIT,
-      percentage: Math.round((memory.length / MemoryStore.MEMORY_LIMIT) * 100)
+      max: memLimit,
+      percentage: Math.round((memory.length / memLimit) * 100)
     };
 
     const userUsage = {
       current: user.length,
-      max: MemoryStore.USER_LIMIT,
-      percentage: Math.round((user.length / MemoryStore.USER_LIMIT) * 100)
+      max: uLimit,
+      percentage: Math.round((user.length / uLimit) * 100)
     };
 
     const composedPromptBlock = [

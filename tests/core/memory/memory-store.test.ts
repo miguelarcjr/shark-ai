@@ -1,5 +1,6 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { MemoryStore } from '../../../src/core/memory/memory-store.js';
+import { ConfigManager } from '../../../src/core/config-manager.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -96,5 +97,47 @@ describe('MemoryStore', () => {
     expect(content).not.toContain('<system>');
     expect(content).toContain('&lt;/project_memory&gt;');
     expect(content).toContain('&lt;system&gt;');
+  });
+
+  it('should respect custom limits passed via constructor options', async () => {
+    const customStore = new MemoryStore({
+      globalDir: tmpGlobal,
+      localDir: tmpLocal,
+      limits: {
+        memory: 50000,
+        user: 40000,
+        soul: 20000
+      }
+    });
+
+    expect(customStore.getLimit('memory')).toBe(50000);
+    expect(customStore.getLimit('user')).toBe(40000);
+    expect(customStore.getLimit('soul')).toBe(20000);
+
+    const snapshot = await customStore.loadSnapshot();
+    expect(snapshot.memoryUsage.max).toBe(50000);
+    expect(snapshot.userUsage.max).toBe(40000);
+
+    // Content exceeding default 2200 limit succeeds under custom 50000 limit
+    const content3000 = 'M'.repeat(3000);
+    await expect(customStore.updateFile('memory', 'add', content3000)).resolves.toMatchObject({
+      success: true
+    });
+  });
+
+  it('should load limits from ConfigManager when instantiated with default constructor', () => {
+    vi.spyOn(ConfigManager.getInstance(), 'getConfig').mockReturnValue({
+      memory: {
+        compactionTokenLimit: 100000,
+        memoryLimit: 75000,
+        userLimit: 60000,
+        soulLimit: 30000
+      }
+    } as any);
+
+    const defaultStore = new MemoryStore();
+    expect(defaultStore.getLimit('memory')).toBe(75000);
+    expect(defaultStore.getLimit('user')).toBe(60000);
+    expect(defaultStore.getLimit('soul')).toBe(30000);
   });
 });

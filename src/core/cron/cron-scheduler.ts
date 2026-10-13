@@ -25,6 +25,102 @@ export function isOneShotSchedule(expression: string): boolean {
     return true;
 }
 
+function parseCronField(field: string, min: number, max: number): Set<number> {
+    const values = new Set<number>();
+    const parts = field.split(',');
+    for (const part of parts) {
+        if (part === '*') {
+            for (let i = min; i <= max; i++) values.add(i);
+        } else if (part.startsWith('*/')) {
+            const step = parseInt(part.slice(2), 10) || 1;
+            for (let i = min; i <= max; i += step) values.add(i);
+        } else if (part.includes('-')) {
+            const [startStr, endStr] = part.split('-');
+            const start = parseInt(startStr, 10);
+            const end = parseInt(endStr, 10);
+            if (!isNaN(start) && !isNaN(end)) {
+                for (let i = Math.max(min, start); i <= Math.min(max, end); i++) {
+                    values.add(i);
+                }
+            }
+        } else {
+            const val = parseInt(part, 10);
+            if (!isNaN(val) && val >= min && val <= max) {
+                values.add(val);
+            }
+        }
+    }
+    return values;
+}
+
+function calculateNextCronOccurrence(expression: string, fromTimestamp: number): number {
+    const fields = expression.trim().split(/\s+/);
+    if (fields.length !== 5) {
+        return fromTimestamp + 3600 * 1000;
+    }
+
+    const minutes = parseCronField(fields[0], 0, 59);
+    const hours = parseCronField(fields[1], 0, 23);
+    const doms = parseCronField(fields[2], 1, 31);
+    const months = parseCronField(fields[3], 1, 12);
+    const dows = parseCronField(fields[4], 0, 7);
+    if (dows.has(7)) dows.add(0);
+
+    const next = new Date(fromTimestamp);
+    next.setSeconds(0, 0);
+    next.setMinutes(next.getMinutes() + 1);
+
+    const maxIterations = 525600;
+    let iterations = 0;
+
+    while (iterations < maxIterations) {
+        iterations++;
+
+        if (!months.has(next.getMonth() + 1)) {
+            next.setMonth(next.getMonth() + 1, 1);
+            next.setHours(0, 0, 0, 0);
+            continue;
+        }
+
+        const isDomMatch = doms.has(next.getDate());
+        const isDowMatch = dows.has(next.getDay());
+
+        const domWild = fields[2] === '*';
+        const dowWild = fields[4] === '*';
+
+        let dayMatch = false;
+        if (domWild && dowWild) {
+            dayMatch = true;
+        } else if (!domWild && !dowWild) {
+            dayMatch = isDomMatch || isDowMatch;
+        } else if (!domWild) {
+            dayMatch = isDomMatch;
+        } else {
+            dayMatch = isDowMatch;
+        }
+
+        if (!dayMatch) {
+            next.setDate(next.getDate() + 1);
+            next.setHours(0, 0, 0, 0);
+            continue;
+        }
+
+        if (!hours.has(next.getHours())) {
+            next.setHours(next.getHours() + 1, 0, 0, 0);
+            continue;
+        }
+
+        if (!minutes.has(next.getMinutes())) {
+            next.setMinutes(next.getMinutes() + 1, 0, 0);
+            continue;
+        }
+
+        return next.getTime();
+    }
+
+    return fromTimestamp + 3600 * 1000;
+}
+
 export function calculateNextRunAt(expression: string, fromTimestamp: number = Date.now()): number {
     const trimmed = expression.trim();
     const lower = trimmed.toLowerCase();
@@ -44,20 +140,16 @@ export function calculateNextRunAt(expression: string, fromTimestamp: number = D
         return fromTimestamp + relativeDelay;
     }
 
-    // 3. ISO timestamp
+    // 3. Standard 5-field cron syntax
+    const fields = trimmed.split(/\s+/);
+    if (fields.length === 5) {
+        return calculateNextCronOccurrence(trimmed, fromTimestamp);
+    }
+
+    // 4. ISO timestamp
     const parsedDate = Date.parse(trimmed);
     if (!isNaN(parsedDate)) {
         return parsedDate;
-    }
-
-    // 4. Fallback 5-field cron basic approximation (hourly if 0 * * * *)
-    const fields = trimmed.split(/\s+/);
-    if (fields.length === 5) {
-        if (fields[0].startsWith('*/')) {
-            const stepMinutes = parseInt(fields[0].replace('*/', ''), 10) || 15;
-            return fromTimestamp + stepMinutes * 60 * 1000;
-        }
-        return fromTimestamp + 3600 * 1000;
     }
 
     // Default fallback: 1 hour from now
@@ -66,12 +158,14 @@ export function calculateNextRunAt(expression: string, fromTimestamp: number = D
 
 export interface CronSchedulerOptions {
     storage?: CronStorage;
+    storageProvider?: () => CronStorage[];
     tickIntervalMs?: number;
     maxConcurrentJobs?: number;
 }
 
 export class CronScheduler {
     private storage: CronStorage;
+    private storageProvider?: () => CronStorage[];
     private tickIntervalMs: number;
     private maxConcurrentJobs: number;
     private timerId: NodeJS.Timeout | null = null;
@@ -80,6 +174,7 @@ export class CronScheduler {
 
     constructor(options: CronSchedulerOptions = {}) {
         this.storage = options.storage || new CronStorage();
+        this.storageProvider = options.storageProvider;
         this.tickIntervalMs = options.tickIntervalMs || 60000;
         this.maxConcurrentJobs = options.maxConcurrentJobs || 3;
     }
@@ -109,9 +204,38 @@ export class CronScheduler {
         }
     }
 
+    private getStorages(): CronStorage[] {
+        const list: CronStorage[] = [];
+        if (this.storageProvider) {
+            try {
+                list.push(...this.storageProvider());
+            } catch {}
+        }
+        if (!list.some(s => s.getDbPath() === this.storage.getDbPath())) {
+            list.unshift(this.storage);
+        }
+        const seen = new Set<string>();
+        const deduped: CronStorage[] = [];
+        for (const s of list) {
+            const p = s.getDbPath();
+            if (!seen.has(p)) {
+                seen.add(p);
+                deduped.push(s);
+            }
+        }
+        return deduped;
+    }
+
     public async tick(): Promise<void> {
-        await this.storage.withLock(async () => {
-            const db = this.storage.loadDatabase();
+        const storages = this.getStorages();
+        for (const storage of storages) {
+            await this.tickStorage(storage);
+        }
+    }
+
+    private async tickStorage(storage: CronStorage): Promise<void> {
+        const dispatchedJobs = await storage.withLock(async () => {
+            const db = storage.loadDatabase();
             const now = Date.now();
             const eligibleJobs: CronJob[] = [];
 
@@ -160,16 +284,19 @@ export class CronScheduler {
                 this.runningJobIds.add(job.id);
             }
 
-            this.storage.saveDatabase(db);
-
-            // Dispatch jobs outside storage lock
-            for (const job of toDispatch) {
-                this.executeJob(job).catch(() => {});
-            }
+            storage.saveDatabase(db);
+            return toDispatch;
         });
+
+        // Dispatch jobs outside storage lock
+        if (dispatchedJobs && dispatchedJobs.length > 0) {
+            for (const job of dispatchedJobs) {
+                this.executeJob(job, storage).catch(() => {});
+            }
+        }
     }
 
-    private async executeJob(job: CronJob): Promise<void> {
+    private async executeJob(job: CronJob, storage: CronStorage): Promise<void> {
         try {
             if (this.jobDispatcher) {
                 await this.jobDispatcher(job);
@@ -177,8 +304,8 @@ export class CronScheduler {
         } finally {
             this.runningJobIds.delete(job.id);
             // Update job status after execution
-            await this.storage.withLock(async () => {
-                const db = this.storage.loadDatabase();
+            await storage.withLock(async () => {
+                const db = storage.loadDatabase();
                 const current = db.jobs[job.id];
                 if (current && current.status === 'running') {
                     if (isOneShotSchedule(current.schedule)) {
@@ -186,7 +313,7 @@ export class CronScheduler {
                     } else {
                         current.status = 'scheduled';
                     }
-                    this.storage.saveDatabase(db);
+                    storage.saveDatabase(db);
                 }
             });
         }

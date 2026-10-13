@@ -139,4 +139,5 @@ test-sandbox/
 # Runtime Workspaces (WhatsApp Bot, Multi-channel)
 workspaces/
 examples/**/workspaces/
-
+
+skills/last30days

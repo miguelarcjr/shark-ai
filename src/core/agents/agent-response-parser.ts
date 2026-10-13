@@ -42,7 +42,7 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     type: z.enum([
         'create_file', 'modify_file', 'list_files', 'search_file', 'search_code', 'read_file', 'delete_file',
         'send_file',
-        'list_structure', 'modify_ast', 'search_ast', 'run_command', 'process',
+        'run_command', 'process',
         'tool_search', 'tool_describe', 'tool_call',
         'talk_with_user',
         'memory', 'session_search',
@@ -51,22 +51,14 @@ export const AgentActionSchema = z.preprocess((val: any) => {
         'complete_task',
         'wait',
         'notify_user',
-        'cronjob',
-        'ast_list_structure',
-        'ast_get_method',
-        'ast_add_method', 'ast_modify_method', 'ast_remove_method',
-        'ast_add_class',
-        'ast_get_property', 'ast_add_property', 'ast_modify_property', 'ast_remove_property',
-        'ast_add_decorator',
-        'ast_add_interface', 'ast_add_type_alias',
-        'ast_add_function', 'ast_remove_function',
-        'ast_add_import', 'ast_remove_import', 'ast_organize_imports'
+        'cronjob'
     ]),
     args: z.record(z.any()).nullable().optional(),
     arguments: z.union([z.record(z.any()), z.string()]).nullable().optional(),
     names: z.array(z.string()).nullable().optional(),
     queries: z.array(z.string()).nullable().optional(),
     path: z.string().nullable().optional(), // Nullable for strict mode combatibility
+    file_path: z.string().nullable().optional(), // For skill_view / skill_manage
     caption: z.string().nullable().optional(),
     content: z.string().nullable().optional(),
     line_range: z.array(z.number()).nullable().optional(),
@@ -98,29 +90,6 @@ export const AgentActionSchema = z.preprocess((val: any) => {
     // search_code fields
     query: z.string().nullable().optional(),
     is_regex: z.boolean().nullable().optional(),
- 
-    // AST-Grep fields
-    pattern: z.string().nullable().optional(),
-    fix: z.string().nullable().optional(),
-    language: z.string().nullable().optional(),
-    file_path: z.string().nullable().optional(), // Alias for path in ast-grep actions
- 
-    // New AST Tool Specific Fields
-    class_name: z.string().nullable().optional(),
-    method_name: z.string().nullable().optional(),
-    method_code: z.string().nullable().optional(),
-    property_name: z.string().nullable().optional(),
-    property_code: z.string().nullable().optional(),
-    extends_class: z.string().nullable().optional(),
-    implements_interfaces: z.array(z.string()).nullable().optional(),
-    decorator_code: z.string().nullable().optional(),
-    interface_code: z.string().nullable().optional(),
-    type_code: z.string().nullable().optional(),
-    function_name: z.string().nullable().optional(),
-    function_code: z.string().nullable().optional(),
-    import_statement: z.string().nullable().optional(),
-    module_path: z.string().nullable().optional(),
-    new_body: z.string().nullable().optional(),
  
     // Preview confirmation
     confirmed: z.boolean().nullable().optional(),

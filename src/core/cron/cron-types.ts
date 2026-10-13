@@ -22,6 +22,7 @@ export interface CronJob {
     catch_up_occurrences?: number;
     last_status?: string;
     last_output_file?: string;
+    project_root?: string;
 }
 
 export interface CronDatabase {

@@ -1,4 +1,5 @@
 import * as crypto from 'node:crypto';
+import * as path from 'node:path';
 import { CronStorage } from './cron-storage.js';
 import { CronScheduler, calculateNextRunAt } from './cron-scheduler.js';
 import type { CronToolArgs, CronToolResult, CronJob } from './cron-types.js';
@@ -8,6 +9,7 @@ export interface CronToolHandlerOptions {
     scheduler?: CronScheduler;
     originChannel?: string;
     originRecipientId?: string;
+    projectRoot?: string;
 }
 
 export class CronToolHandler {
@@ -15,17 +17,29 @@ export class CronToolHandler {
     private scheduler?: CronScheduler;
     private originChannel?: string;
     private originRecipientId?: string;
+    private projectRoot?: string;
 
     constructor(options: CronToolHandlerOptions = {}) {
-        this.storage = options.storage || new CronStorage();
+        this.projectRoot = options.projectRoot;
+        if (options.storage) {
+            this.storage = options.storage;
+        } else if (this.projectRoot) {
+            this.storage = new CronStorage(path.resolve(this.projectRoot, '.shark', 'cron'));
+        } else {
+            this.storage = new CronStorage();
+        }
         this.scheduler = options.scheduler;
         this.originChannel = options.originChannel;
         this.originRecipientId = options.originRecipientId;
     }
 
-    public setOrigin(originChannel?: string, originRecipientId?: string): void {
+    public setOrigin(originChannel?: string, originRecipientId?: string, projectRoot?: string): void {
         this.originChannel = originChannel;
         this.originRecipientId = originRecipientId;
+        if (projectRoot) {
+            this.projectRoot = projectRoot;
+            this.storage = new CronStorage(path.resolve(projectRoot, '.shark', 'cron'));
+        }
     }
 
     public async handleAction(args: CronToolArgs): Promise<CronToolResult> {
@@ -84,7 +98,8 @@ export class CronToolHandler {
             origin_recipient_id: this.originRecipientId,
             created_at: now,
             next_run_at: nextRunAt,
-            run_count: 0
+            run_count: 0,
+            project_root: this.projectRoot
         };
 
         const db = this.storage.loadDatabase();

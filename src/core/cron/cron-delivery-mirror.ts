@@ -1,3 +1,4 @@
+import * as path from 'node:path';
 import { StateDB } from '../memory/state-db.js';
 import { HistoryManager } from '../workflow/history-manager.js';
 import { conversationManager } from '../workflow/conversation-manager.js';
@@ -54,7 +55,8 @@ export class CronDeliveryMirror {
 
         // 7. Persistência na Fonte Única (SQLite StateDB - RNF01)
         try {
-            const stateDb = options.stateDb || new StateDB();
+            const dbPath = options.projectRoot ? path.join(options.projectRoot, '.shark', 'state.db') : undefined;
+            const stateDb = options.stateDb || new StateDB(dbPath);
             stateDb.recordMessage(sessionId, 'user', formattedContent);
             if (!options.stateDb) {
                 stateDb.close();
@@ -65,16 +67,27 @@ export class CronDeliveryMirror {
 
         // 8. Atualização do Histórico Imediato da Conversa (HistoryManager)
         try {
-            const conversationKey = `session_${sessionId}`;
-            const conversationId = await conversationManager.getConversationId(conversationKey);
-            if (conversationId) {
-                await HistoryManager.appendMessage(conversationId, {
-                    role: 'user',
-                    content: formattedContent
-                });
-                const rawHistory = await HistoryManager.getRawHistory(conversationId);
-                rawHistory.push({ role: 'user', content: formattedContent });
-                await HistoryManager.saveRawHistory(conversationId, rawHistory);
+            const originalCwd = process.cwd();
+            const targetDir = options.projectRoot || originalCwd;
+            if (targetDir !== originalCwd) {
+                try { process.chdir(targetDir); } catch {}
+            }
+            try {
+                const conversationKey = `session_${sessionId}`;
+                const conversationId = await conversationManager.getConversationId(conversationKey);
+                if (conversationId) {
+                    await HistoryManager.appendMessage(conversationId, {
+                        role: 'user',
+                        content: formattedContent
+                    });
+                    const rawHistory = await HistoryManager.getRawHistory(conversationId);
+                    rawHistory.push({ role: 'user', content: formattedContent });
+                    await HistoryManager.saveRawHistory(conversationId, rawHistory);
+                }
+            } finally {
+                if (process.cwd() !== originalCwd) {
+                    try { process.chdir(originalCwd); } catch {}
+                }
             }
         } catch (err) {
             console.warn('[CronDeliveryMirror] Erro ao sincronizar HistoryManager:', err);

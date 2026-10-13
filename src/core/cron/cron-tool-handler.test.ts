@@ -150,4 +150,40 @@ describe('CronToolHandler', () => {
         expect(resExplicit.success).toBe(true);
         expect(resExplicit.job?.attach_to_session).toBe(true);
     });
+
+    it('should switch to workspace storage when setOrigin receives projectRoot', async () => {
+        const workspaceDir = path.resolve(process.cwd(), '.shark', 'test-workspace-handler');
+        fs.mkdirSync(workspaceDir, { recursive: true });
+
+        try {
+            // Initially in default storage (0 jobs)
+            const initialList = await handler.handleAction({ action: 'list' });
+            expect(initialList.count).toBe(0);
+
+            // Switch to workspace via setOrigin
+            handler.setOrigin('whatsapp', 'user_123', workspaceDir);
+
+            // Create job in workspace
+            const createRes = await handler.handleAction({
+                action: 'create',
+                schedule: 'every 30m',
+                prompt: 'workspace specific job'
+            });
+            expect(createRes.success).toBe(true);
+            expect(createRes.job?.project_root).toBe(workspaceDir);
+
+            // Workspace list should show 1 job
+            const wsList = await handler.handleAction({ action: 'list' });
+            expect(wsList.count).toBe(1);
+            expect(wsList.jobs?.[0].prompt).toBe('workspace specific job');
+
+            // Default storage should still be untouched (0 jobs)
+            const defaultStorageDb = storage.loadDatabase();
+            expect(Object.keys(defaultStorageDb.jobs)).toHaveLength(0);
+        } finally {
+            try {
+                fs.rmSync(workspaceDir, { recursive: true, force: true });
+            } catch {}
+        }
+    });
 });
